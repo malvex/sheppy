@@ -1,0 +1,71 @@
+from abc import ABC, abstractmethod
+from datetime import datetime
+from typing import Any
+
+
+class BackendError(Exception):
+    pass
+
+
+class ConnectionError(BackendError):
+    pass
+
+
+class Backend(ABC):
+
+    @abstractmethod
+    async def connect(self) -> None:
+        pass
+
+    @abstractmethod
+    async def disconnect(self) -> None:
+        pass
+
+    @property
+    @abstractmethod
+    def is_connected(self) -> bool:
+        pass
+
+    @abstractmethod
+    async def append(self, queue_name: str, task_data: dict[str, Any]) -> bool:
+        pass
+
+    @abstractmethod
+    async def pop(self, queue_name: str, timeout: float | None = None) -> dict[str, Any] | None:
+        pass
+
+    @abstractmethod
+    async def peek(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
+        pass
+
+    @abstractmethod
+    async def size(self, queue_name: str) -> int:
+        pass
+
+    @abstractmethod
+    async def clear(self, queue_name: str) -> int:
+        pass
+
+    @abstractmethod
+    async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime) -> bool:
+        pass
+
+    @abstractmethod
+    async def get_scheduled(self, queue_name: str, now: datetime | None = None) -> list[dict[str, Any]]:
+        pass
+
+    @abstractmethod
+    async def acknowledge(self, queue_name: str, task_id: str) -> bool:
+        pass
+
+    @abstractmethod
+    async def list_queues(self) -> list[str]:
+        pass
+
+    @abstractmethod
+    async def store_result(self, queue_name: str, task_data: dict[str, Any]) -> bool:
+        pass
+
+    @abstractmethod
+    async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
+        pass
