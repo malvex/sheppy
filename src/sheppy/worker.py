@@ -13,7 +13,7 @@ from .utils.task_execution import (
     execute_task,
     generate_unique_worker_id,
     get_available_tasks,
-    should_retry,
+    update_failed_task,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,15 +51,17 @@ class Worker:
         async with self._task_semaphore:
             try:
                 # Execute the task
-                await execute_task(task, self._dependency_resolver, self.worker_id)
+                task = await execute_task(task, self._dependency_resolver, self.worker_id)
 
                 logger.info(f"Task {task.id} completed successfully")
                 self.stats.processed += 1
 
             except Exception as e:
                 # Handle task failure
-                if not should_retry(task, e):
-                    # Final failure - log appropriately
+                task = update_failed_task(task, e)
+
+                # Final failure
+                if task.metadata.finished_datetime:
                     if task.metadata.retry > 0 and task.metadata.retry_count > 0:
                         logger.error(
                             f"Task {task.id} failed after {task.metadata.retry_count} retries: {e}",

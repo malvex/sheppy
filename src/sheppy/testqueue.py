@@ -8,7 +8,7 @@ from .backend.memory import MemoryBackend
 from .queue import Queue
 from .task import Task
 from .utils.dependency_injection import DependencyResolver
-from .utils.task_execution import execute_task, get_available_tasks, should_retry
+from .utils.task_execution import execute_task, get_available_tasks, update_failed_task
 
 
 class TestQueue:
@@ -53,8 +53,8 @@ class TestQueue:
     def get_task(self, task_id: UUID) -> Task | None:
         return asyncio.run(self._queue.get_task(task_id))
 
-    def wait_for_result(self, task: Task, timeout: float = 0, poll_interval: float = 0.01) -> Any:
-        return asyncio.run(task.wait_for_result(timeout, poll_interval))
+    def wait_for_finished(self, task: Task, timeout: float = 0, poll_interval: float = 0.01) -> Any:
+        return asyncio.run(self._queue.wait_for_finished(task, timeout, poll_interval))
 
     def process_next(self) -> Task | None:
         return asyncio.run(self._process_next_async())
@@ -91,17 +91,22 @@ class TestQueue:
 
         # Process the task
         try:
-            await execute_task(task, self._dependency_resolver, self._worker_id)
+            task = await execute_task(task, self._dependency_resolver, self._worker_id)
             self.processed_tasks.append(task)
         except Exception as e:
             # Handle failure
-            if not should_retry(task, e):
-                # Final failure
+            task = update_failed_task(task, e)
+
+            # Final failure
+            if task.metadata.finished_datetime:
                 self.failed_tasks.append(task)
                 self.processed_tasks.append(task)
             else:
                 # For tests, override next_retry_at to be immediate (ignore delay)
+                task.metadata.model_config["frozen"] = False
                 task.metadata.next_retry_at = datetime.now(timezone.utc)
+                task.metadata.model_config["frozen"] = True
+
                 # Requeue for immediate retry
                 await self._queue.add(task)
 
@@ -126,17 +131,21 @@ class TestQueue:
 
         for task in tasks:
             try:
-                await execute_task(task, self._dependency_resolver, self._worker_id)
+                task = await execute_task(task, self._dependency_resolver, self._worker_id)
                 self.processed_tasks.append(task)
                 processed.append(task)
             except Exception as e:
                 # Handle failure
-                if not should_retry(task, e):
+                task = update_failed_task(task, e)
+
+                # Final failure
+                if task.metadata.finished_datetime:
                     self.failed_tasks.append(task)
                     raise
 
                 # Override next_retry_at to be immediate (ignore delay)
-                task.metadata.next_retry_at = datetime.now(timezone.utc)
+                task.metadata.__dict__["next_retry_at"] = datetime.now(timezone.utc)
+
                 # Requeue for immediate retry
                 await self._queue.add(task)
 

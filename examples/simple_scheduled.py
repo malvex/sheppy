@@ -48,13 +48,13 @@ async def main():
     await queue.schedule(survey_email_task, at=timedelta(seconds=2))
 
     # wait for results to verify welcome email was sent
-    result = await task.wait_for_result()
-    assert result.get("status", None) == "sent"
+    task = await queue.wait_for_finished(task)
+    assert task.result.get("status", None) == "sent"
     assert task.completed
     assert not task.error
 
     # confirm scheduled task wasn't sent yet
-    await survey_email_task.refresh()
+    survey_email_task = await queue.refresh(survey_email_task)
     assert not survey_email_task.completed
 
     # wait for scheduled email to happen (for demo purposes)
@@ -62,7 +62,7 @@ async def main():
     await asyncio.sleep(3)
 
     # verify the email was sent (for demo purposes)
-    await survey_email_task.refresh()
+    survey_email_task = await queue.refresh(survey_email_task)
     assert survey_email_task.completed
     assert not survey_email_task.error
     assert survey_email_task.result.get("status") == "sent"

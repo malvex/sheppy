@@ -1,4 +1,3 @@
-import asyncio
 import importlib
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -21,18 +20,16 @@ R = TypeVar('R')
 
 
 class TaskInternal(BaseModel):
-    model_config = ConfigDict()
+    model_config = ConfigDict(frozen=True)
 
     func: str | None = None
     args: list[Any] | None = None
     kwargs: dict[str, Any] | None = None
     return_type: str | None = None
-    # Queue reference for wait_for_result
-    queue: Any | None = Field(default=None, exclude=True)
 
 
 class TaskMetadata(BaseModel):
-    model_config = ConfigDict()
+    model_config = ConfigDict(frozen=True)
 
     created_datetime: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     finished_datetime: datetime | None = None
@@ -48,11 +45,13 @@ class TaskMetadata(BaseModel):
 
 
 class Task(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     # Core task fields
     id: UUID = Field(default_factory=uuid4)
-    result: Any = None
     completed: bool = False
     error: str | None = None
+    result: Any = None
 
     # Metadata
     metadata: TaskMetadata = Field(default_factory=TaskMetadata)
@@ -61,57 +60,15 @@ class Task(BaseModel):
     @model_validator(mode='after')
     def _reconstruct_pydantic_result(self) -> 'Task':
         """Reconstruct result if it's pydantic model."""
+
         if self.result and self.internal.return_type:
             # Reconstruct return if it's pydantic model
             module_name, type_name = self.internal.return_type.rsplit('.', 1)
             module = importlib.import_module(module_name)
             return_type = getattr(module, type_name)
-            self.result = TypeAdapter(return_type).validate_python(self.result)
+            self.__dict__["result"] = TypeAdapter(return_type).validate_python(self.result)
 
         return self
-
-    async def refresh(self) -> bool:
-        if not self.internal.queue:
-            raise RuntimeError("Task is not associated with a queue. Add it to a queue first.")
-
-        old_state = self.model_copy()
-
-        current_task = await self.internal.queue.get_task(self.id)
-
-        if current_task:
-            self.completed = current_task.completed
-            self.error = current_task.error
-            self.result = current_task.result
-            self.metadata = current_task.metadata
-
-            old_state.internal.queue = self.internal.queue
-            return old_state != self
-
-        return False
-
-    async def wait_for_result(
-        self,
-        timeout: float = 0,
-        poll_interval: float = 0.1
-    ) -> Any:
-        start_time = asyncio.get_event_loop().time()
-
-        while True:
-            await self.refresh()
-
-            # Check if task is finished (either completed successfully or failed)
-            if self.metadata.finished_datetime is not None:
-                if self.error:
-                    raise ValueError(f"Task failed: {self.error}")
-                return self.result
-
-            if timeout > 0:
-                elapsed = asyncio.get_event_loop().time() - start_time
-                if elapsed >= timeout:
-                    raise TimeoutError(f"Task {self.id} did not complete within {timeout} seconds")
-
-            # ! FIXME - remove polling
-            await asyncio.sleep(poll_interval)
 
     def __str__(self) -> str:
         return self.__repr__()

@@ -39,8 +39,9 @@ async def main():
     await queue.add(task)
 
     # wait for results to verify welcome email was sent
-    result = await task.wait_for_result()
-    assert result.get("status", None) == "sent"
+    task = await queue.wait_for_finished(task)
+
+    assert task.result.get("status", None) == "sent"
     assert task.completed
     assert not task.error
 

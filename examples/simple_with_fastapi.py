@@ -108,11 +108,11 @@ async def register(user_data: UserCreate,
     await queue.add(task)
 
     # optional - for demo purposes we will wait for results
-    result = await task.wait_for_result()
+    task = await task.wait_for_finished(task)
 
     assert task.completed
-    assert isinstance(result, Status)
-    assert result.ok == True
+    assert isinstance(task.result, Status)
+    assert task.result.ok == True
 
     # check DB was updated in task
     session.refresh(db_user)

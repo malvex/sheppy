@@ -23,11 +23,8 @@ async def execute_task(
     task: "Task",
     dependency_resolver: DependencyResolver,
     worker_id: str
-) -> None:
+) -> "Task":
     """Execute a task with dependency resolution and result handling."""
-    # Update metadata
-    task.metadata.worker = worker_id
-
     # Resolve the function from its string representation
     try:
         if task.internal.func is None:
@@ -61,12 +58,16 @@ async def execute_task(
         # Sync function - run via anyio's thread pool
         result = await anyio.to_thread.run_sync(lambda: func(*final_args, **final_kwargs))
 
-    # Update task with result (note: very evil mutation of input arguments - guilty!)
-    task.result = result
-    task.completed = True
-    task.error = None  # Clear any previous error on success
-    task.metadata.finished_datetime = datetime.now(timezone.utc)
+    # Recreate an updated task, don't mutate the original
+    updated_task = task.model_copy(deep=True)
+    updated_task.__dict__["result"] = result
+    updated_task.__dict__["completed"] = True
+    updated_task.__dict__["error"] = None  # Clear any previous error on success
 
+    updated_task.metadata.__dict__["worker"] = worker_id
+    updated_task.metadata.__dict__["finished_datetime"] = datetime.now(timezone.utc)
+
+    return updated_task
 
 async def get_available_tasks(queue: "Queue", limit: int | None = None, timeout: float | None = None) -> list["Task"]:
     """Get available tasks from queue, prioritizing scheduled tasks."""
@@ -131,27 +132,28 @@ def calculate_retry_delay(task: "Task") -> float:
     raise ValueError(f"Invalid retry_delay type: {type(task.metadata.retry_delay).__name__}. Expected None, float, or list.")
 
 
-def should_retry(task: "Task", exception: Exception) -> bool:
-    # Set error on task
-    task.error = str(exception)
-    task.completed = False
+def update_failed_task(task: "Task", exception: Exception) -> "Task":
+    updated_task = task.model_copy(deep=True)
+
+    updated_task.__dict__["completed"] = False
+    updated_task.__dict__["error"] = str(exception)
 
     # Check if task should be retried
-    if task.metadata.retry_count < task.metadata.retry:
+    if updated_task.metadata.retry_count < updated_task.metadata.retry:
         # Update retry metadata
-        task.metadata.retry_count += 1
-        task.metadata.last_retry_at = datetime.now(timezone.utc)
+        updated_task.metadata.__dict__["retry_count"] += 1
+        updated_task.metadata.__dict__["last_retry_at"] = datetime.now(timezone.utc)
 
         # Calculate next retry time
-        task.metadata.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=calculate_retry_delay(task))
+        updated_task.metadata.__dict__["next_retry_at"] = datetime.now(timezone.utc) + timedelta(seconds=calculate_retry_delay(task))
 
         # Task will be retried
-        task.metadata.finished_datetime = None
-        return True
+        updated_task.metadata.__dict__["finished_datetime"] = None
     else:
         # Final failure - no more retries
-        task.metadata.finished_datetime = datetime.now(timezone.utc)
-        return False
+        updated_task.metadata.__dict__["finished_datetime"] = datetime.now(timezone.utc)
+
+    return updated_task
 
 
 def generate_unique_worker_id(prefix: str) -> str:
