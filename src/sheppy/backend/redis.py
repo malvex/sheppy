@@ -22,7 +22,7 @@ class RedisBackend(Backend):
         consumer_group: str = "workers",
         decode_responses: bool = False,
         max_connections: int = 10,
-        results_ttl: int | None = 24 * 60 * 60,  # 24 hours
+        ttl: int | None = 24 * 60 * 60,  # 24 hours
         **kwargs: Any
     ):
         self.url = url
@@ -30,7 +30,7 @@ class RedisBackend(Backend):
         self.consumer_name = generate_unique_worker_id("consumer")
         self.decode_responses = decode_responses
         self.max_connections = max_connections
-        self.results_ttl = results_ttl
+        self.ttl = ttl
         self.redis_kwargs = kwargs
 
         self._client: redis.Redis | None = None
@@ -79,10 +79,6 @@ class RedisBackend(Backend):
     def _scheduled_tasks_key(self, queue_name: str) -> str:
         """Scheduled tasks (sorted set)"""
         return f"sheppy:scheduled:{queue_name}"
-
-    def _results_key(self, queue_name: str) -> str:
-        """Task Results (hset)"""
-        return f"sheppy:results:{queue_name}"
 
     def _pending_tasks_key(self, queue_name: str) -> str:
         """Queued tasks to be processed (stream)"""
@@ -209,7 +205,6 @@ class RedisBackend(Backend):
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
         pending_tasks_key = self._pending_tasks_key(queue_name)
         scheduled_key = self._scheduled_tasks_key(queue_name)
-        results_key = self._results_key(queue_name)
 
         await self._ensure_consumer_group(pending_tasks_key)
 
@@ -223,7 +218,6 @@ class RedisBackend(Backend):
         count += await self._client.zcard(scheduled_key)
 
         await self._client.delete(scheduled_key)
-        await self._client.delete(results_key)
         await self._client.delete(tasks_metadata_key)
 
         return count
@@ -232,14 +226,8 @@ class RedisBackend(Backend):
         self._ensure_connected()
 
         task_metadata_key = self._tasks_metadata_key(queue_name)
-        results_key = self._results_key(queue_name)
 
-        # check in results first (most likely place for completed tasks)  # ! FIXME
-        task_json = await self._client.hget(results_key, task_id)
-
-        # look into metadata if not found in results
-        if not task_json:
-            task_json = await self._client.hget(task_metadata_key, task_id)
+        task_json = await self._client.hget(task_metadata_key, task_id)
 
         return json.loads(task_json) if task_json else None
 
@@ -286,11 +274,10 @@ class RedisBackend(Backend):
     async def store_result(self, queue_name: str, task_data: dict[str, Any]) -> bool:
         self._ensure_connected()
 
-        results_key = self._results_key(queue_name)
+        task_metadata_key = self._tasks_metadata_key(queue_name)
 
         try:
-            # ! fixme - metadata task update?
-            await self._client.hsetex(results_key, task_data["id"], json.dumps(task_data), ex=self.results_ttl)  # ! FIXME - should we only store result?
+            await self._client.hsetex(task_metadata_key, task_data["id"], json.dumps(task_data), ex=self.ttl)
             await self.acknowledge(task_data["id"])
             # await self._client.xadd(finished_tasks_key, {"data": json.dumps(task_data)})  # ! fixme
         except Exception as e:

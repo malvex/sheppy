@@ -88,7 +88,7 @@ class Worker:
                 logger.warning(f"Failed to store result for task {task.id}: {e}")
                 # Don't fail the task processing if result storage fails
 
-            await self.queue.acknowledge(task.id)  # TODO
+            await self.queue._acknowledge(task.id)
 
             return task
 

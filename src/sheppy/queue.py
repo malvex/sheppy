@@ -12,27 +12,22 @@ class Queue:
         self.name = name
         self.backend = backend
 
-    async def _ensure_backend_is_connected(self) -> None:
-        """Automatically connects backend on first async call."""
-        if not self.backend.is_connected:
-            await self.backend.connect()
-
     async def add(self, task: Task) -> bool:
         """Add task into the queue."""
         await self._ensure_backend_is_connected()
 
         return await self.backend.append(self.name, task.model_dump(mode='json'))
 
-    async def pop(self, timeout: float | None = None) -> Task | None:
-        """Get next task from the queue for processing. Used by workers."""
+    async def get_task(self, task: Task | UUID) -> Task | None:
+        task_id = task.id if isinstance(task, Task) else task
+
         await self._ensure_backend_is_connected()
+        task_data = await self.backend.get_task(self.name, str(task_id))
 
-        task_data = await self.backend.pop(self.name, timeout)
+        return Task.model_validate(task_data) if task_data else None
 
-        if not task_data:
-            return None
-
-        return Task.model_validate(task_data)
+    async def refresh(self, task: Task | UUID) -> Task | None:  # ! FIXME
+        return await self.get_task(task)
 
     async def peek(self, count: int = 1) -> list[Task]:
         """Peek into the queue without removing tasks from it."""
@@ -55,9 +50,6 @@ class Queue:
 
         return [Task.model_validate(t) for t in await self.backend.get_scheduled(self.name, now)]
 
-    async def refresh(self, task: Task | UUID) -> Task | None:  # ! FIXME
-        return await self.get_task(task)
-
     async def wait_for_finished(self, task: Task | UUID, timeout: float = 0, poll_interval: float = 0.1) -> Task | None:  # ! FIXME
         task_id = task.id if isinstance(task, Task) else task
 
@@ -79,10 +71,6 @@ class Queue:
 
             await asyncio.sleep(poll_interval)  # ! FIXME - remove polling
 
-    async def acknowledge(self, task_id: UUID) -> bool:
-        await self._ensure_backend_is_connected()
-        return await self.backend.acknowledge(self.name, str(task_id))
-
     async def size(self) -> int:
         """Get number of pending tasks in the queue."""
         await self._ensure_backend_is_connected()
@@ -93,10 +81,18 @@ class Queue:
         await self._ensure_backend_is_connected()
         return await self.backend.clear(self.name)
 
-    async def get_task(self, task: Task | UUID) -> Task | None:
-        task_id = task.id if isinstance(task, Task) else task
+    async def _ensure_backend_is_connected(self) -> None:
+        """Automatically connects backend on first async call."""
+        if not self.backend.is_connected:
+            await self.backend.connect()
 
+    async def _pop(self, timeout: float | None = None) -> Task | None:
+        """Get next task to process. Used by workers."""
         await self._ensure_backend_is_connected()
-        task_data = await self.backend.get_task(self.name, str(task_id))
-
+        task_data = await self.backend.pop(self.name, timeout)
         return Task.model_validate(task_data) if task_data else None
+
+    async def _acknowledge(self, task_id: UUID) -> bool:
+        """Used by workers."""
+        await self._ensure_backend_is_connected()
+        return await self.backend.acknowledge(self.name, str(task_id))

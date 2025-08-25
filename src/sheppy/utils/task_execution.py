@@ -91,14 +91,14 @@ async def get_available_tasks(queue: "Queue", limit: int | None = None, timeout:
         # For non-blocking mode (timeout = None or 0), return immediately
         if timeout is not None and timeout > 0 and len(tasks) == 0:
             # Block waiting for at least one task when no scheduled tasks
-            regular_task = await queue.pop(timeout=timeout)
+            regular_task = await queue._pop(timeout=timeout)
             if regular_task:
                 tasks.append(regular_task)
                 remaining = remaining - 1 if remaining else None
 
         # Get additional tasks without blocking (up to limit)
         while remaining is None or remaining > 0:
-            regular_task = await queue.pop(timeout=None)  # Non-blocking for additional tasks
+            regular_task = await queue._pop(timeout=None)  # Non-blocking for additional tasks
             if not regular_task:
                 break
             tasks.append(regular_task)

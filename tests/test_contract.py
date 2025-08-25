@@ -117,7 +117,7 @@ class TestScheduledTasks:
         assert result is True
 
         # Task should not be immediately available for worker to process
-        popped = await queue.pop(timeout=0.01)
+        popped = await queue._pop(timeout=0.01)
         assert popped is None
 
         # Task should not be completed yet
@@ -148,7 +148,7 @@ class TestScheduledTasks:
         assert result is True
 
         # Task should not be immediately available for worker to process
-        popped = await queue.pop(timeout=0.01)
+        popped = await queue._pop(timeout=0.01)
         assert popped is None
 
         # Wait for the scheduled time
@@ -178,7 +178,7 @@ class TestScheduledTasks:
         await queue.schedule(task3, at=timedelta(seconds=0.6))
 
         # No tasks should be immediately available
-        popped = await queue.pop(timeout=0.01)
+        popped = await queue._pop(timeout=0.01)
         assert popped is None
 
         # Wait and process first task

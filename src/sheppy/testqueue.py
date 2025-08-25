@@ -32,6 +32,9 @@ class TestQueue:
     def add(self, task: Task) -> bool:
         return asyncio.run(self._queue.add(task))
 
+    def get_task(self, task_id: UUID) -> Task | None:
+        return asyncio.run(self._queue.get_task(task_id))
+
     def peek(self, count: int = 1) -> list[Task]:
         return asyncio.run(self._queue.peek(count))
 
@@ -40,9 +43,6 @@ class TestQueue:
 
     def clear(self) -> int:
         return asyncio.run(self._queue.clear())
-
-    def get_task(self, task_id: UUID) -> Task | None:
-        return asyncio.run(self._queue.get_task(task_id))
 
     def schedule(self, task: Task, at: datetime | timedelta) -> bool:
         return asyncio.run(self._queue.schedule(task, at))
@@ -106,7 +106,7 @@ class TestQueue:
         await self._backend.store_result(self.name, task.model_dump(mode='json'))
 
         # Acknowledge task
-        await self._queue.acknowledge(task.id)
+        await self._queue._acknowledge(task.id)
 
         # Fetch the task back from backend to simulate serialization/deserialization
         # This ensures Pydantic models in results are converted to dicts
