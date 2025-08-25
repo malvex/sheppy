@@ -47,9 +47,6 @@ class TestQueue:
     def schedule(self, task: Task, at: datetime | timedelta) -> bool:
         return asyncio.run(self._queue.schedule(task, at))
 
-    def wait_for_result(self, task: Task, timeout: float = 0, poll_interval: float = 0.01) -> Any:
-        return asyncio.run(self._queue.wait_for_result(task, timeout, poll_interval))
-
     def process_next(self) -> Task | None:
         return asyncio.run(self._process_next_async())
 

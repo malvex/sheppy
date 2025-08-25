@@ -33,8 +33,8 @@ async def execute_task(
         module = importlib.import_module(module_name)
         func = getattr(module, function_name).__wrapped__
 
-    except (ValueError, ImportError, AttributeError):
-        raise ValueError(f"Cannot resolve function: {task.internal.func}")
+    except (ValueError, ImportError, AttributeError) as e:
+        raise ValueError(f"Cannot resolve function: {task.internal.func}") from e
 
     # Create dependency cache for this execution
     dependency_cache: dict[Any, Any] = {}
