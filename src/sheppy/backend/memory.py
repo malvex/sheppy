@@ -138,5 +138,23 @@ class MemoryBackend(Backend):
             self._results[queue_name][task_id] = task_data
             return True
 
-    async def get_result(self, queue_name: str, task_data: dict[str, Any], timeout: float | None = None) -> bool:
-        raise NotImplementedError()
+    async def get_result(self, queue_name: str, task_id: str, timeout: float | None = None) -> dict[str, Any] | None:
+        start_time = asyncio.get_event_loop().time()
+
+        while True:
+            async with self._locks[queue_name]:
+                if task_id in self._results[queue_name]:
+                    task_data = self._results[queue_name][task_id]
+                    # Check if task is finished (has metadata.finished_datetime or completed=True or has error)
+                    metadata = task_data.get("metadata", {})
+                    if metadata.get("finished_datetime") or task_data.get("completed") or task_data.get("error"):
+                        return task_data
+
+            if timeout is None or timeout <= 0:
+                return None
+
+            elapsed = asyncio.get_event_loop().time() - start_time
+            if elapsed >= timeout:
+                raise TimeoutError(f"Task {task_id} did not complete within {timeout} seconds")
+
+            await asyncio.sleep(min(0.05, timeout - elapsed))

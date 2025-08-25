@@ -63,5 +63,5 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def get_result(self, queue_name: str, task_data: dict[str, Any], timeout: float | None = None) -> bool:
+    async def get_result(self, queue_name: str, task_id: str, timeout: float | None = None) -> dict[str, Any] | None:
         pass

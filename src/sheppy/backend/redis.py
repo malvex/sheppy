@@ -1,5 +1,7 @@
+import asyncio
 import json
 from datetime import datetime, timezone
+from time import time
 from typing import Any
 
 try:
@@ -37,6 +39,7 @@ class RedisBackend(Backend):
         self._pool: redis.ConnectionPool | None = None
         self._pending_messages: dict[str, tuple[str, str]] = {}  # task_id -> (queue_name, message_id)
         self._initialized_groups: set[str] = set()
+        self._results_stream_ttl = 60
 
     async def connect(self) -> None:
         try:
@@ -254,10 +257,9 @@ class RedisBackend(Backend):
 
         scheduled_key = self._scheduled_tasks_key(queue_name)
 
-        if not now:
-            now = datetime.now(timezone.utc)
+        score = now.timestamp() if now else time()
 
-        task_jsons = await self._client.zrange(scheduled_key, "-inf", now.timestamp(), byscore=True)
+        task_jsons = await self._client.zrange(scheduled_key, "-inf", score, byscore=True)
 
         tasks = []
         for task_json in task_jsons:
@@ -274,17 +276,72 @@ class RedisBackend(Backend):
     async def store_result(self, queue_name: str, task_data: dict[str, Any]) -> bool:
         self._ensure_connected()
 
-        task_metadata_key = self._tasks_metadata_key(queue_name)
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
+        finished_tasks_key = self._finished_tasks_key(queue_name)
+
+        await self._ensure_consumer_group(finished_tasks_key)
 
         try:
-            await self._client.hsetex(task_metadata_key, task_data["id"], json.dumps(task_data), ex=self.ttl)
-            await self.acknowledge(task_data["id"])
-            # await self._client.xadd(finished_tasks_key, {"data": json.dumps(task_data)})  # ! fixme
-        except Exception as e:
-            raise BackendError(f"Failed to store task result: {e}")
+            async with self._client.pipeline(transaction=True) as pipe:
+                # update task metadata with the results
+                pipe.hsetex(tasks_metadata_key, task_data["id"], json.dumps(task_data), ex=self.ttl)
+                # add to finished stream for get_result notifications
+                pipe.xadd(finished_tasks_key, {"task_id": task_data["id"]})
+                # Trim messages older than stream_ttl_seconds
+                min_id = f"{int((time() - self._results_stream_ttl) * 1000)}-0"
+                pipe.xtrim(finished_tasks_key, minid=min_id, approximate=True)
 
-    async def get_result(self, queue_name: str, task_data: dict[str, Any], timeout: float | None = None) -> bool:
-        raise NotImplementedError()
+                await (pipe.execute())
+
+            return True
+        except Exception as e:
+            raise BackendError(f"Failed to store task result: {e}") from e
+
+    async def get_result(self, queue_name: str, task_id: str, timeout: float | None = None) -> dict[str, Any] | None:
+        self._ensure_connected()
+
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
+        finished_tasks_key = self._finished_tasks_key(queue_name)
+
+        last_id = "0-0"
+        if timeout is not None and timeout > 0:
+            try:
+                last_id = (await self._client.xinfo_stream(finished_tasks_key))["last-generated-id"]
+            except redis.ResponseError:
+                pass
+
+        task_data_json = await self._client.hget(tasks_metadata_key, task_id)
+        if task_data_json:
+            task_data = json.loads(task_data_json)
+            if task_data.get("finished_datetime"):
+                return task_data
+
+        if timeout is None or timeout <= 0:
+            return None
+
+        deadline = asyncio.get_event_loop().time() + timeout
+
+        while asyncio.get_event_loop().time() < deadline:
+            remaining = deadline - asyncio.get_event_loop().time()
+
+            messages = await self._client.xread(
+                {finished_tasks_key: last_id},
+                block=max(1, int(remaining * 1000)),
+                count=100
+            )
+
+            if not messages:
+                break  # timeout
+
+            for _, stream_messages in messages:
+                for msg_id, data in stream_messages:
+                    last_id = msg_id
+
+                    if data.get(b"task_id").decode() == task_id:
+                        task_data_json = await self._client.hget(tasks_metadata_key, task_id)
+                        return json.loads(task_data_json) if task_data_json else None
+
+        raise TimeoutError(f"Task {task_id} did not complete within {timeout} seconds")
 
     async def _ensure_consumer_group(self, stream_key: str) -> None:
         if stream_key in self._initialized_groups:
