@@ -50,26 +50,13 @@ class Queue:
 
         return [Task.model_validate(t) for t in await self.backend.get_scheduled(self.name, now)]
 
-    async def wait_for_finished(self, task: Task | UUID, timeout: float = 0, poll_interval: float = 0.1) -> Task | None:  # ! FIXME
+    async def wait_for_result(self, task: Task | UUID, timeout: float = 0) -> Task | None:
+        await self._ensure_backend_is_connected()
+
         task_id = task.id if isinstance(task, Task) else task
+        task_data = await self.backend.get_result(self.name, str(task_id), timeout)
 
-        start_time = asyncio.get_event_loop().time()
-
-        while True:
-            _task = await self.get_task(task_id)
-
-            # Check if task is finished (either completed successfully or failed)
-            if _task and _task.metadata.finished_datetime is not None:
-                if _task.error:
-                    raise ValueError(f"Task failed: {_task.error}")
-                return _task
-
-            if timeout > 0:
-                elapsed = asyncio.get_event_loop().time() - start_time
-                if elapsed >= timeout:
-                    raise TimeoutError(f"Task {task_id} did not complete within {timeout} seconds")
-
-            await asyncio.sleep(poll_interval)  # ! FIXME - remove polling
+        return Task.model_validate(task_data) if task_data else None
 
     async def size(self) -> int:
         """Get number of pending tasks in the queue."""

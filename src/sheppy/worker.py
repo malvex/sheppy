@@ -116,7 +116,7 @@ class Worker:
 
                 # Check if we've processed enough tasks
                 if max_tasks is not None and tasks_to_process is not None and tasks_to_process <= 0:
-                        break
+                    break
 
                 try:
                     # Clean up completed tasks first

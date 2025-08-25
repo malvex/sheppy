@@ -24,7 +24,7 @@ async def main():
     await queue.add(task)
 
     # wait for task to finish
-    task = await queue.wait_for_finished(task)
+    task = await queue.wait_for_result(task)
 
     assert task.result == "sent"
     assert task.completed

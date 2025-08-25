@@ -36,8 +36,8 @@ class TestSuccessfulTasks:
 
 
     @pytest.mark.parametrize("test_case", TaskTestCases.subset_successful_tasks(), ids=lambda tc: tc.name)
-    async def test_wait_for_finished(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
-        """Test wait_for_finished functionality (testing subset for speed)."""
+    async def test_wait_for_result(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
+        """Test wait_for_result functionality (testing subset for speed)."""
         task = test_case.create_task()
         await queue.add(task)
 
@@ -45,20 +45,21 @@ class TestSuccessfulTasks:
         process_task = asyncio.create_task(worker.work(max_tasks=1))
 
         # wait for result
-        task = await queue.wait_for_finished(task, timeout=3.0)
+        task = await queue.wait_for_result(task, timeout=3.0)
         assert task.result == test_case.expected_result
 
+        await asyncio.sleep(0.01)
         assert process_task.done()
 
     @pytest.mark.parametrize("test_case", TaskTestCases.subset_successful_tasks()[1:2], ids=lambda tc: tc.name)
-    async def test_wait_for_finished_timeout(self, test_case: TaskTestCase, queue: Queue):
+    async def test_wait_for_result_timeout(self, test_case: TaskTestCase, queue: Queue):
 
         task = test_case.create_task()
         await queue.add(task)
 
         # we aren't processing the task => should raise exception
         with pytest.raises(TimeoutError):
-            await queue.wait_for_finished(task, timeout=0.5)
+            await queue.wait_for_result(task, timeout=0.5)
 
 
 class TestFailingTasks:

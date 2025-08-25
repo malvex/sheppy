@@ -48,7 +48,7 @@ async def main():
     await queue.schedule(survey_email_task, at=timedelta(seconds=2))
 
     # wait for results to verify welcome email was sent
-    task = await queue.wait_for_finished(task)
+    task = await queue.wait_for_result(task)
     assert task.result.get("status", None) == "sent"
     assert task.completed
     assert not task.error
