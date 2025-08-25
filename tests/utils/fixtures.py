@@ -2,11 +2,12 @@
 Shared fixtures and test data for utils tests.
 """
 import asyncio
-from typing import Optional, List, Dict, Any, Annotated
+from typing import Annotated, Any
+
 from pydantic import BaseModel, Field
+
 from sheppy import Depends
 from sheppy.task import Task
-
 
 # ============================================================================
 # Test Models
@@ -15,12 +16,12 @@ from sheppy.task import Task
 class UserModel(BaseModel):
     name: str
     age: int = 18
-    email: Optional[str] = None
+    email: str | None = None
 
 
 class ComplexModel(BaseModel):
-    users: List[UserModel]
-    metadata: Dict[str, Any]
+    users: list[UserModel]
+    metadata: dict[str, Any]
     count: int = Field(gt=0)
 
 
@@ -55,7 +56,7 @@ def func_regular(arg: str):
 def func_with_default(arg=None):
     pass
 
-def func_positional(a: str, b: int, c: Optional[float] = None):
+def func_positional(a: str, b: int, c: float | None = None):
     pass
 
 def func_with_pydantic(user: UserModel, count: int):

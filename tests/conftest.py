@@ -1,11 +1,10 @@
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
 
 from sheppy import Queue, Worker
 from sheppy.backend import Backend, MemoryBackend, RedisBackend
-
 
 TEST_QUEUE_NAME = "pytest-queue"
 
@@ -20,7 +19,7 @@ async def backend(request: pytest.FixtureRequest) -> AsyncGenerator[Backend, Non
 
     elif request.param == "redis":
 
-        backend = RedisBackend(url=f"redis://localhost:6379/0", consumer_group=f"group-pytest")
+        backend = RedisBackend(url="redis://localhost:6379/0", consumer_group="group-pytest")
         await backend.connect()
         await backend._client.flushdb()
 

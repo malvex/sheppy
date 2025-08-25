@@ -1,26 +1,33 @@
-import pytest
-
 import inspect
-from typing import List, Optional
 
+import pytest
 from pydantic import ValidationError
-from sheppy import Depends
 
+from sheppy import Depends
+from sheppy.task import Task, TaskInternal
 from sheppy.utils.argument_processing import (
-    is_task_injection_param,
-    process_task_arguments,
-    prepare_task_arguments,
     _should_skip_param,
     _validate_and_dump,
+    is_task_injection_param,
+    prepare_task_arguments,
+    process_task_arguments,
 )
-from sheppy.task import Task, TaskInternal
 
 from .fixtures import (
-    UserModel, ComplexModel,
-    func_with_task_self, func_with_task_self_string, func_with_wrong_name,
-    func_with_no_annotation, func_with_wrong_type,
-    func_with_depends, func_regular, func_with_default,
-    func_positional, func_with_pydantic, func_with_var_kwargs, func_mixed_params
+    ComplexModel,
+    UserModel,
+    func_mixed_params,
+    func_positional,
+    func_regular,
+    func_with_default,
+    func_with_depends,
+    func_with_no_annotation,
+    func_with_pydantic,
+    func_with_task_self,
+    func_with_task_self_string,
+    func_with_var_kwargs,
+    func_with_wrong_name,
+    func_with_wrong_type,
 )
 
 
@@ -72,12 +79,12 @@ class TestValidateAndDump:
         ("test", str, "test"),
 
         # Lists
-        ([1, 2, 3], List[int], [1, 2, 3]),
-        (["1", "2"], List[int], [1, 2]),
+        ([1, 2, 3], list[int], [1, 2, 3]),
+        (["1", "2"], list[int], [1, 2]),
 
         # Optional types
-        (None, Optional[str], None),
-        ("value", Optional[str], "value"),
+        (None, str | None, None),
+        ("value", str | None, "value"),
     ])
     def test_validate_and_dump(self, value, param_type, expected):
         result = _validate_and_dump(value, param_type)

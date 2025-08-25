@@ -1,10 +1,10 @@
 import pytest
 
+from sheppy.task import Task, TaskMetadata
 from sheppy.utils.task_execution import (
     calculate_retry_delay,
     update_failed_task,
 )
-from sheppy.task import Task, TaskMetadata
 
 
 class TestCalculateRetryDelay:

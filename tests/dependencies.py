@@ -1,21 +1,23 @@
 import asyncio
-from typing import Optional, List, Any, Callable, Dict, Tuple
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any, Optional
+
 from pydantic import BaseModel
 
-from sheppy import task, Task, Depends
+from sheppy import Depends, Task, task
 
 
 class User(BaseModel):
     id: int
     name: str
-    hashed_password: Optional[str] = None
-    email: Optional[str] = None
+    hashed_password: str | None = None
+    email: str | None = None
 
 
 class Status(BaseModel):
     code: int
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class Product(BaseModel):
@@ -32,16 +34,16 @@ class Order(BaseModel):
 
 # FastAPI dependencies
 
-def get_config() -> Dict[str, Any]:
+def get_config() -> dict[str, Any]:
     return {"debug": True, "env": "test"}
 
 
-async def get_async_config() -> Dict[str, Any]:
+async def get_async_config() -> dict[str, Any]:
     await asyncio.sleep(0.001)
     return {"debug": False, "env": "production"}
 
 
-def get_nested_dependency(config: Dict[str, Any] = Depends(get_config)) -> Dict[str, Any]:
+def get_nested_dependency(config: dict[str, Any] = Depends(get_config)) -> dict[str, Any]:
     return {"service": "TestService", "config": config}
 
 
@@ -83,16 +85,16 @@ async def async_failing_task(message: str = "Async task failed") -> None:
 @task
 def task_with_dependency(
     value: int,
-    config: Dict[str, Any] = Depends(get_config)
-) -> Dict[str, Any]:
+    config: dict[str, Any] = Depends(get_config)
+) -> dict[str, Any]:
     return {"value": value, "config": config}
 
 
 @task
 async def async_task_with_dependency(
     value: int,
-    config: Dict[str, Any] = Depends(get_async_config)
-) -> Dict[str, Any]:
+    config: dict[str, Any] = Depends(get_async_config)
+) -> dict[str, Any]:
     await asyncio.sleep(0.001)
     return {"value": value, "config": config}
 
@@ -100,8 +102,8 @@ async def async_task_with_dependency(
 @task
 def task_with_nested_dependencies(
     value: int,
-    service: Dict[str, Any] = Depends(get_nested_dependency)
-) -> Dict[str, Any]:
+    service: dict[str, Any] = Depends(get_nested_dependency)
+) -> dict[str, Any]:
     return {"value": value, "service": service}
 
 
@@ -124,34 +126,34 @@ async def async_task_with_pydantic_model(user: User) -> Status:
 
 
 @task
-def task_with_self(self: Task, x: int, y: int) -> Dict[str, Any]:
+def task_with_self(self: Task, x: int, y: int) -> dict[str, Any]:
     return {"task_id": self.id, "result": x + y}
 
 
 @task
-def task_with_self_middle(x: int, self: Task, y: int) -> Dict[str, Any]:
+def task_with_self_middle(x: int, self: Task, y: int) -> dict[str, Any]:
     return {"task_id": self.id, "result": x + y}
 
 
 @task
-def task_with_self_end(x: int, y: int, self: Task) -> Dict[str, Any]:
+def task_with_self_end(x: int, y: int, self: Task) -> dict[str, Any]:
     return {"task_id": self.id, "result": x + y}
 
 
 @task
-def task_with_nested_models(order: Order) -> Dict[str, int]:
+def task_with_nested_models(order: Order) -> dict[str, int]:
     return {
         "total": order.product.price * order.quantity
     }
 
 
 @task
-def task_with_list_of_models(users: List[User]) -> List[str]:
+def task_with_list_of_models(users: list[User]) -> list[str]:
     return [u.name for u in users]
 
 
 @task
-def task_with_optional_model(required: str, user: Optional[User] = None) -> str:
+def task_with_optional_model(required: str, user: User | None = None) -> str:
     if user:
         return f"{required}: {user.name}"
     return f"{required}: no user"
@@ -161,8 +163,8 @@ def task_with_optional_model(required: str, user: Optional[User] = None) -> str:
 @task
 def task_with_model_and_dependency(
     user: User,
-    config: Dict[str, Any] = Depends(get_config)
-) -> Dict[str, Any]:
+    config: dict[str, Any] = Depends(get_config)
+) -> dict[str, Any]:
     return {
         "user": user.name,
         "debug": config["debug"]
@@ -172,8 +174,8 @@ def task_with_model_and_dependency(
 @task
 async def async_task_with_model_and_dependency(
     product: Product,
-    config: Dict[str, Any] = Depends(get_async_config)
-) -> Dict[str, Any]:
+    config: dict[str, Any] = Depends(get_async_config)
+) -> dict[str, Any]:
     await asyncio.sleep(0.001)
     return {
         "product": product.name,
@@ -210,11 +212,11 @@ NodeB.model_rebuild()
 # Tasks for Deep Recursion Testing
 
 @task
-def process_self_chain(root: SelfNode) -> Dict[str, Any]:
+def process_self_chain(root: SelfNode) -> dict[str, Any]:
     """Process a self-referential chain and extract statistics."""
     depth = 0
     values = []
-    current: Optional[SelfNode] = root
+    current: SelfNode | None = root
 
     while current is not None:
         depth += 1
@@ -230,12 +232,12 @@ def process_self_chain(root: SelfNode) -> Dict[str, Any]:
 
 
 @task
-def process_mutual_chain(root: NodeA) -> Dict[str, Any]:
+def process_mutual_chain(root: NodeA) -> dict[str, Any]:
     """Process a mutually recursive chain of NodeA and NodeB."""
     depth = 0
-    a_values: List[int] = []
-    b_values: List[int] = []
-    current_a: Optional[NodeA] = root
+    a_values: list[int] = []
+    b_values: list[int] = []
+    current_a: NodeA | None = root
 
     while True:
         if current_a is not None:
@@ -275,11 +277,11 @@ class TaskTestCase:
     """Encapsulates a test case for a task."""
     name: str  # descriptive name for the test
     func: Callable[..., Any]
-    args: Tuple[Any, ...] = ()
-    kwargs: Optional[Dict[str, Any]] = None
+    args: tuple[Any, ...] = ()
+    kwargs: dict[str, Any] | None = None
     expected_result: Any = None
     should_fail: bool = False
-    expected_error: Optional[str] = None
+    expected_error: str | None = None
 
     def __post_init__(self) -> None:
         if self.kwargs is None:
@@ -302,7 +304,7 @@ class TaskTestCases:
     """Collection of all task test cases organized by category."""
 
     @staticmethod
-    def simple_tasks() -> List[TaskTestCase]:
+    def simple_tasks() -> list[TaskTestCase]:
         """Basic task tests without dependencies."""
         return [
             TaskTestCase("sync_no_param", simple_sync_task_no_param, expected_result=42),
@@ -316,7 +318,7 @@ class TaskTestCases:
         ]
 
     @staticmethod
-    def type_conversion_tasks() -> List[TaskTestCase]:
+    def type_conversion_tasks() -> list[TaskTestCase]:
         """Tasks testing automatic type conversion."""
         return [
             TaskTestCase("sync_string_args", simple_sync_task, ("1", "2"), expected_result=3),
@@ -326,7 +328,7 @@ class TaskTestCases:
         ]
 
     @staticmethod
-    def dependency_tasks() -> List[TaskTestCase]:
+    def dependency_tasks() -> list[TaskTestCase]:
         """Tasks with dependency injection."""
         return [
             TaskTestCase("sync_dependency", task_with_dependency, (42,), expected_result={"value": 42, "config": {"debug": True, "env": "test"}}),
@@ -335,7 +337,7 @@ class TaskTestCases:
         ]
 
     @staticmethod
-    def pydantic_tasks() -> List[TaskTestCase]:
+    def pydantic_tasks() -> list[TaskTestCase]:
         """Tasks with Pydantic models."""
         return [
             TaskTestCase("pydantic_model", task_with_pydantic_model, (user1,), expected_result=Status(code=200, message="Processed user Alice")),
@@ -345,7 +347,7 @@ class TaskTestCases:
         ]
 
     @staticmethod
-    def optional_args_tasks() -> List[TaskTestCase]:
+    def optional_args_tasks() -> list[TaskTestCase]:
         """Tasks with optional arguments."""
         return [
             TaskTestCase("optional_with_value", task_with_optional_model, ("user", user1), expected_result="user: Alice"),
@@ -354,16 +356,16 @@ class TaskTestCases:
         ]
 
     @staticmethod
-    def deep_recursion_tasks() -> List[TaskTestCase]:
+    def deep_recursion_tasks() -> list[TaskTestCase]:
         """Tasks testing deep recursion with complex nested models."""
 
         # Build 10-level deep self-referential chain
-        self_chain_10: Dict[str, Any] = {"value": 999, "next": None}
+        self_chain_10: dict[str, Any] = {"value": 999, "next": None}
         for i in range(9, 0, -1):
             self_chain_10 = {"value": i * 100, "next": self_chain_10}
 
         # Build 5-level deep self-referential chain
-        self_chain_5: Dict[str, Any] = {"value": 500, "next": None}
+        self_chain_5: dict[str, Any] = {"value": 500, "next": None}
         for i in range(4, 0, -1):
             self_chain_5 = {"value": i * 100, "next": self_chain_5}
 
@@ -464,7 +466,7 @@ class TaskTestCases:
         ]
 
     @staticmethod
-    def self_referencing_tasks() -> List[TaskTestCase]:
+    def self_referencing_tasks() -> list[TaskTestCase]:
         """Tasks that should fail."""
         return [
             TaskTestCase("task_with_self", task_with_self, (22, 33), expected_result=55),
@@ -473,7 +475,7 @@ class TaskTestCases:
         ]
 
     @staticmethod
-    def failing_tasks() -> List[TaskTestCase]:
+    def failing_tasks() -> list[TaskTestCase]:
         """Tasks that should fail."""
         return [
             TaskTestCase(
@@ -493,7 +495,7 @@ class TaskTestCases:
         ]
 
     @staticmethod
-    def all_successful_tasks() -> List[TaskTestCase]:
+    def all_successful_tasks() -> list[TaskTestCase]:
         """Get all tasks that should succeed."""
         return (
             TaskTestCases.simple_tasks() +
@@ -505,7 +507,7 @@ class TaskTestCases:
         )
 
     @staticmethod
-    def subset_successful_tasks() -> List[TaskTestCase]:
+    def subset_successful_tasks() -> list[TaskTestCase]:
         """Get subset of tasks that should succeed."""
         return (
             TaskTestCases.simple_tasks()[:2] +

@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from sheppy import TestQueue
-
 from tests.dependencies import (
-    TaskTestCases, TaskTestCase,
+    TaskTestCase,
+    TaskTestCases,
+    simple_async_task,
     simple_sync_task,
-    simple_async_task
 )
 
 
@@ -329,7 +330,7 @@ class TestScheduledTasks:
         queue.schedule(task, at=future_time)
 
         # Process the task
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             queue.process_scheduled(at=future_time)
 
         # Task should be in failed list

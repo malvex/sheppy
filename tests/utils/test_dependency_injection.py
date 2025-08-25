@@ -1,19 +1,26 @@
+import inspect
+
 import pytest
 
-import inspect
 from sheppy import Depends
-
+from sheppy.task import Task
 from sheppy.utils.dependency_injection import (
+    DependencyResolver,
     get_depends_from_param,
     is_depends_param,
-    DependencyResolver,
 )
-from sheppy.task import Task
 
 from .fixtures import (
-    func_with_depends, func_with_annotated_depends, func_regular, func_with_default,
-    get_simple_value, get_async_value, get_multiplied_value,
-    get_cached_value, get_generator_value, get_async_generator_value
+    func_regular,
+    func_with_annotated_depends,
+    func_with_default,
+    func_with_depends,
+    get_async_generator_value,
+    get_async_value,
+    get_cached_value,
+    get_generator_value,
+    get_multiplied_value,
+    get_simple_value,
 )
 
 

@@ -1,10 +1,10 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from sheppy import Queue, Worker
-
-from tests.dependencies import TaskTestCases, TaskTestCase
+from tests.dependencies import TaskTestCase, TaskTestCases
 
 
 class TestSuccessfulTasks:
