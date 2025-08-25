@@ -7,10 +7,6 @@ class BackendError(Exception):
     pass
 
 
-class ConnectionError(BackendError):
-    pass
-
-
 class Backend(ABC):
 
     @abstractmethod
@@ -35,6 +31,10 @@ class Backend(ABC):
         pass
 
     @abstractmethod
+    async def acknowledge(self, queue_name: str, task_id: str) -> bool:
+        pass
+
+    @abstractmethod
     async def peek(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
         pass
 
@@ -47,6 +47,10 @@ class Backend(ABC):
         pass
 
     @abstractmethod
+    async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
+        pass
+
+    @abstractmethod
     async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime) -> bool:
         pass
 
@@ -55,17 +59,9 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def acknowledge(self, queue_name: str, task_id: str) -> bool:
-        pass
-
-    @abstractmethod
-    async def list_queues(self) -> list[str]:
-        pass
-
-    @abstractmethod
     async def store_result(self, queue_name: str, task_data: dict[str, Any]) -> bool:
         pass
 
     @abstractmethod
-    async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
+    async def get_result(self, queue_name: str, task_data: dict[str, Any], timeout: float | None = None) -> bool:
         pass

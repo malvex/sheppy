@@ -11,7 +11,7 @@ except ImportError:
     )
 
 from ..utils.task_execution import generate_unique_worker_id
-from .base import Backend, BackendError, ConnectionError
+from .base import Backend, BackendError
 
 
 class RedisBackend(Backend):
@@ -22,6 +22,7 @@ class RedisBackend(Backend):
         consumer_group: str = "workers",
         decode_responses: bool = False,
         max_connections: int = 10,
+        results_ttl: int | None = 24 * 60 * 60,  # 24 hours
         **kwargs: Any
     ):
         self.url = url
@@ -29,7 +30,9 @@ class RedisBackend(Backend):
         self.consumer_name = generate_unique_worker_id("consumer")
         self.decode_responses = decode_responses
         self.max_connections = max_connections
+        self.results_ttl = results_ttl
         self.redis_kwargs = kwargs
+
         self._client: redis.Redis | None = None
         self._pool: redis.ConnectionPool | None = None
         self._pending_messages: dict[str, tuple[str, str]] = {}  # task_id -> (queue_name, message_id)
@@ -42,6 +45,7 @@ class RedisBackend(Backend):
                 self.url,
                 decode_responses=self.decode_responses,
                 max_connections=self.max_connections,
+                #protocol=3,  # enable RESP version 3  # ! FIXME
                 **self.redis_kwargs
             )
 
@@ -54,7 +58,7 @@ class RedisBackend(Backend):
             # Clean up on failure
             self._client = None
             self._pool = None
-            raise ConnectionError(f"Failed to connect to Redis: {e}")
+            raise BackendError(f"Failed to connect to Redis: {e}")
 
     async def disconnect(self) -> None:
         if self._client:
@@ -68,90 +72,69 @@ class RedisBackend(Backend):
     def is_connected(self) -> bool:
         return self._client is not None and self._pool is not None
 
-    def _stream_key(self, queue_name: str) -> str:
-        return f"stream:{queue_name}"
+    def _tasks_metadata_key(self, queue_name: str) -> str:
+        """Task Metadata (hset)"""
+        return f"sheppy:tasks:{queue_name}"
 
-    def _scheduled_key(self, queue_name: str) -> str:
-        return f"scheduled:{queue_name}"
+    def _scheduled_tasks_key(self, queue_name: str) -> str:
+        """Scheduled tasks (sorted set)"""
+        return f"sheppy:scheduled:{queue_name}"
 
     def _results_key(self, queue_name: str) -> str:
-        return f"results:{queue_name}"
+        """Task Results (hset)"""
+        return f"sheppy:results:{queue_name}"
 
-    async def _ensure_consumer_group(self, stream_key: str) -> None:
-        """Ensure consumer group exists. Only checks once per connection."""
+    def _pending_tasks_key(self, queue_name: str) -> str:
+        """Queued tasks to be processed (stream)"""
+        return f"sheppy:pending:{queue_name}"
 
-        # Skip if we've already initialized this group
-        if stream_key in self._initialized_groups:
-            return
+    def _finished_tasks_key(self, queue_name: str) -> str:
+        """Notifications about finished tasks (stream)"""
+        return f"sheppy:finished:{queue_name}"
 
-        # Check if consumer group exists
-        try:
-            groups = await self._client.xinfo_groups(stream_key)  # type: ignore[union-attr]
-            for group in groups:
-                if group['name'] == self.consumer_group:
-                    self._initialized_groups.add(stream_key)
-                    return  # Group already exists
-        except redis.ResponseError:
-            # Stream doesn't exist yet, will be created with mkstream=True
-            pass
+    def _worker_metadata_key(self, queue_name: str) -> str:
+        """Worker Metadata (hset)"""
+        return f"sheppy:workers:{queue_name}"
 
-        # Create the consumer group
-        try:
-            await self._client.xgroup_create(  # type: ignore[union-attr]
-                name=stream_key,
-                groupname=self.consumer_group,
-                id="0",  # Start from beginning to include existing messages
-                mkstream=True  # Create stream if it doesn't exist
-            )
-            self._initialized_groups.add(stream_key)
-        except redis.ResponseError as e:
-            # BUSYGROUP error means the group already exists
-            if "BUSYGROUP" in str(e):
-                self._initialized_groups.add(stream_key)
-                return
-            raise BackendError(f"Failed to create consumer group: {e}")
-
-    async def append(self, queue_name: str, task_data: dict[str, Any]) -> bool:
+    def _ensure_connected(self):
         if not self._client:
             raise BackendError("Not connected to Redis")
 
+    async def append(self, queue_name: str, task_data: dict[str, Any]) -> bool:  # ! fixme: maybe add (task_id: str) arg?
+        """Add new tasks to be processed."""
+        self._ensure_connected()
+
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
+        pending_tasks_key = self._pending_tasks_key(queue_name)
+
+        await self._ensure_consumer_group(pending_tasks_key)
+
         try:
-            # Store task data as fields in the stream entry
-            fields = {
-                "task_id": task_data["id"],
-                "data": json.dumps(task_data)
-            }
+            async with self._client.pipeline(transaction=True) as pipe:
+                # create task metadata
+                pipe.hset(tasks_metadata_key, task_data["id"], json.dumps(task_data))
+                # add to pending stream
+                pipe.xadd(pending_tasks_key, {"data": json.dumps(task_data)})
 
-            # Add to stream
-            stream_key = self._stream_key(queue_name)
-            await self._client.xadd(stream_key, fields)  # type: ignore[arg-type]
-
-            # Ensure consumer group exists
-            await self._ensure_consumer_group(stream_key)
-
-            # Track queue in metadata
-            await self._client.sadd("queues", queue_name)  # type: ignore[misc]
+                await (pipe.execute())
 
             return True
         except Exception as e:
-            raise BackendError(f"Failed to enqueue task: {e}")
+            raise BackendError(f"Failed to enqueue task: {e}") from e
 
     async def pop(self, queue_name: str, timeout: float | None = None) -> dict[str, Any] | None:
-        if not self._client:
-            raise BackendError("Not connected to Redis")
+        """Get next tasks to process. Used primarily by workers."""
+        self._ensure_connected()
 
-        stream_key = self._stream_key(queue_name)
+        pending_tasks_key = self._pending_tasks_key(queue_name)
 
-        # Ensure consumer group exists
-        await self._ensure_consumer_group(stream_key)
+        await self._ensure_consumer_group(pending_tasks_key)
 
         try:
-            # Read from stream using consumer group
-            # ">" means only new messages (not delivered to other consumers)
             result = await self._client.xreadgroup(
                 groupname=self.consumer_group,
                 consumername=self.consumer_name,
-                streams={stream_key: ">"},
+                streams={pending_tasks_key: ">"},  # ">" means only new messages (not delivered to other consumers)
                 count=1,
                 block=None if timeout is None or timeout == 0 else int(timeout * 1000)
             )
@@ -159,157 +142,39 @@ class RedisBackend(Backend):
             if not result:
                 return None
 
-            # Extract message
-            stream_data = result[0]  # First (and only) stream
-            messages = stream_data[1]  # Messages from the stream
+            messages = result[0][1]  # [['stream-name', [(message_id, dict_data)]]]
 
             if not messages:
                 return None
 
             message_id, fields = messages[0]
-
-            # Deserialize task
             task_data = json.loads(fields[b"data"])
 
-            # Store message ID for acknowledgment
-            message_id_str = message_id.decode() if isinstance(message_id, bytes) else message_id
-            self._pending_messages[task_data["id"]] = (queue_name, message_id_str)
+            # store message_id for acknowledge()
+            self._pending_messages[task_data["id"]] = (queue_name, message_id.decode())
 
-            return task_data  # type: ignore[no-any-return]
+            return task_data
 
         except Exception as e:
-            raise BackendError(f"Failed to dequeue task: {e}")
-
-    async def peek(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
-        if not self._client:
-            raise BackendError("Not connected to Redis")
-
-        stream_key = self._stream_key(queue_name)
-
-        # Get messages from stream
-        messages = await self._client.xrange(stream_key, count=count)
-
-        tasks = []
-        for _message_id, fields in messages:
-            try:
-                task_data = json.loads(fields[b"data"])
-                tasks.append(task_data)
-            except Exception:
-                # Skip malformed tasks
-                continue
-
-        return tasks
-
-    async def size(self, queue_name: str) -> int:
-        if not self._client:
-            raise BackendError("Not connected to Redis")
-
-        stream_key = self._stream_key(queue_name)
-
-        # Count undelivered messages in stream
-        try:
-            await self._ensure_consumer_group(stream_key)
-            return await self._client.xlen(stream_key)  # type: ignore[no-any-return]
-        except redis.ResponseError:
-            # Stream doesn't exist yet
-            return 0
-
-    async def clear(self, queue_name: str) -> int:
-        if not self._client:
-            raise BackendError("Not connected to Redis")
-
-        count = 0
-
-        # Clear stream (XTRIM to 0 entries)
-        stream_key = self._stream_key(queue_name)
-        try:
-            stream_info = await self._client.xinfo_stream(stream_key)
-            count += stream_info.get("length", 0)
-            await self._client.xtrim(stream_key, maxlen=0)
-        except redis.ResponseError:
-            # Stream doesn't exist yet
-            pass
-
-        # Clear scheduled tasks
-        scheduled_key = self._scheduled_key(queue_name)
-        count += await self._client.zcard(scheduled_key)
-        await self._client.delete(scheduled_key)
-
-        # Clear results
-        results_key = self._results_key(queue_name)
-        await self._client.delete(results_key)
-
-        # Remove from queue list if empty
-        await self._client.srem("queues", queue_name)  # type: ignore[misc]
-
-        return count  # type: ignore[no-any-return]
-
-    async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime) -> bool:
-        if not self._client:
-            raise BackendError("Not connected to Redis")
-
-        try:
-            task_json = json.dumps(task_data)
-
-            # Add to sorted set with timestamp as score
-            scheduled_key = self._scheduled_key(queue_name)
-            score = at.timestamp()
-            await self._client.zadd(scheduled_key, {task_json: score})
-
-            # Track queue
-            await self._client.sadd("queues", queue_name)  # type: ignore[misc]
-
-            return True
-        except Exception as e:
-            raise BackendError(f"Failed to schedule task: {e}")
-
-    async def get_scheduled(self, queue_name: str, now: datetime | None = None) -> list[dict[str, Any]]:
-        if not self._client:
-            raise BackendError("Not connected to Redis")
-
-        if now is None:
-            now = datetime.now(timezone.utc)
-
-        # Get tasks with score <= now
-        scheduled_key = self._scheduled_key(queue_name)
-        task_jsons = await self._client.zrangebyscore(
-            scheduled_key,
-            "-inf",
-            now.timestamp()
-        )
-
-        tasks = []
-        for task_json in task_jsons:
-            try:
-                task_data = json.loads(task_json)
-                tasks.append(task_data)
-                # Remove from scheduled set
-                await self._client.zrem(scheduled_key, task_json)
-            except Exception:
-                continue
-
-        return tasks
+            raise BackendError(f"Failed to dequeue task: {e}") from e
 
     async def acknowledge(self, queue_name: str, task_id: str) -> bool:
-        if not self._client:
-            raise BackendError("Not connected to Redis")
+        self._ensure_connected()
 
-        # We only acknowledge messages we've dequeued and tracked
         if task_id not in self._pending_messages:
+            # cannot acknowledge unknown task_id
             return False
 
         stored_queue, message_id = self._pending_messages[task_id]
-        stream_key = self._stream_key(stored_queue)
+
+        pending_tasks_key = self._pending_tasks_key(stored_queue)
+
+        await self._ensure_consumer_group(pending_tasks_key)
 
         try:
-            acked = await self._client.xack(
-                stream_key,
-                self.consumer_group,
-                message_id
-            )
+            acked = await self._client.xack(pending_tasks_key, self.consumer_group, message_id)
 
             if acked > 0:
-                # Remove from pending messages tracking
                 del self._pending_messages[task_id]
                 return True
 
@@ -317,90 +182,131 @@ class RedisBackend(Backend):
         except Exception:
             return False
 
-    async def list_queues(self) -> list[str]:
-        if not self._client:
-            raise BackendError("Not connected to Redis")
+    async def peek(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
+        self._ensure_connected()
 
-        queue_names = await self._client.smembers("queues")  # type: ignore[misc]
+        pending_tasks_key = self._pending_tasks_key(queue_name)
 
-        # Handle binary data
-        result = []
-        for name in queue_names:
-            if isinstance(name, bytes):
-                result.append(name.decode('utf-8'))
-            else:
-                result.append(str(name))
+        await self._ensure_consumer_group(pending_tasks_key)
 
-        return sorted(result)
+        # Get messages from stream
+        messages = await self._client.xrange(pending_tasks_key, count=count)
 
-    async def store_result(self, queue_name: str, task_data: dict[str, Any]) -> bool:
-        if not self._client:
-            raise BackendError("Not connected to Redis")
+        return [json.loads(fields[b"data"]) for _message_id, fields in messages]
+
+    async def size(self, queue_name: str) -> int:
+        self._ensure_connected()
+
+        pending_tasks_key = self._pending_tasks_key(queue_name)
+
+        await self._ensure_consumer_group(pending_tasks_key)
+
+        return await self._client.xlen(pending_tasks_key)
+
+    async def clear(self, queue_name: str) -> int:
+        self._ensure_connected()
+
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
+        pending_tasks_key = self._pending_tasks_key(queue_name)
+        scheduled_key = self._scheduled_tasks_key(queue_name)
+        results_key = self._results_key(queue_name)
+
+        await self._ensure_consumer_group(pending_tasks_key)
+
+        count = 0
+
+        # Clear stream (XTRIM to 0 entries)
+        stream_info = await self._client.xinfo_stream(pending_tasks_key)
+        count += stream_info.get("length", 0)  #  ! fixme?
+        await self._client.xtrim(pending_tasks_key, maxlen=0)
+
+        count += await self._client.zcard(scheduled_key)
+
+        await self._client.delete(scheduled_key)
+        await self._client.delete(results_key)
+        await self._client.delete(tasks_metadata_key)
+
+        return count
+
+    async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
+        self._ensure_connected()
+
+        task_metadata_key = self._tasks_metadata_key(queue_name)
+        results_key = self._results_key(queue_name)
+
+        # check in results first (most likely place for completed tasks)  # ! FIXME
+        task_json = await self._client.hget(results_key, task_id)
+
+        # look into metadata if not found in results
+        if not task_json:
+            task_json = await self._client.hget(task_metadata_key, task_id)
+
+        return json.loads(task_json) if task_json else None
+
+    async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime) -> bool:
+        self._ensure_connected()
+
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
+        scheduled_key = self._scheduled_tasks_key(queue_name)
 
         try:
-            task_json = json.dumps(task_data)
+            # create task metadata
+            await self._client.hset(tasks_metadata_key, task_data["id"], json.dumps(task_data))
 
-            # Store in results hash
-            results_key = self._results_key(queue_name)
-            await self._client.hset(results_key, task_data["id"], task_json)  # type: ignore[misc]
-
-            # Set TTL (24 hours)
-            await self._client.expire(results_key, 86400)
-
-            # Acknowledge the message if we have it tracked
-            task_id_str = task_data["id"]
-            if task_id_str in self._pending_messages:
-                stored_queue, message_id = self._pending_messages[task_id_str]
-                stream_key = self._stream_key(stored_queue)
-                await self._client.xack(
-                    stream_key,
-                    self.consumer_group,
-                    message_id
-                )
-                del self._pending_messages[task_id_str]
+            # add to sorted set with timestamp as score
+            score = at.timestamp()
+            await self._client.zadd(scheduled_key, {json.dumps(task_data): score})  # ! FIXME? only store task_id?
 
             return True
         except Exception as e:
-            raise BackendError(f"Failed to store task result: {e}")
+            raise BackendError(f"Failed to schedule task: {e}") from e
 
-    async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
-        if not self._client:
-            raise BackendError("Not connected to Redis")
+    async def get_scheduled(self, queue_name: str, now: datetime | None = None) -> list[dict[str, Any]]:
+        self._ensure_connected()
 
-        # Check in results first (most likely place for completed tasks)
-        results_key = self._results_key(queue_name)
-        task_json = await self._client.hget(results_key, task_id)  # type: ignore[misc]
-        if task_json:
-            try:
-                task_data = json.loads(task_json)
-                return task_data  # type: ignore[no-any-return]
-            except Exception:
-                pass
+        scheduled_key = self._scheduled_tasks_key(queue_name)
 
-        # Check if it's a task we're currently tracking (dequeued but not completed)
-        if task_id in self._pending_messages:
-            stored_queue, message_id = self._pending_messages[task_id]
-            stream_key = self._stream_key(stored_queue)
+        if not now:
+            now = datetime.now(timezone.utc)
 
-            # Read the specific message
-            messages = await self._client.xrange(stream_key, min=message_id, max=message_id, count=1)
-            if messages:
-                _, fields = messages[0]
-                try:
-                    task_data = json.loads(fields[b"data"])
-                    return task_data  # type: ignore[no-any-return]
-                except Exception:
-                    pass
+        task_jsons = await self._client.zrange(scheduled_key, "-inf", now.timestamp(), byscore=True)
 
-        # Check scheduled tasks
-        scheduled_key = self._scheduled_key(queue_name)
-        task_jsons = await self._client.zrange(scheduled_key, 0, -1)
+        tasks = []
         for task_json in task_jsons:
-            try:
-                task_data = json.loads(task_json)
-                if task_data["id"] == task_id:
-                    return task_data  # type: ignore[no-any-return]
-            except Exception:
+            removed = await self._client.zrem(scheduled_key, task_json)
+
+            if removed <= 0:
+                # some other worker already got this task at the same time, skip
                 continue
 
-        return None
+            tasks.append(json.loads(task_json))
+
+        return tasks
+
+    async def store_result(self, queue_name: str, task_data: dict[str, Any]) -> bool:
+        self._ensure_connected()
+
+        results_key = self._results_key(queue_name)
+
+        try:
+            # ! fixme - metadata task update?
+            await self._client.hsetex(results_key, task_data["id"], json.dumps(task_data), ex=self.results_ttl)  # ! FIXME - should we only store result?
+            await self.acknowledge(task_data["id"])
+            # await self._client.xadd(finished_tasks_key, {"data": json.dumps(task_data)})  # ! fixme
+        except Exception as e:
+            raise BackendError(f"Failed to store task result: {e}")
+
+    async def get_result(self, queue_name: str, task_data: dict[str, Any], timeout: float | None = None) -> bool:
+        raise NotImplementedError()
+
+    async def _ensure_consumer_group(self, stream_key: str) -> None:
+        if stream_key in self._initialized_groups:
+            return
+
+        try:
+            self._initialized_groups.add(stream_key)
+            # id="0" = start from beginning to include existing messages
+            await self._client.xgroup_create(stream_key, self.consumer_group, id="0", mkstream=True)
+        except redis.ResponseError:
+            # group already exists, ignore
+            pass

@@ -32,9 +32,6 @@ class TestQueue:
     def add(self, task: Task) -> bool:
         return asyncio.run(self._queue.add(task))
 
-    def pop(self, timeout: float | None = None) -> Task | None:
-        return asyncio.run(self._queue.pop(timeout))
-
     def peek(self, count: int = 1) -> list[Task]:
         return asyncio.run(self._queue.peek(count))
 
@@ -44,14 +41,11 @@ class TestQueue:
     def clear(self) -> int:
         return asyncio.run(self._queue.clear())
 
-    def schedule(self, task: Task, at: datetime | timedelta) -> bool:
-        return asyncio.run(self._queue.schedule(task, at))
-
-    def acknowledge(self, task_id: UUID) -> bool:
-        return asyncio.run(self._queue.acknowledge(task_id))
-
     def get_task(self, task_id: UUID) -> Task | None:
         return asyncio.run(self._queue.get_task(task_id))
+
+    def schedule(self, task: Task, at: datetime | timedelta) -> bool:
+        return asyncio.run(self._queue.schedule(task, at))
 
     def wait_for_finished(self, task: Task, timeout: float = 0, poll_interval: float = 0.01) -> Any:
         return asyncio.run(self._queue.wait_for_finished(task, timeout, poll_interval))
@@ -103,9 +97,7 @@ class TestQueue:
                 self.processed_tasks.append(task)
             else:
                 # For tests, override next_retry_at to be immediate (ignore delay)
-                task.metadata.model_config["frozen"] = False
-                task.metadata.next_retry_at = datetime.now(timezone.utc)
-                task.metadata.model_config["frozen"] = True
+                task.metadata.__dict__["next_retry_at"] = datetime.now(timezone.utc)
 
                 # Requeue for immediate retry
                 await self._queue.add(task)

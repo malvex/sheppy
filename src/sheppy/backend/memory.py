@@ -17,22 +17,11 @@ class ScheduledTask:
 class MemoryBackend(Backend):
 
     def __init__(self) -> None:
-        # Use deque for efficient FIFO operations
         self._queues: dict[str, deque[dict[str, Any]]] = defaultdict(deque)
-
-        # Scheduled tasks stored in a heap per queue for efficient retrieval
         self._scheduled: dict[str, list[ScheduledTask]] = defaultdict(list)
-
-        # Track acknowledged tasks (for at-least-once semantics simulation)
         self._in_progress: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
-
-        # Store completed tasks with results for retrieval
         self._results: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
-
-        # Locks for thread-safety
-        self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
-
-        # Connection state
+        self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)  # for thread-safety
         self._connected = False
 
     async def connect(self) -> None:
@@ -55,25 +44,27 @@ class MemoryBackend(Backend):
 
         while True:
             async with self._locks[queue_name]:
-                # Try to get a task from the queue
                 if self._queues[queue_name]:
                     task_data = self._queues[queue_name].popleft()
-                    # Track as in-progress for acknowledge support
-                    task_id = task_data['id']
-                    self._in_progress[queue_name][task_id] = task_data
+                    self._in_progress[queue_name][task_data['id']] = task_data
+
                     return task_data
 
-            # If no timeout, return immediately
             if timeout is None or timeout <= 0:
                 return None
 
-            # Check if timeout has been reached
             elapsed = asyncio.get_event_loop().time() - start_time
             if elapsed >= timeout:
                 return None
 
-            # Wait a bit before trying again
-            await asyncio.sleep(min(0.1, timeout - elapsed))
+            await asyncio.sleep(min(0.05, timeout - elapsed))
+
+    async def acknowledge(self, queue_name: str, task_id: str) -> bool:
+        async with self._locks[queue_name]:
+            if task_id in self._in_progress[queue_name]:
+                del self._in_progress[queue_name][task_id]
+                return True
+            return False
 
     async def peek(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
         async with self._locks[queue_name]:
@@ -97,6 +88,28 @@ class MemoryBackend(Backend):
 
             return queue_size + scheduled_size + in_progress_size
 
+    async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:  # ! FIXME
+        async with self._locks[queue_name]:
+            # Check in results first (completed tasks)
+            if task_id in self._results[queue_name]:
+                return self._results[queue_name][task_id]
+
+            # Check in-progress tasks
+            if task_id in self._in_progress[queue_name]:
+                return self._in_progress[queue_name][task_id]
+
+            # Check in regular queue
+            for task_data in self._queues[queue_name]:
+                if task_data['id'] == task_id:
+                    return task_data
+
+            # Check scheduled tasks
+            for scheduled_task in self._scheduled[queue_name]:
+                if scheduled_task.task_data['id'] == task_id:
+                    return scheduled_task.task_data
+
+            return None
+
     async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime) -> bool:
         async with self._locks[queue_name]:
             scheduled_task = ScheduledTask(at, task_data)
@@ -119,47 +132,11 @@ class MemoryBackend(Backend):
 
             return ready_tasks
 
-    async def acknowledge(self, queue_name: str, task_id: str) -> bool:
-        async with self._locks[queue_name]:
-            if task_id in self._in_progress[queue_name]:
-                del self._in_progress[queue_name][task_id]
-                return True
-            return False
-
-    async def list_queues(self) -> list[str]:
-        # Combine all queue names from different data structures
-        all_queues: set[str] = set()
-        all_queues.update(self._queues.keys())
-        all_queues.update(self._scheduled.keys())
-        all_queues.update(self._in_progress.keys())
-        all_queues.update(self._results.keys())
-
-        return sorted(all_queues)
-
     async def store_result(self, queue_name: str, task_data: dict[str, Any]) -> bool:
         async with self._locks[queue_name]:
             task_id = task_data['id']
             self._results[queue_name][task_id] = task_data
             return True
 
-    async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
-        async with self._locks[queue_name]:
-            # Check in results first (completed tasks)
-            if task_id in self._results[queue_name]:
-                return self._results[queue_name][task_id]
-
-            # Check in-progress tasks
-            if task_id in self._in_progress[queue_name]:
-                return self._in_progress[queue_name][task_id]
-
-            # Check in regular queue
-            for task_data in self._queues[queue_name]:
-                if task_data['id'] == task_id:
-                    return task_data
-
-            # Check scheduled tasks
-            for scheduled_task in self._scheduled[queue_name]:
-                if scheduled_task.task_data['id'] == task_id:
-                    return scheduled_task.task_data
-
-            return None
+    async def get_result(self, queue_name: str, task_data: dict[str, Any], timeout: float | None = None) -> bool:
+        raise NotImplementedError()
