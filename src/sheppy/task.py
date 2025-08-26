@@ -125,7 +125,13 @@ def task(
             except TypeError:
                 return_type = None
 
-            # Create task with internal data directly set
+
+            task_metadata = {
+                "retry": retry
+            }
+            if retry_delay:
+                task_metadata["retry_delay"] = retry_delay
+
             _task = Task(
                 internal=TaskInternal(
                     func=f"{func.__module__}:{func.__name__}",
@@ -133,10 +139,8 @@ def task(
                     kwargs=processed_kwargs,
                     return_type=return_type
                 ),
-                metadata=TaskMetadata(retry=retry)
+                metadata=TaskMetadata(**task_metadata)
             )
-            if retry_delay:
-                _task.metadata.retry_delay = retry_delay
 
             return _task
 
