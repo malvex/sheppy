@@ -1,4 +1,6 @@
 import importlib
+import sys
+import os
 from collections.abc import Callable
 from datetime import datetime, timezone
 from functools import wraps
@@ -132,9 +134,17 @@ def task(
             if retry_delay:
                 task_metadata["retry_delay"] = retry_delay
 
+            _module = func.__module__
+            # special case if the task is in the main python file that is executed
+            if _module == "__main__":
+                # this handles "python -m app.main" because with "-m" sys.argv[0] is absolute path
+                _main_path = os.path.relpath(sys.argv[0])[:-3]
+                # replace handles situations when user runs "python app/main.py"
+                _module = _main_path.replace(os.sep, ".")
+
             _task = Task(
                 internal=TaskInternal(
-                    func=f"{func.__module__}:{func.__name__}",
+                    func=f"{_module}:{func.__name__}",
                     args=processed_args,
                     kwargs=processed_kwargs,
                     return_type=return_type
