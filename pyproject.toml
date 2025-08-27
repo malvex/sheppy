@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.1.1",
     "redis>=6.0.0",
     "typer>=0.16.1",
+    "watchfiles>=1.1.0",
 ]
 
 [dependency-groups]
