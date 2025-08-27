@@ -93,11 +93,6 @@ class Worker:
             return task
 
     async def work(self, max_tasks: int | None = None) -> None:
-        if max_tasks is not None:
-            logger.info(f"Worker {self.worker_id} processing up to {max_tasks} tasks from '{self.queue_name}'")
-        else:
-            logger.info(f"Worker {self.worker_id} starting for queue '{self.queue_name}' with max_concurrent_tasks={self.max_concurrent_tasks}")
-
         # Set up signal handlers for graceful shutdown
         loop = asyncio.get_event_loop()
 

@@ -12,6 +12,7 @@ dependencies = [
     "anyio>=3.0.1",
     "pydantic>=2.1.1",
     "redis>=6.0.0",
+    "typer>=0.16.1",
 ]
 
 [dependency-groups]
@@ -33,6 +34,8 @@ packages = ["src/sheppy"]
 [tool.hatch.build.targets.sdist]
 only-include = ["src/sheppy"]
 
+[project.scripts]
+sheppy = "sheppy.cli.cli:app"
 
 [tool.mypy]
 strict = true

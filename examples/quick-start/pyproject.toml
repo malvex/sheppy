@@ -2,7 +2,7 @@
 name = "sheppy-quick-start"
 version = "0.1.0"
 description = ""
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "sheppy @ git+https://github.com/malvex/sheppy@master"
 ]

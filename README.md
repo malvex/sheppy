@@ -6,66 +6,55 @@ Work in progress
 
 Check `examples/` directory, but tl;dr:
 
+```bash
+git clone https://github.com/malvex/sheppy.git
+cd sheppy/examples/quick-start
+uv sync
+
+# start redis
+docker-compose up -d
+
+# start worker process
+uv run sheppy work
+
+# in another terminal, run the script
+uv run main.py
+```
+
 ### main.py
 
 ```python
 import asyncio
-from sheppy import RedisBackend, Queue
-from tasks import send_email
 
-backend = RedisBackend("redis://localhost:6379")
-queue = Queue("email-queue", backend)
+from sheppy import Queue, RedisBackend, task
 
-async def main():
-    # Create Task
-    task = send_email("user@example.com")
 
-    # Add Task to queue for processing
+@task
+async def calculate(x: int, y: int) -> int:
+    return x + y
+
+
+backend = RedisBackend("redis://127.0.0.1:6379")
+queue = Queue("default", backend)
+
+
+async def main() -> None:
+    # create Task
+    task = calculate(1, 2)
+
+    # add Task to queue for processing
     await queue.add(task)
 
     # wait for task to finish
-    task = await queue.wait_for_result(task)
+    task = await queue.wait_for_result(task, timeout=300)
 
-    assert task.result == "sent"
-    assert task.completed
-    assert not task.error
+    print(f"task result: {task.result}")
+    print(f"completed: {task.completed}")
+    print(f"error: {task.error}")
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-```
-
-### tasks.py
-
-```python
-from sheppy import task
-
-@task
-async def send_email(recipient: str) -> str:
-    print(f"Sending email to {recipient}")
-    return "sent"
-```
-
-### run_worker.py
-
-```python
-import asyncio
-import logging
-from sheppy import Worker
-from main import backend
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-
-async def run_worker():
-    worker = Worker(queue_name="email-queue", backend=backend)
-    await worker.work()
-
-
-if __name__ == "__main__":
-    asyncio.run(run_worker())
 ```
 
 ### docker-compose.yml
@@ -91,7 +80,7 @@ volumes:
 name = "sheppy-quick-start"
 version = "0.1.0"
 description = ""
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "sheppy @ git+https://github.com/malvex/sheppy@master"
 ]

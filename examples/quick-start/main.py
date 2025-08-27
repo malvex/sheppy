@@ -1,25 +1,30 @@
 import asyncio
-from sheppy import RedisBackend, Queue
-from tasks import send_email
+
+from sheppy import Queue, RedisBackend, task
 
 
-backend = RedisBackend("redis://localhost:6379")
-queue = Queue("email-queue", backend)
+@task
+async def calculate(x: int, y: int) -> int:
+    return x + y
 
 
-async def main():
-    # Create Task
-    task = send_email("user@example.com")
+backend = RedisBackend("redis://127.0.0.1:6379")
+queue = Queue("default", backend)
 
-    # Add Task to queue for processing
+
+async def main() -> None:
+    # create Task
+    task = calculate(1, 2)
+
+    # add Task to queue for processing
     await queue.add(task)
 
     # wait for task to finish
-    task = await queue.wait_for_result(task)
+    task = await queue.wait_for_result(task, timeout=300)
 
-    assert task.result == "sent"
-    assert task.completed
-    assert not task.error
+    print(f"task result: {task.result}")
+    print(f"completed: {task.completed}")
+    print(f"error: {task.error}")
 
 
 if __name__ == "__main__":
