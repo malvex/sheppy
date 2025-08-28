@@ -287,7 +287,7 @@ class RedisBackend(Backend):
         finished_tasks_key = self._finished_tasks_key(queue_name)
 
         last_id = "0-0"
-        if timeout is not None and timeout > 0:
+        if timeout is not None and timeout >= 0:
             try:
                 last_id = (await self.client.xinfo_stream(finished_tasks_key))["last-generated-id"]
             except redis.ResponseError:
@@ -299,22 +299,28 @@ class RedisBackend(Backend):
             if task_data.get("metadata", {}).get("finished_datetime"):
                 return task_data  # type: ignore[no-any-return]
 
-        if timeout is None or timeout <= 0:
+        if timeout is None or timeout < 0:
             return None
 
-        deadline = asyncio.get_event_loop().time() + timeout
+        # endless wait if timeout == 0
+        deadline = None if timeout == 0 else asyncio.get_event_loop().time() + timeout
 
-        while asyncio.get_event_loop().time() < deadline:
-            remaining = deadline - asyncio.get_event_loop().time()
+        while True:
+            if deadline:
+                remaining = deadline - asyncio.get_event_loop().time()
+                if remaining <= 0:
+                    raise TimeoutError(f"Task {task_id} did not complete within {timeout} seconds")
+            else:
+                remaining = 0
 
             messages = await self.client.xread(
                 {finished_tasks_key: last_id},
-                block=max(1, int(remaining * 1000)),
+                block=int(remaining * 1000),
                 count=100
             )
 
             if not messages:
-                break  # timeout
+                continue
 
             for _, stream_messages in messages:
                 for msg_id, data in stream_messages:
@@ -324,7 +330,6 @@ class RedisBackend(Backend):
                         task_data_json = await self.client.hget(tasks_metadata_key, task_id)  # type: ignore[misc]
                         return json.loads(task_data_json) if task_data_json else None
 
-        raise TimeoutError(f"Task {task_id} did not complete within {timeout} seconds")
 
     async def _ensure_consumer_group(self, stream_key: str) -> None:
         if stream_key in self._initialized_groups:

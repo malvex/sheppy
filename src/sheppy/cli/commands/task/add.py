@@ -17,7 +17,7 @@ def add(
     args: Annotated[str, typer.Option("--args", "-a", help="JSON array of positional arguments")] = "[]",
     kwargs: Annotated[str, typer.Option("--kwargs", "-k", help="JSON object of keyword arguments")] = "{}",
     wait: Annotated[bool, typer.Option("--wait", "-w", help="Wait for task result")] = False,
-    timeout: Annotated[float, typer.Option("--timeout", "-t", help="Timeout in seconds when waiting for result")] = 30.0,
+    timeout: Annotated[float, typer.Option("--timeout", "-t", help="Timeout in seconds when waiting for result")] = 0.0,
     queue: Annotated[str, typer.Option("--queue", "-q", help="Name of queue")] = "default",
     backend: Annotated[BackendType, typer.Option("--backend", "-b", help="Queue backend type")] = BackendType.redis,
     redis_url: Annotated[str, typer.Option("--redis-url", "-r", help="Redis server URL")] = "redis://127.0.0.1:6379",
@@ -73,7 +73,8 @@ def add(
         if not wait:
             return
 
-        console.print(f"\n[cyan]Waiting for result (timeout: {timeout}s)...[/cyan]")
+        s_timeout = f" (timeout: {timeout}s)" if timeout != 0 else ""
+        console.print(f"\n[cyan]Waiting for result{s_timeout}...[/cyan]")
 
         try:
             result_task = await q.wait_for_result(task, timeout=timeout)

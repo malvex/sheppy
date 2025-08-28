@@ -46,7 +46,7 @@ async def main() -> None:
     await queue.add(task)
 
     # wait for task to finish
-    task = await queue.wait_for_result(task, timeout=300)
+    task = await queue.wait_for_result(task)
 
     print(f"task result: {task.result}")
     print(f"completed: {task.completed}")

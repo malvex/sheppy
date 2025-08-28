@@ -147,8 +147,13 @@ class MemoryBackend(Backend):
                     if metadata.get("finished_datetime") or task_data.get("completed") or task_data.get("error"):
                         return task_data
 
-            if timeout is None or timeout <= 0:
+            if timeout is None or timeout < 0:
                 return None
+
+            # endless wait if timeout == 0
+            if timeout == 0:
+                await asyncio.sleep(0.05)
+                continue
 
             elapsed = asyncio.get_event_loop().time() - start_time
             if elapsed >= timeout:
