@@ -20,18 +20,14 @@ class RedisBackend(Backend):
 
     def __init__(
         self,
-        url: str = "redis://localhost:6379",
+        url: str = "redis://127.0.0.1:6379",
         consumer_group: str = "workers",
-        decode_responses: bool = False,
-        max_connections: int = 10,
         ttl: int | None = 24 * 60 * 60,  # 24 hours
         **kwargs: Any
     ):
         self.url = url
         self.consumer_group = consumer_group
         self.consumer_name = generate_unique_worker_id("consumer")
-        self.decode_responses = decode_responses
-        self.max_connections = max_connections
         self.ttl = ttl
         self.redis_kwargs = kwargs
 
@@ -43,22 +39,16 @@ class RedisBackend(Backend):
 
     async def connect(self) -> None:
         try:
-            # Create connection pool
             self._pool = redis.ConnectionPool.from_url(
                 self.url,
-                decode_responses=self.decode_responses,
-                max_connections=self.max_connections,
-                #protocol=3,  # enable RESP version 3  # ! FIXME
+                #decode_responses=self.decode_responses,
+                #max_connections=self.max_connections,
+                #protocol=3,  # enable RESP version 3
                 **self.redis_kwargs
             )
-
-            # Let Redis client own the pool for proper cleanup
             self._client = redis.Redis.from_pool(self._pool)
-
-            # Test connection
             await self._client.ping()
         except Exception as e:
-            # Clean up on failure
             self._client = None
             self._pool = None
             raise BackendError(f"Failed to connect to Redis: {e}") from e
@@ -155,34 +145,11 @@ class RedisBackend(Backend):
         except Exception as e:
             raise BackendError(f"Failed to dequeue task: {e}") from e
 
-    async def acknowledge(self, queue_name: str, task_id: str) -> bool:
-        if task_id not in self._pending_messages:
-            # cannot acknowledge unknown task_id
-            return False
-
-        stored_queue, message_id = self._pending_messages[task_id]
-
-        pending_tasks_key = self._pending_tasks_key(stored_queue)
-
-        await self._ensure_consumer_group(pending_tasks_key)
-
-        try:
-            acked = await self.client.xack(pending_tasks_key, self.consumer_group, message_id)
-
-            if acked > 0:
-                del self._pending_messages[task_id]
-                return True
-
-            return False
-        except Exception:
-            return False
-
     async def peek(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
         pending_tasks_key = self._pending_tasks_key(queue_name)
 
         await self._ensure_consumer_group(pending_tasks_key)
 
-        # Get messages from stream
         messages = await self.client.xrange(pending_tasks_key, count=count)
 
         return [json.loads(fields[b"data"]) for _message_id, fields in messages]
@@ -260,24 +227,60 @@ class RedisBackend(Backend):
     async def store_result(self, queue_name: str, task_data: dict[str, Any]) -> bool:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
         finished_tasks_key = self._finished_tasks_key(queue_name)
+        pending_tasks_key = self._pending_tasks_key(queue_name)
 
         await self._ensure_consumer_group(finished_tasks_key)
 
+        # ! FIXME - scheduled tasks currently skip pop() and so they aren't in stream!
+        message_id = None
+        if task_data["id"] in self._pending_messages:
+            stored_queue, message_id = self._pending_messages[task_data["id"]]
+
+            if queue_name != stored_queue:  # this should never happen
+                raise BackendError("queue name mismatch")
+
         try:
+            # trim older messages to keep the stream small
+            min_id = f"{int((time() - self._results_stream_ttl) * 1000)}-0"
+
             async with self.client.pipeline(transaction=True) as pipe:
                 # update task metadata with the results
                 pipe.hsetex(tasks_metadata_key, task_data["id"], json.dumps(task_data), ex=self.ttl)
                 # add to finished stream for get_result notifications
-                pipe.xadd(finished_tasks_key, {"task_id": task_data["id"]})
-                # Trim messages older than stream_ttl_seconds
-                min_id = f"{int((time() - self._results_stream_ttl) * 1000)}-0"
-                pipe.xtrim(finished_tasks_key, minid=min_id, approximate=True)
+                pipe.xadd(finished_tasks_key, {"task_id": task_data["id"]}, minid=min_id)
+                # ack and delete the task from the stream (cleanup)
+                if message_id:
+                    pipe.xackdel(pending_tasks_key, self.consumer_group, message_id)
 
                 await (pipe.execute())
 
             return True
         except Exception as e:
             raise BackendError(f"Failed to store task result: {e}") from e
+
+    async def stats(self, queue_name: str) -> dict[str, int]:
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
+        scheduled_tasks_key = self._scheduled_tasks_key(queue_name)
+        pending_tasks_key = self._pending_tasks_key(queue_name)
+        finished_tasks_key = self._finished_tasks_key(queue_name)
+
+        total = await self.client.hlen(tasks_metadata_key)
+        pending = await self.client.xlen(pending_tasks_key)
+        completed = await self.client.xlen(finished_tasks_key)
+
+        return {
+            "pending": pending,
+            "in_progress": None,
+            "completed": completed,
+            "scheduled": await self.client.zcard(scheduled_tasks_key),
+        }
+
+    async def get_all_tasks(self, queue_name: str) -> list[dict[str, Any]]:
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
+
+        all_tasks_data = await self.client.hgetall(tasks_metadata_key)
+
+        return [json.loads(task_json) for task_json in all_tasks_data.values()]
 
     async def get_result(self, queue_name: str, task_id: str, timeout: float | None = None) -> dict[str, Any] | None:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
@@ -334,3 +337,35 @@ class RedisBackend(Backend):
         except redis.ResponseError:
             # group already exists, ignore
             pass
+
+    async def list_queues(self) -> dict[str, int]:
+
+        queue_names = set()
+
+        for key in await self.client.keys("sheppy:*:*"):
+            queue_names.add(key.decode().split(":")[2])
+
+        queues = {}
+        for queue_name in sorted(queue_names):
+            try:
+                pending_count = await self.client.xlen(self._pending_tasks_key(queue_name))
+                queues[queue_name] = int(pending_count)
+            except redis.ResponseError:
+                queues[queue_name] = 0
+
+        return queues
+
+    async def list_scheduled(self, queue_name: str) -> list[dict[str, Any]]:
+        scheduled_key = self._scheduled_tasks_key(queue_name)
+
+        task_jsons = await self.client.zrange(scheduled_key, 0, -1, withscores=True)
+
+        tasks = []
+        for task_json, score in task_jsons:
+            task_data = json.loads(task_json)
+
+            # we don't store scheduled time so get it from score
+            task_data["_scheduled_at"] = datetime.fromtimestamp(score).isoformat()
+            tasks.append(task_data)
+
+        return tasks

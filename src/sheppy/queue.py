@@ -38,7 +38,6 @@ class Queue:
         """Schedule task to be processed after certain time."""
         await self._ensure_backend_is_connected()
 
-        # Convert timedelta to datetime
         if isinstance(at, timedelta):
             at = datetime.now(timezone.utc) + at
 
@@ -48,6 +47,17 @@ class Queue:
         await self._ensure_backend_is_connected()
 
         return [Task.model_validate(t) for t in await self.backend.get_scheduled(self.name, now)]
+
+    async def list_scheduled(self) -> list[tuple[datetime, Task]]:
+        """List scheduled tasks."""
+        await self._ensure_backend_is_connected()
+
+        scheduled_tasks = []
+        for task_data in await self.backend.list_scheduled(self.name):
+            scheduled_at = task_data.pop("_scheduled_at")
+            scheduled_tasks.append((scheduled_at, Task.model_validate(task_data)))
+
+        return scheduled_tasks
 
     async def wait_for_result(self, task: Task | UUID, timeout: float = 0) -> Task | None:
         await self._ensure_backend_is_connected()
@@ -78,7 +88,8 @@ class Queue:
         task_data = await self.backend.pop(self.name, timeout)
         return Task.model_validate(task_data) if task_data else None
 
-    async def _acknowledge(self, task_id: UUID) -> bool:
-        """Used by workers."""
+    async def get_all_tasks(self) -> list[Task]:
+        """Get all tasks, including completed/failed ones."""
         await self._ensure_backend_is_connected()
-        return await self.backend.acknowledge(self.name, str(task_id))
+        tasks_data = await self.backend.get_all_tasks(self.name)
+        return [Task.model_validate(t) for t in tasks_data]

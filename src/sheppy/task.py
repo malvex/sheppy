@@ -127,7 +127,6 @@ def task(
             except TypeError:
                 return_type = None
 
-
             task_metadata = {
                 "retry": retry
             }

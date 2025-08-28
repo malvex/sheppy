@@ -85,10 +85,7 @@ class Worker:
             try:
                 await self.queue.backend.store_result(self.queue_name, task.model_dump(mode='json'))  # TODO
             except Exception as e:
-                logger.warning(f"Failed to store result for task {task.id}: {e}")
-                # Don't fail the task processing if result storage fails
-
-            await self.queue._acknowledge(task.id)
+                logger.exception(f"Failed to store result for task {task.id}", exc_info=e)
 
             return task
 

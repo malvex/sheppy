@@ -102,9 +102,6 @@ class TestQueue:
         # Store result (whether success or failure)
         await self._backend.store_result(self.name, task.model_dump(mode='json'))
 
-        # Acknowledge task
-        await self._queue._acknowledge(task.id)
-
         # Fetch the task back from backend to simulate serialization/deserialization
         # This ensures Pydantic models in results are converted to dicts
         stored_task_data = await self._backend.get_task(self.name, str(task.id))

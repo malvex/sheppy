@@ -59,13 +59,6 @@ class MemoryBackend(Backend):
 
             await asyncio.sleep(min(0.05, timeout - elapsed))
 
-    async def acknowledge(self, queue_name: str, task_id: str) -> bool:
-        async with self._locks[queue_name]:
-            if task_id in self._in_progress[queue_name]:
-                del self._in_progress[queue_name][task_id]
-                return True
-            return False
-
     async def peek(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
         async with self._locks[queue_name]:
             return list(self._queues[queue_name])[:count]
@@ -136,6 +129,10 @@ class MemoryBackend(Backend):
         async with self._locks[queue_name]:
             task_id = task_data['id']
             self._results[queue_name][task_id] = task_data
+
+            if task_id in self._in_progress[queue_name]:
+                del self._in_progress[queue_name][task_id]
+
             return True
 
     async def get_result(self, queue_name: str, task_id: str, timeout: float | None = None) -> dict[str, Any] | None:
@@ -145,7 +142,7 @@ class MemoryBackend(Backend):
             async with self._locks[queue_name]:
                 if task_id in self._results[queue_name]:
                     task_data = self._results[queue_name][task_id]
-                    # Check if task is finished (has metadata.finished_datetime or completed=True or has error)
+
                     metadata = task_data.get("metadata", {})
                     if metadata.get("finished_datetime") or task_data.get("completed") or task_data.get("error"):
                         return task_data
@@ -158,3 +155,49 @@ class MemoryBackend(Backend):
                 raise TimeoutError(f"Task {task_id} did not complete within {timeout} seconds")
 
             await asyncio.sleep(min(0.05, timeout - elapsed))
+
+    async def stats(self, queue_name: str) -> dict[str, int]:
+        async with self._locks[queue_name]:
+            return {
+                "pending": len(self._queues[queue_name]),
+                "in_progress": len(self._in_progress[queue_name]),
+                "completed": len(self._results[queue_name]),
+                "scheduled": len(self._scheduled[queue_name]),
+            }
+
+    async def get_all_tasks(self, queue_name: str) -> list[dict[str, Any]]:
+        async with self._locks[queue_name]:
+            all_tasks = []
+            all_tasks.extend(list(self._queues[queue_name]))
+            all_tasks.extend(self._in_progress[queue_name].values())
+            all_tasks.extend(self._results[queue_name].values())
+            for scheduled_task in self._scheduled[queue_name]:
+                all_tasks.append(scheduled_task.task_data)
+
+            return all_tasks
+
+    async def list_queues(self) -> dict[str, int]:
+        queue_names = set()
+        queue_names.update(self._queues.keys())
+        queue_names.update(self._scheduled.keys())
+        queue_names.update(self._in_progress.keys())
+        queue_names.update(self._results.keys())
+
+        queues = {}
+        for queue_name in sorted(queue_names):
+            async with self._locks[queue_name]:
+                queues[queue_name] = len(self._queues[queue_name])
+
+        return queues
+
+    async def list_scheduled(self, queue_name: str) -> list[dict[str, Any]]:
+        async with self._locks[queue_name]:
+            tasks = []
+            for scheduled_task in self._scheduled[queue_name]:
+                task_data = scheduled_task.task_data.copy()
+
+                # we don't store scheduled time in Task object
+                task_data["_scheduled_at"] = scheduled_task.scheduled_time.isoformat()
+                tasks.append(task_data)
+
+            return tasks

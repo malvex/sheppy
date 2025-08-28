@@ -31,10 +31,6 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def acknowledge(self, queue_name: str, task_id: str) -> bool:
-        pass
-
-    @abstractmethod
     async def peek(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
         pass
 
@@ -64,4 +60,20 @@ class Backend(ABC):
 
     @abstractmethod
     async def get_result(self, queue_name: str, task_id: str, timeout: float | None = None) -> dict[str, Any] | None:
+        pass
+
+    @abstractmethod
+    async def stats(self, queue_name: str) -> dict[str, int]:
+        pass
+
+    @abstractmethod
+    async def get_all_tasks(self, queue_name: str) -> list[dict[str, Any]]:
+        pass
+
+    @abstractmethod
+    async def list_queues(self) -> dict[str, int]:
+        pass
+
+    @abstractmethod
+    async def list_scheduled(self, queue_name: str) -> list[dict[str, Any]]:
         pass

@@ -8,6 +8,11 @@ from sheppy import Backend, MemoryBackend, RedisBackend
 console = Console()
 
 
+class OutputFormat(str, Enum):
+    table = "table"
+    json = "json"
+
+
 class LogLevel(str, Enum):
     """Log level enum for CLI arguments."""
     debug = "debug"
