@@ -330,8 +330,7 @@ class TestScheduledTasks:
         queue.schedule(task, at=future_time)
 
         # Process the task
-        with pytest.raises(ValueError):
-            queue.process_scheduled(at=future_time)
+        queue.process_scheduled(at=future_time)
 
         # Task should be in failed list
         assert len(queue.failed_tasks) == 1

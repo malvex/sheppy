@@ -9,7 +9,7 @@ from typing import Annotated
 import typer
 
 from sheppy import Task
-from sheppy.utils.task_execution import DependencyResolver, execute_task
+from sheppy.utils.task_execution import TaskProcessor
 
 from ...utils import console
 
@@ -62,7 +62,11 @@ def test(
                 console.print(f"[red]Function '{function}' is not a task.[/red]")
                 return
 
-            executed_task = await execute_task(task, DependencyResolver(), "cli")
+            _, exception, executed_task = await TaskProcessor.execute_task(task, "cli")
+
+            if exception:
+                raise exception
+
             result = executed_task.result
 
             end_time = time.time() - start_time

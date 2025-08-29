@@ -2,72 +2,24 @@
 This file contains utility functions meant for internal use only. Expect breaking changes if you use them directly.
 """
 
-import importlib
 import inspect
+import importlib
 import socket
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Annotated, get_args, get_origin
 from uuid import uuid4
 
 import anyio
 
-from .argument_processing import prepare_task_arguments
-from .dependency_injection import DependencyResolver
+from collections.abc import Callable
+from pydantic import PydanticSchemaGenerationError, TypeAdapter
+
+from .fastapi import Depends
 
 if TYPE_CHECKING:
     from ..queue import Queue
     from ..task import Task
 
-
-async def execute_task(
-    task: "Task",
-    dependency_resolver: DependencyResolver,
-    worker_id: str
-) -> "Task":
-    """Execute a task with dependency resolution and result handling."""
-    # Resolve the function from its string representation
-    try:
-        if task.internal.func is None:
-            raise ValueError("Task has no function specified")
-        module_name, function_name = task.internal.func.split(':')
-        module = importlib.import_module(module_name)
-        func = getattr(module, function_name).__wrapped__
-
-    except (ValueError, ImportError, AttributeError) as e:
-        raise ValueError(f"Cannot resolve function: {task.internal.func}") from e
-
-    # Create dependency cache for this execution
-    dependency_cache: dict[Any, Any] = {}
-
-    # Resolve dependencies
-    resolved_values = await dependency_resolver.solve_dependencies(
-        func,
-        args=tuple(task.internal.args or []),
-        kwargs=task.internal.kwargs or {},
-        dependency_cache=dependency_cache
-    )
-
-    # Prepare final arguments
-    final_args, final_kwargs = prepare_task_arguments(task, resolved_values, func)
-
-    # Execute the task
-    if inspect.iscoroutinefunction(func):
-        # Async function - run directly
-        result = await func(*final_args, **final_kwargs)
-    else:
-        # Sync function - run via anyio's thread pool
-        result = await anyio.to_thread.run_sync(lambda: func(*final_args, **final_kwargs))
-
-    # Recreate an updated task, don't mutate the original
-    updated_task = task.model_copy(deep=True)
-    updated_task.__dict__["result"] = result
-    updated_task.__dict__["completed"] = True
-    updated_task.__dict__["error"] = None  # Clear any previous error on success
-
-    updated_task.metadata.__dict__["worker"] = worker_id
-    updated_task.metadata.__dict__["finished_datetime"] = datetime.now(timezone.utc)
-
-    return updated_task
 
 async def get_available_tasks(queue: "Queue", limit: int | None = None, timeout: float | None = None) -> list["Task"]:
     """Get available tasks from queue, prioritizing scheduled tasks."""
@@ -108,53 +60,207 @@ async def get_available_tasks(queue: "Queue", limit: int | None = None, timeout:
     return tasks
 
 
-def calculate_retry_delay(task: "Task") -> float:
-    if isinstance(task.metadata.retry_delay, float):
-        # Constant delay for all retries
-        return task.metadata.retry_delay
-
-    if isinstance(task.metadata.retry_delay, list):
-        # Custom delays per retry
-        if len(task.metadata.retry_delay) == 0:
-            return 1.0  # Empty list defaults to 1 second
-
-        if task.metadata.retry_count < len(task.metadata.retry_delay):
-            return float(task.metadata.retry_delay[task.metadata.retry_count])
-        else:
-            # Use last delay value for remaining retries
-            return float(task.metadata.retry_delay[-1])
-
-    # This should never happen if the library is used correctly
-    if isinstance(task.metadata.retry_delay, int):
-        return float(task.metadata.retry_delay)
-
-    # This should never happen if the library is used correctly
-    raise ValueError(f"Invalid retry_delay type: {type(task.metadata.retry_delay).__name__}. Expected None, float, or list.")
-
-
-def update_failed_task(task: "Task", exception: Exception) -> "Task":
-    updated_task = task.model_copy(deep=True)
-
-    updated_task.__dict__["completed"] = False
-    updated_task.__dict__["error"] = str(exception)
-
-    # Check if task should be retried
-    if updated_task.metadata.retry_count < updated_task.metadata.retry:
-        # Update retry metadata
-        updated_task.metadata.__dict__["retry_count"] += 1
-        updated_task.metadata.__dict__["last_retry_at"] = datetime.now(timezone.utc)
-
-        # Calculate next retry time
-        updated_task.metadata.__dict__["next_retry_at"] = datetime.now(timezone.utc) + timedelta(seconds=calculate_retry_delay(task))
-
-        # Task will be retried
-        updated_task.metadata.__dict__["finished_datetime"] = None
-    else:
-        # Final failure - no more retries
-        updated_task.metadata.__dict__["finished_datetime"] = datetime.now(timezone.utc)
-
-    return updated_task
-
-
 def generate_unique_worker_id(prefix: str) -> str:
     return f"{prefix}-{socket.gethostname()}-{str(uuid4())[:8]}"
+
+
+class TaskProcessor:
+
+    @staticmethod
+    async def _actually_execute_task(task: "Task") -> Any:
+        # resolve the function from its string representation
+        func = __class__.resolve_function(task.internal.func)
+        args = task.internal.args or []
+        kwargs = task.internal.kwargs or {}
+
+        # validate all parameters, inject DI and Task
+        final_args, final_kwargs = await __class__.process_function_parameters(func, args, kwargs, task)
+
+        # async task
+        if inspect.iscoroutinefunction(func):
+            return await func(*final_args, **final_kwargs)
+
+        # sync task
+        return await anyio.to_thread.run_sync(lambda: func(*final_args, **final_kwargs))
+
+    @staticmethod
+    async def execute_task(__task: "Task", worker_id: str):
+
+        try:
+            result = await __class__._actually_execute_task(__task)
+            task = __class__.handle_success_and_update_task_metadata(__task, result, worker_id)
+            success = True
+            exception = None
+
+        except Exception as e:
+            task = await __class__.handle_failed_task(__task, e)
+            success = False
+            exception = e  # temporary
+
+        return success, exception, task
+
+    @staticmethod
+    def handle_success_and_update_task_metadata(task: "Task", result: Any, worker_id: str) -> "Task":
+        # recreate an updated task, don't mutate the original  # ! FIXME
+        updated_task = task.model_copy(deep=True)
+        updated_task.__dict__["result"] = result
+        updated_task.__dict__["completed"] = True
+        updated_task.__dict__["error"] = None  # Clear any previous error on success
+
+        updated_task.metadata.__dict__["worker"] = worker_id
+        updated_task.metadata.__dict__["finished_datetime"] = datetime.now(timezone.utc)
+
+        return updated_task
+
+    @staticmethod
+    async def handle_failed_task(__task: "Task", exception: Exception):
+        # recreate an updated task, don't mutate the original  # ! FIXME
+        task = __task.model_copy(deep=True)
+        task.__dict__["completed"] = False
+        task.__dict__["error"] = str(exception)
+
+        # Check if task should be retried
+        if task.metadata.retry > 0:
+            task = __class__.handle_retry(task)
+        else:
+            task.metadata.__dict__["finished_datetime"] = datetime.now(timezone.utc)
+
+        return task
+
+    @staticmethod
+    def handle_retry(task: "Task"):  # ! FIXME - mutates input - temp
+        if task.metadata.retry_count < task.metadata.retry:
+            task.metadata.__dict__["retry_count"] += 1
+            task.metadata.__dict__["last_retry_at"] = datetime.now(timezone.utc)
+            task.metadata.__dict__["next_retry_at"] = datetime.now(timezone.utc) + timedelta(seconds=__class__.calculate_retry_delay(task))
+            # task will be retried  # ! FIXME
+            task.metadata.__dict__["finished_datetime"] = None
+        else:
+            # final failure - no more retries  # ! FIXME
+            task.metadata.__dict__["finished_datetime"] = datetime.now(timezone.utc)
+
+        return task
+
+    @staticmethod
+    def calculate_retry_delay(task: "Task") -> float:
+        if isinstance(task.metadata.retry_delay, float):
+            return task.metadata.retry_delay # constant delay for all retries
+        if isinstance(task.metadata.retry_delay, list):
+            if len(task.metadata.retry_delay) == 0:
+                return 1.0  # empty list defaults to 1 second  # ! FIXME - we should probably refuse empty lists as input
+
+            if task.metadata.retry_count < len(task.metadata.retry_delay):
+                return float(task.metadata.retry_delay[task.metadata.retry_count])
+            else:
+                # use last delay value for remaining retries
+                return float(task.metadata.retry_delay[-1])
+
+        # this should never happen if the library is used correctly  # ! FIXME
+        if isinstance(task.metadata.retry_delay, int):
+            return float(task.metadata.retry_delay)
+        # this should never happen if the library is used correctly  # ! FIXME
+        raise ValueError(f"Invalid retry_delay type: {type(task.metadata.retry_delay).__name__}. Expected None, float, or list.")
+
+    @staticmethod
+    def resolve_function(func: str):
+        try:
+            module_name, function_name = func.split(':')
+            module = importlib.import_module(module_name)
+
+            return getattr(module, function_name).__wrapped__
+
+        except (ValueError, ImportError, AttributeError) as e:
+            raise ValueError(f"Cannot resolve function: {func}") from e
+
+    @staticmethod
+    async def process_function_parameters(
+        func: Callable[..., Any],
+        args: list[Any],
+        kwargs: dict[str, Any],
+        task: "Task | None" = None,
+    ) -> tuple[list[Any], dict[str, Any]]:
+
+        final_args = []
+        final_kwargs = kwargs.copy()
+        remaining_args = args.copy()
+
+        for param_name, param in list(inspect.signature(func).parameters.items()):
+            # Task injection (self: Task)
+            if task and __class__._is_task_injection(param):
+                final_args.append(task)
+                continue
+
+            # validate positional args
+            if remaining_args:
+                final_args.append(__class__._validate(remaining_args.pop(0), param.annotation))
+                continue
+
+            # dependency injection
+            if depends := __class__.get_depends_from_param(param):
+                final_kwargs[param_name] = await __class__._resolve_dependency(depends.dependency)
+                continue
+
+            # validate kwargs
+            if param_name in kwargs:
+                final_kwargs[param_name] = __class__._validate(kwargs[param_name], param.annotation)
+
+        return final_args, final_kwargs
+
+    @staticmethod
+    def _is_task_injection(param: inspect.Parameter) -> bool:
+        if param.name != 'self':
+            return False
+
+        ann = param.annotation
+        if ann == inspect.Parameter.empty:
+            return False
+
+        if isinstance(ann, str):
+            return ann == 'Task'
+
+        return (getattr(ann, '__name__', None) == 'Task' and
+                getattr(ann, '__module__', None) == 'sheppy.task')
+
+    @staticmethod
+    def _validate(value: Any, annotation: Any) -> Any:
+        if value is not None and annotation != inspect.Parameter.empty:
+            try:
+                return TypeAdapter(annotation).validate_python(value)
+            except PydanticSchemaGenerationError:
+                pass
+
+        return value
+
+    @staticmethod
+    async def _resolve_dependency(func: Callable) -> Any:
+        # func = resolver.dependency_overrides.get(dep_func, dep_func)  # ! FIXME
+
+        # resolve nested dependencies
+        _, kwargs = await __class__.process_function_parameters(func, [], {}, None)
+
+        # execute dependency
+        if inspect.iscoroutinefunction(func):
+            return await func(**kwargs)
+
+        if inspect.isasyncgenfunction(func):
+            return await func(**kwargs).__anext__()
+
+        if inspect.isgeneratorfunction(func):
+            return await anyio.to_thread.run_sync(next, func(**kwargs))
+
+        return await anyio.to_thread.run_sync(lambda: func(**kwargs))
+
+    @staticmethod
+    def get_depends_from_param(param: inspect.Parameter) -> Any | None:
+        if param.default != inspect.Parameter.empty and isinstance(param.default, Depends):
+            return param.default
+
+        # Annotated style
+        if get_origin(param.annotation) is Annotated:
+            args = get_args(param.annotation)
+
+            for arg in args[1:]:
+                if isinstance(arg, Depends):
+                    return arg
+
+        return None

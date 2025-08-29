@@ -7,8 +7,7 @@ from uuid import UUID
 from .backend.memory import MemoryBackend
 from .queue import Queue
 from .task import Task
-from .utils.dependency_injection import DependencyResolver
-from .utils.task_execution import execute_task, get_available_tasks, update_failed_task
+from .utils.task_execution import get_available_tasks, TaskProcessor
 
 
 class TestQueue:
@@ -17,14 +16,15 @@ class TestQueue:
     def __init__(
         self,
         name: str = "test-queue",
-        dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None
+        #dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None  # ! FIXME
     ):
         self.name = name
 
         self._backend = MemoryBackend()
         self._queue = Queue(self.name, self._backend)
-        self._dependency_resolver = DependencyResolver(dependency_overrides)
+        #self._dependency_resolver = DependencyResolver(dependency_overrides)
         self._worker_id = "TestQueue"
+        self._task_processor = TaskProcessor()
 
         self.processed_tasks: list[Task] = []
         self.failed_tasks: list[Task] = []
@@ -71,63 +71,50 @@ class TestQueue:
         # Run async processing
         return asyncio.run(self._process_scheduled_async(at))
 
-    async def _process_next_async(self) -> Task | None:
-        # Get next task
+    async def _process_next_async(self) -> Task | None:  # ! FIXME - messy
         tasks = await get_available_tasks(self._queue, limit=1)
 
         if not tasks:
             return None
 
-        task = tasks[0]
+        __task = tasks[0]
 
-        # Process the task
-        try:
-            task = await execute_task(task, self._dependency_resolver, self._worker_id)
-            self.processed_tasks.append(task)
-        except Exception as e:
-            # Handle failure
-            task = update_failed_task(task, e)
+        success, _, task = await self._task_processor.execute_task(__task, self._worker_id)
 
+        self.processed_tasks.append(task)
+
+        if not success:
+            self.failed_tasks.append(task)
             # Final failure
-            if task.metadata.finished_datetime:
-                self.failed_tasks.append(task)
-                self.processed_tasks.append(task)
-            else:
+            if not task.metadata.finished_datetime:
                 # For tests, override next_retry_at to be immediate (ignore delay)
                 task.metadata.__dict__["next_retry_at"] = datetime.now(timezone.utc)
 
                 # Requeue for immediate retry
                 await self._queue.add(task)
 
-        # Store result (whether success or failure)
         await self._backend.store_result(self.name, task.model_dump(mode='json'))
 
-        # Fetch the task back from backend to simulate serialization/deserialization
-        # This ensures Pydantic models in results are converted to dicts
         stored_task_data = await self._backend.get_task(self.name, str(task.id))
         if stored_task_data:
             return Task.model_validate(stored_task_data)
         return task
 
-    async def _process_scheduled_async(self, at: datetime) -> list[Task]:
+    async def _process_scheduled_async(self, at: datetime) -> list[Task]:  # ! FIXME - messy
         processed = []
 
         # Get all scheduled tasks up to specified time
         tasks = [Task.model_validate(data) for data in await self._backend.get_scheduled(self.name, at)]
 
-        for task in tasks:
-            try:
-                task = await execute_task(task, self._dependency_resolver, self._worker_id)
-                self.processed_tasks.append(task)
-                processed.append(task)
-            except Exception as e:
-                # Handle failure
-                task = update_failed_task(task, e)
+        for __task in tasks:
 
-                # Final failure
-                if task.metadata.finished_datetime:
-                    self.failed_tasks.append(task)
-                    raise
+            success, _, task = await self._task_processor.execute_task(__task, self._worker_id)
+
+            self.processed_tasks.append(task)
+            processed.append(task)
+
+            if not success:
+                self.failed_tasks.append(task)
 
                 # Override next_retry_at to be immediate (ignore delay)
                 task.metadata.__dict__["next_retry_at"] = datetime.now(timezone.utc)

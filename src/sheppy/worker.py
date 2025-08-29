@@ -8,12 +8,10 @@ from pydantic import BaseModel
 from .backend.base import Backend
 from .queue import Queue
 from .task import Task
-from .utils.dependency_injection import DependencyResolver
 from .utils.task_execution import (
-    execute_task,
+    TaskProcessor,
     generate_unique_worker_id,
     get_available_tasks,
-    update_failed_task,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,7 +39,7 @@ class Worker:
         self.stats = WorkerStats()
 
         # Worker internals
-        self._dependency_resolver = DependencyResolver()
+        self._task_processor = TaskProcessor()
         self._shutdown_event = asyncio.Event()
         self._active_tasks: dict[asyncio.Task[Task], Task] = {}
         self._task_semaphore = asyncio.Semaphore(max_concurrent_tasks)  # Limit maximum amount of tasks to process
@@ -49,43 +47,36 @@ class Worker:
 
     async def process_task(self, task: Task) -> Task:
         async with self._task_semaphore:
-            try:
-                # Execute the task
-                task = await execute_task(task, self._dependency_resolver, self.worker_id)
 
-                logger.info(f"Task {task.id} completed successfully")
+            success, exception, task = await self._task_processor.execute_task(task, self.worker_id)
+
+            if success:
                 self.stats.processed += 1
+                logger.info(f"Task {task.id} completed successfully")
+            else:
+                self.stats.failed += 1
 
-            except Exception as e:
-                # Handle task failure
-                task = update_failed_task(task, e)
+                # retriable task...
+                if task.metadata.retry > 0:
 
-                # Final failure
-                if task.metadata.finished_datetime:
-                    if task.metadata.retry > 0 and task.metadata.retry_count > 0:
-                        logger.error(
-                            f"Task {task.id} failed after {task.metadata.retry_count} retries: {e}",
-                            exc_info=True
-                        )
+                    if task.metadata.finished_datetime:
+                        # final failure - no more retries
+                        logger.error(f"Task {task.id} failed after {task.metadata.retry_count} retries: {exception}", exc_info=True)
                     else:
-                        logger.error(f"Task {task.id} failed: {e}", exc_info=True)
+                        logger.warning(f"Task {task.id} failed (attempt {task.metadata.retry_count}/{task.metadata.retry}), scheduling retry at {task.metadata.next_retry_at}")
 
-                    self.stats.failed += 1
+                        # Schedule the task for retry
+                        if task.metadata.next_retry_at is not None:
+                            await self.queue.schedule(task, task.metadata.next_retry_at)
                 else:
-                    logger.info(
-                        f"Task {task.id} failed (attempt {task.metadata.retry_count}/{task.metadata.retry}), "
-                        f"scheduling retry at {task.metadata.next_retry_at}"
-                    )
+                    # non retriable task
+                    logger.error(f"Task {task.id} failed: {exception}", exc_info=True)
 
-                    # Schedule the task for retry
-                    if task.metadata.next_retry_at is not None:
-                        await self.queue.schedule(task, task.metadata.next_retry_at)
-
-            # Store the result in backend for later retrieval
+            # store the result in backend for later retrieval
             try:
                 await self.queue.backend.store_result(self.queue_name, task.model_dump(mode='json'))  # TODO
             except Exception as e:
-                logger.exception(f"Failed to store result for task {task.id}", exc_info=e)
+                logger.exception(f"Failed to store result for task {task.id}", exc_info=True)
 
             return task
 

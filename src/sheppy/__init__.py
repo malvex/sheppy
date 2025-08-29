@@ -1,7 +1,4 @@
-try:
-    from fastapi import Depends  # type: ignore
-except ImportError:
-    from .utils.dependency_injection import Depends
+from .utils.fastapi import Depends
 
 from .backend import Backend, BackendError, MemoryBackend, RedisBackend
 from .queue import Queue

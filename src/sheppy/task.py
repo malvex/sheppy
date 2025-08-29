@@ -15,8 +15,6 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-from .utils.argument_processing import process_task_arguments
-
 P = ParamSpec('P')
 R = TypeVar('R')
 
@@ -93,6 +91,61 @@ class Task(BaseModel):
         return f"Task({', '.join([f'{k}={v}' for k, v in parts.items()])})"
 
 
+class TaskFactory:
+
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def _get_return_type(func):
+        """Get function return type"""
+        try:
+            return_type = get_type_hints(func).get('return')
+            if return_type and hasattr(return_type, '__module__') and hasattr(return_type, '__qualname__'):
+                return_type = f"{return_type.__module__}.{return_type.__qualname__}"
+        except TypeError:
+            return_type = None
+
+        return return_type
+
+    @staticmethod
+    def _stringify_function(func):
+        _module = func.__module__
+        # special case if the task is in the main python file that is executed
+        if _module == "__main__":
+            # this handles "python -m app.main" because with "-m" sys.argv[0] is absolute path
+            _main_path = os.path.relpath(sys.argv[0])[:-3]
+            # replace handles situations when user runs "python app/main.py"
+            _module = _main_path.replace(os.sep, ".")
+
+        return f"{_module}:{func.__name__}"
+
+    @staticmethod
+    def create_task(func, args, kwargs, retry, retry_delay) -> Task:
+        # Store return type to later reconstruct the result
+        return_type = __class__._get_return_type(func)
+
+        task_metadata = {
+            "retry": retry
+        }
+        if retry_delay:
+            task_metadata["retry_delay"] = retry_delay
+
+        func_string = __class__._stringify_function(func)
+
+        _task = Task(
+            internal=TaskInternal(
+                func=func_string,
+                args=args,
+                kwargs=kwargs,
+                return_type=return_type
+            ),
+            metadata=TaskMetadata(**task_metadata)
+        )
+
+        return _task
+
+
 # Overload for @task() or @task(retry=..., retry_delay=...)
 @overload
 def task(
@@ -116,42 +169,8 @@ def task(
     def decorator(func: Callable[P, R]) -> Callable[P, Task]:
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> Task:
-            # Process and validate arguments
-            processed_args, processed_kwargs = process_task_arguments(func, args, kwargs)
 
-            # Store return type to later reconstruct the result
-            try:
-                return_type = get_type_hints(func).get('return')
-                if return_type and hasattr(return_type, '__module__') and hasattr(return_type, '__qualname__'):
-                    return_type = f"{return_type.__module__}.{return_type.__qualname__}"
-            except TypeError:
-                return_type = None
-
-            task_metadata = {
-                "retry": retry
-            }
-            if retry_delay:
-                task_metadata["retry_delay"] = retry_delay
-
-            _module = func.__module__
-            # special case if the task is in the main python file that is executed
-            if _module == "__main__":
-                # this handles "python -m app.main" because with "-m" sys.argv[0] is absolute path
-                _main_path = os.path.relpath(sys.argv[0])[:-3]
-                # replace handles situations when user runs "python app/main.py"
-                _module = _main_path.replace(os.sep, ".")
-
-            _task = Task(
-                internal=TaskInternal(
-                    func=f"{_module}:{func.__name__}",
-                    args=processed_args,
-                    kwargs=processed_kwargs,
-                    return_type=return_type
-                ),
-                metadata=TaskMetadata(**task_metadata)
-            )
-
-            return _task
+            return TaskFactory.create_task(func, args, kwargs, retry, retry_delay)
 
         return wrapper
 
