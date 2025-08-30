@@ -121,6 +121,12 @@ class TaskFactory:
         return f"{_module}:{func.__name__}"
 
     @staticmethod
+    def validate_input(func: Callable[..., Any], args: list[Any], kwargs: dict[str, Any]) -> tuple[list[Any], dict[str, Any]]:
+        ## ! FIXME
+        from .utils.validation import validate_input
+        return validate_input(func, args, kwargs)
+
+    @staticmethod
     def create_task(func, args, kwargs, retry, retry_delay) -> Task:
         # Store return type to later reconstruct the result
         return_type = __class__._get_return_type(func)
@@ -132,6 +138,8 @@ class TaskFactory:
             task_metadata["retry_delay"] = retry_delay
 
         func_string = __class__._stringify_function(func)
+
+        args, kwargs = __class__.validate_input(func, list(args or []), dict(kwargs or {}))
 
         _task = Task(
             internal=TaskInternal(

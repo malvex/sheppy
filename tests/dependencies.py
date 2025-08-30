@@ -17,7 +17,7 @@ class User(BaseModel):
 
 class Status(BaseModel):
     code: int
-    message: str | None = None
+    message: str
 
 
 class Product(BaseModel):
@@ -41,6 +41,13 @@ def get_config() -> dict[str, Any]:
 async def get_async_config() -> dict[str, Any]:
     await asyncio.sleep(0.001)
     return {"debug": False, "env": "production"}
+
+
+def sync_dep_generator():
+    yield {"foo": "bar"}
+
+async def async_dep_generator():
+    yield {"bar": "baz"}
 
 
 def get_nested_dependency(config: dict[str, Any] = Depends(get_config)) -> dict[str, Any]:
