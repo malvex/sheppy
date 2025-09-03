@@ -48,14 +48,25 @@ select = [
     "F",      # pyflakes
     "I",      # isort
     "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
     "C4",     # flake8-comprehensions
     "UP",     # pyupgrade
     "ARG001", # unused arguments in functions
     "T201",   # print statements are not allowed
+    "PLC0415" # `import` should be at the top-level of a file
 ]
 ignore = [
     "E501",  # line too long
     "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/contract/test_input_validation*.py" = [
+    "ARG001", # Unused function argument: `y`
+    "UP006",  # Use `type` instead of `Type` for type annotation
+    "UP007",  # Use `X | Y` for type annotations
+    "UP035",  # `typing.Type` is deprecated, use `type` instead
+    "UP045",  # Use `X | None` for type annotations
 ]
 
 [tool.pytest.ini_options]
