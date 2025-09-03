@@ -43,10 +43,16 @@ class Queue:
 
         return await self.backend.schedule(self.name, task.model_dump(mode='json'), at)
 
-    async def get_scheduled(self, now: datetime | None = None) -> list[Task]:
+    async def enqueue_scheduled(self, now: datetime | None = None) -> list[Task]:
+        """Enqueue scheduled tasks that are ready to be processed."""
         await self._ensure_backend_is_connected()
 
-        return [Task.model_validate(t) for t in await self.backend.get_scheduled(self.name, now)]
+        tasks = [Task.model_validate(t) for t in await self.backend.get_scheduled(self.name, now)]
+
+        for task in tasks:
+            await self.add(task)
+
+        return tasks
 
     async def list_scheduled(self) -> list[tuple[datetime, Task]]:
         """List scheduled tasks."""

@@ -43,19 +43,24 @@ class Worker:
         self._active_tasks: dict[asyncio.Task[Task], Task] = {}
         self._task_semaphore = asyncio.Semaphore(max_concurrent_tasks)
         self._blocking_timeout = 5
+        self._scheduler_task: asyncio.Task = None
 
     async def work(self, max_tasks: int | None = None) -> None:
         loop = asyncio.get_event_loop()
         self.__register_signal_handlers(loop)
 
         try:
-            await self._worker_loop(max_tasks)
+            self._scheduler_task = asyncio.create_task(self._run_scheduler())
+            await self._run_worker_loop(max_tasks)
 
         except asyncio.CancelledError:
             logger.info("Cancelled")
 
         except Exception as e:
             logger.error(f"Error in worker loop: {e}", exc_info=True)
+
+        if self._scheduler_task:
+            self._scheduler_task.cancel()
 
         # attempt to exit cleanly
         if self._active_tasks:
@@ -87,7 +92,29 @@ class Worker:
 
         logger.info(f"Worker stopped. Processed: {self.stats.processed}, Failed: {self.stats.failed}")
 
-    async def _worker_loop(self, max_tasks: int | None = None) -> None:
+    async def _run_scheduler(self, poll_interval: float = 1.0):
+        logger.info("Scheduler started")
+
+        while not self._shutdown_event.is_set():
+            try:
+                tasks = await self.queue.enqueue_scheduled()
+
+                if tasks:
+                    _l = len(tasks)
+                    _task_s = ", ".join([str(task.id) for task in tasks])
+                    logger.info(f"Enqueued {_l} scheduled task{"s" if _l > 1 else ""} for processing: {_task_s}")
+
+            except asyncio.CancelledError:
+                break
+
+            except Exception as e:
+                logger.exception(f"Scheduling failed with error: {e}", exc_info=True)
+
+            await asyncio.sleep(poll_interval)  # TODO: replace polling with notifications when worker notifications are implemented
+
+        logger.info("Scheduler stopped")
+
+    async def _run_worker_loop(self, max_tasks: int | None = None) -> None:
         tasks_to_process = max_tasks
 
         while not self._shutdown_event.is_set():
