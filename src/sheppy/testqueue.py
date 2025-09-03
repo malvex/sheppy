@@ -7,7 +7,7 @@ from uuid import UUID
 from .backend.memory import MemoryBackend
 from .queue import Queue
 from .task import Task
-from .utils.task_execution import get_available_tasks, TaskProcessor
+from .utils.task_execution import TaskStatus, get_available_tasks, TaskProcessor
 
 
 class TestQueue:
@@ -79,11 +79,11 @@ class TestQueue:
 
         __task = tasks[0]
 
-        success, _, task = await self._task_processor.execute_task(__task, self._worker_id)
+        task_status, _, task = await self._task_processor.execute_task(__task, self._worker_id)
 
         self.processed_tasks.append(task)
 
-        if not success:
+        if task_status != TaskStatus.SUCCESS:
             self.failed_tasks.append(task)
             # Final failure
             if not task.metadata.finished_datetime:
@@ -108,15 +108,15 @@ class TestQueue:
 
         for __task in tasks:
 
-            success, _, task = await self._task_processor.execute_task(__task, self._worker_id)
+            task_status, _, task = await self._task_processor.execute_task(__task, self._worker_id)
 
             self.processed_tasks.append(task)
             processed.append(task)
 
-            if not success:
+            if task_status != TaskStatus.SUCCESS:
                 self.failed_tasks.append(task)
 
-                # Override next_retry_at to be immediate (ignore delay)
+                # Override next_retry_at to be immediate (ignore delay)  # ! FIXME
                 task.metadata.__dict__["next_retry_at"] = datetime.now(timezone.utc)
 
                 # Requeue for immediate retry

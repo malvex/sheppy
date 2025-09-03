@@ -2,6 +2,8 @@
 This file contains utility functions meant for internal use only. Expect breaking changes if you use them directly.
 """
 
+from enum import Enum
+
 import inspect
 import importlib
 import socket
@@ -64,6 +66,15 @@ def generate_unique_worker_id(prefix: str) -> str:
     return f"{prefix}-{socket.gethostname()}-{str(uuid4())[:8]}"
 
 
+class TaskStatus(str, Enum):
+    """Temporary, to make it easier to refactor."""
+
+    SUCCESS = "success"
+    FAILED_NO_RETRY = "failed_no_retry"
+    FAILED_SHOULD_RETRY = "failed_should_retry"
+    FAILED_OUT_OF_RETRY = "failed_ouf_of_retry"
+
+
 class TaskProcessor:
 
     @staticmethod
@@ -89,15 +100,15 @@ class TaskProcessor:
         try:
             result = await __class__._actually_execute_task(__task)
             task = __class__.handle_success_and_update_task_metadata(__task, result, worker_id)
-            success = True
+            task_status = TaskStatus.SUCCESS
             exception = None
 
         except Exception as e:
-            task = await __class__.handle_failed_task(__task, e)
-            success = False
+            task_status, task = await __class__.handle_failed_task(__task, e)
+
             exception = e  # temporary
 
-        return success, exception, task
+        return task_status, exception, task
 
     @staticmethod
     def handle_success_and_update_task_metadata(task: "Task", result: Any, worker_id: str) -> "Task":
@@ -121,11 +132,12 @@ class TaskProcessor:
 
         # Check if task should be retried
         if task.metadata.retry > 0:
-            task = __class__.handle_retry(task)
+            task_status, task = __class__.handle_retry(task)
         else:
             task.metadata.__dict__["finished_datetime"] = datetime.now(timezone.utc)
+            task_status = TaskStatus.FAILED_NO_RETRY
 
-        return task
+        return task_status, task
 
     @staticmethod
     def handle_retry(task: "Task"):  # ! FIXME - mutates input - temp
@@ -135,11 +147,13 @@ class TaskProcessor:
             task.metadata.__dict__["next_retry_at"] = datetime.now(timezone.utc) + timedelta(seconds=__class__.calculate_retry_delay(task))
             # task will be retried  # ! FIXME
             task.metadata.__dict__["finished_datetime"] = None
+            task_status = TaskStatus.FAILED_SHOULD_RETRY
         else:
             # final failure - no more retries  # ! FIXME
             task.metadata.__dict__["finished_datetime"] = datetime.now(timezone.utc)
+            task_status = TaskStatus.FAILED_OUT_OF_RETRY
 
-        return task
+        return task_status, task
 
     @staticmethod
     def calculate_retry_delay(task: "Task") -> float:
