@@ -23,11 +23,11 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def append(self, queue_name: str, task_data: dict[str, Any]) -> bool:
+    async def append(self, queue_name: str, task_data: dict[str, Any] | list[dict[str, Any]]) -> bool:
         pass
 
     @abstractmethod
-    async def pop(self, queue_name: str, timeout: float | None = None) -> dict[str, Any] | None:
+    async def pop(self, queue_name: str, limit: int = 1, timeout: float | None = None) -> list[dict[str, Any]]:
         pass
 
     @abstractmethod

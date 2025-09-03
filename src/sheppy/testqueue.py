@@ -7,7 +7,7 @@ from uuid import UUID
 from .backend.memory import MemoryBackend
 from .queue import Queue
 from .task import Task
-from .utils.task_execution import TaskStatus, get_available_tasks, TaskProcessor
+from .utils.task_execution import TaskStatus, TaskProcessor
 
 
 class TestQueue:
@@ -29,7 +29,7 @@ class TestQueue:
         self.processed_tasks: list[Task] = []
         self.failed_tasks: list[Task] = []
 
-    def add(self, task: Task) -> bool:
+    def add(self, task: Task | list[Task]) -> bool:
         return asyncio.run(self._queue.add(task))
 
     def get_task(self, task_id: UUID) -> Task | None:
@@ -72,7 +72,7 @@ class TestQueue:
         return asyncio.run(self._process_scheduled_async(at))
 
     async def _process_next_async(self) -> Task | None:  # ! FIXME - messy
-        tasks = await get_available_tasks(self._queue, limit=1)
+        tasks = await self._queue._pop(limit=1)
 
         if not tasks:
             return None

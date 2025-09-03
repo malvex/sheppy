@@ -91,19 +91,24 @@ class RedisBackend(Backend):
             raise BackendError("Not connected to Redis")
         return self._client
 
-    async def append(self, queue_name: str, task_data: dict[str, Any]) -> bool:  # ! fixme: maybe add (task_id: str) arg?
+    async def append(self, queue_name: str, task_data: dict[str, Any] | list[dict[str, Any]]) -> bool:
         """Add new tasks to be processed."""
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
         pending_tasks_key = self._pending_tasks_key(queue_name)
 
         await self._ensure_consumer_group(pending_tasks_key)
 
+        # batch operation if list of tasks is provided
+        _tasks = task_data if isinstance(task_data, list) else [task_data]
+        transaction = False if len(_tasks) > 1 else True  # disable atomic calls for batch to prevent freezes
+
         try:
-            async with self.client.pipeline(transaction=True) as pipe:
-                # create task metadata
-                pipe.hset(tasks_metadata_key, task_data["id"], json.dumps(task_data))
-                # add to pending stream
-                pipe.xadd(pending_tasks_key, {"data": json.dumps(task_data)})
+            async with self.client.pipeline(transaction=transaction) as pipe:
+                for _task_data in _tasks:
+                    # create task metadata
+                    pipe.hset(tasks_metadata_key, _task_data["id"], json.dumps(_task_data))
+                    # add to pending stream
+                    pipe.xadd(pending_tasks_key, {"data": json.dumps(_task_data)})
 
                 await (pipe.execute())
 
@@ -111,7 +116,7 @@ class RedisBackend(Backend):
         except Exception as e:
             raise BackendError(f"Failed to enqueue task: {e}") from e
 
-    async def pop(self, queue_name: str, timeout: float | None = None) -> dict[str, Any] | None:
+    async def pop(self, queue_name: str, limit: int = 1, timeout: float | None = None) -> list[dict[str, Any]]:
         """Get next tasks to process. Used primarily by workers."""
         pending_tasks_key = self._pending_tasks_key(queue_name)
 
@@ -122,25 +127,27 @@ class RedisBackend(Backend):
                 groupname=self.consumer_group,
                 consumername=self.consumer_name,
                 streams={pending_tasks_key: ">"},  # ">" means only new messages (not delivered to other consumers)
-                count=1,
+                count=limit,
                 block=None if timeout is None or timeout == 0 else int(timeout * 1000)
             )
 
             if not result:
-                return None
+                return []
 
             messages = result[0][1]  # [['stream-name', [(message_id, dict_data)]]]
 
             if not messages:
-                return None
+                return []
 
-            message_id, fields = messages[0]
-            task_data = json.loads(fields[b"data"])
+            tasks = []
+            for message_id, fields in messages:
+                task_data = json.loads(fields[b"data"])
 
-            # store message_id for acknowledge()
-            self._pending_messages[task_data["id"]] = (queue_name, message_id.decode())
+                # store message_id for acknowledge()
+                self._pending_messages[task_data["id"]] = (queue_name, message_id.decode())
+                tasks.append(task_data)
 
-            return task_data  # type: ignore[no-any-return]
+            return tasks
 
         except Exception as e:
             raise BackendError(f"Failed to dequeue task: {e}") from e

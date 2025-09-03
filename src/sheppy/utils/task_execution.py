@@ -19,31 +19,7 @@ from pydantic import PydanticSchemaGenerationError, TypeAdapter
 from .fastapi import Depends
 
 if TYPE_CHECKING:
-    from ..queue import Queue
     from ..task import Task
-
-
-async def get_available_tasks(queue: "Queue", limit: int | None = None, timeout: float | None = None) -> list["Task"]:
-    tasks = []
-    remaining = limit
-
-    if timeout is not None and timeout >= 0:
-        # blocking wait for first task (if blocking enabled)
-        task = await queue._pop(timeout=timeout)
-        if task:
-            tasks.append(task)
-            remaining = remaining - 1 if remaining else None
-
-    # non-blocking pop for more tasks if we have capacity (limit)
-    while remaining is None or remaining > 0:
-        task = await queue._pop(timeout=None)
-        if not task:
-            break
-        tasks.append(task)
-        if remaining is not None:
-            remaining -= 1
-
-    return tasks
 
 
 def generate_unique_worker_id(prefix: str) -> str:

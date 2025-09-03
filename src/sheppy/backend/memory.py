@@ -34,28 +34,39 @@ class MemoryBackend(Backend):
     def is_connected(self) -> bool:
         return self._connected
 
-    async def append(self, queue_name: str, task_data: dict[str, Any]) -> bool:
+    async def append(self, queue_name: str, task_data: dict[str, Any] | list[dict[str, Any]]) -> bool:
         async with self._locks[queue_name]:
-            self._queues[queue_name].append(task_data)
+            if isinstance(task_data, list):
+                # batch operation
+                self._queues[queue_name].extend(task_data)
+            else:
+                self._queues[queue_name].append(task_data)
+
             return True
 
-    async def pop(self, queue_name: str, timeout: float | None = None) -> dict[str, Any] | None:
+    async def pop(self, queue_name: str, limit: int = 1, timeout: float | None = None) -> list[dict[str, Any]]:
         start_time = asyncio.get_event_loop().time()
 
         while True:
             async with self._locks[queue_name]:
                 if self._queues[queue_name]:
-                    task_data = self._queues[queue_name].popleft()
-                    self._in_progress[queue_name][task_data['id']] = task_data
+                    tasks = []
+                    queue = self._queues[queue_name]
 
-                    return task_data
+                    # Pop up to 'limit' tasks from the queue
+                    for _ in range(min(limit, len(queue))):
+                        task_data = queue.popleft()
+                        self._in_progress[queue_name][task_data['id']] = task_data
+                        tasks.append(task_data)
+
+                    return tasks
 
             if timeout is None or timeout <= 0:
-                return None
+                return []
 
             elapsed = asyncio.get_event_loop().time() - start_time
             if elapsed >= timeout:
-                return None
+                return []
 
             await asyncio.sleep(min(0.05, timeout - elapsed))
 

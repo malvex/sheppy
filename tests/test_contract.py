@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from sheppy import Queue, Worker
-from tests.dependencies import TaskTestCase, TaskTestCases
+from tests.dependencies import TaskTestCase, TaskTestCases, simple_async_task
 
 
 class TestSuccessfulTasks:
@@ -119,7 +119,7 @@ class TestScheduledTasks:
 
         # Task should not be immediately available for worker to process
         popped = await queue._pop(timeout=0.01)
-        assert popped is None
+        assert not popped
 
         # Task should not be completed yet
         task = await queue.refresh(task)
@@ -150,7 +150,7 @@ class TestScheduledTasks:
 
         # Task should not be immediately available for worker to process
         popped = await queue._pop(timeout=0.01)
-        assert popped is None
+        assert not popped
 
         # Wait for the scheduled time
         await asyncio.sleep(0.15)
@@ -180,7 +180,7 @@ class TestScheduledTasks:
 
         # No tasks should be immediately available
         popped = await queue._pop(timeout=0.01)
-        assert popped is None
+        assert not popped
 
         # Wait and process first task
         await asyncio.sleep(0.25)
@@ -282,3 +282,36 @@ class TestScheduledTasks:
         task = await queue.refresh(task)
         assert task.completed
         assert task.result == 3
+
+
+class TestBatchOperations:
+    async def test_batch_add_to_queue(self, queue: Queue, worker: Worker):
+
+        t1 = simple_async_task(1, 2)
+        t2 = simple_async_task(5, 20)
+
+        await queue.add([t1, t2])
+
+        assert await queue.size() == 2
+
+        await worker.work(max_tasks=1)
+
+        assert await queue.size() == 1
+
+        t1 = await queue.refresh(t1)
+
+        assert t1.completed
+        assert not t1.error
+        assert t1.result == 3
+        assert t1.metadata.finished_datetime is not None
+
+        await worker.work(max_tasks=1)
+
+        assert await queue.size() == 0
+
+        t2 = await queue.refresh(t2)
+
+        assert t2.completed
+        assert not t2.error
+        assert t2.result == 25
+        assert t2.metadata.finished_datetime is not None

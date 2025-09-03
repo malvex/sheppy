@@ -12,7 +12,6 @@ from .utils.task_execution import (
     TaskStatus,
     TaskProcessor,
     generate_unique_worker_id,
-    get_available_tasks,
 )
 
 logger = logging.getLogger(__name__)
@@ -137,11 +136,8 @@ class Worker:
             if tasks_to_process is not None:
                 capacity = min(capacity, tasks_to_process)
 
-            available_tasks = await get_available_tasks(
-                self.queue,
-                limit=capacity,
-                timeout=self._blocking_timeout
-            )
+            available_tasks = await self.queue._pop(timeout=self._blocking_timeout,
+                                                    limit=capacity)
 
             for task in available_tasks:
                 logger.info(f"Processing task {task.id} ({task.internal.func})")

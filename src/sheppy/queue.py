@@ -11,11 +11,16 @@ class Queue:
         self.name = name
         self.backend = backend
 
-    async def add(self, task: Task) -> bool:
-        """Add task into the queue."""
+    async def add(self, task: Task | list[Task]) -> bool:
+        """Add task into the queue. Accept list of tasks for batch add."""
         await self._ensure_backend_is_connected()
 
-        return await self.backend.append(self.name, task.model_dump(mode='json'))
+        if isinstance(task, list):
+            data = [t.model_dump(mode='json') for t in task]
+        else:
+            data = task.model_dump(mode='json')
+
+        return await self.backend.append(self.name, data)
 
     async def get_task(self, task: Task | UUID) -> Task | None:
         task_id = task.id if isinstance(task, Task) else task
@@ -88,11 +93,15 @@ class Queue:
         if not self.backend.is_connected:
             await self.backend.connect()
 
-    async def _pop(self, timeout: float | None = None) -> Task | None:
+    async def _pop(self, limit: int = 1, timeout: float | None = None) -> list[Task]:
         """Get next task to process. Used by workers."""
         await self._ensure_backend_is_connected()
-        task_data = await self.backend.pop(self.name, timeout)
-        return Task.model_validate(task_data) if task_data else None
+
+        if limit <= 0:
+            raise ValueError("Pop limit must be greater than zero.")
+
+        tasks_data = await self.backend.pop(self.name, limit, timeout)
+        return [Task.model_validate(t) for t in tasks_data]
 
     async def get_all_tasks(self) -> list[Task]:
         """Get all tasks, including completed/failed ones."""
