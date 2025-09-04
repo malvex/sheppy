@@ -10,6 +10,7 @@ authors = [
 
 dependencies = [
     "anyio>=3.0.1",
+    "croniter>=6.0.0",
     "pydantic>=2.1.1",
     "redis>=6.0.0",
     "typer>=0.16.1",

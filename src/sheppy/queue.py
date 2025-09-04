@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from .backend.base import Backend
-from .task import Task
+from .task import Task, TaskCron
 
 
 class Queue:
@@ -108,3 +108,17 @@ class Queue:
         await self._ensure_backend_is_connected()
         tasks_data = await self.backend.get_all_tasks(self.name)
         return [Task.model_validate(t) for t in tasks_data]
+
+    async def add_cron(self, task: Task, cron: str) -> bool:
+        await self._ensure_backend_is_connected()
+        task_cron = task._create_task_cron(cron, self.name)
+        return await self.backend.add_cron(self.name, task_cron.model_dump(mode="json"))
+
+    async def delete_cron(self, task: Task, cron: str) -> bool:
+        await self._ensure_backend_is_connected()
+        task_cron = task._create_task_cron(cron, self.name)
+        return await self.backend.delete_cron(self.name, task_cron.id)
+
+    async def list_crons(self) -> list[TaskCron]:
+        await self._ensure_backend_is_connected()
+        return [TaskCron.model_validate(tc) for tc in await self.backend.list_crons(self.name)]

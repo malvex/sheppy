@@ -388,3 +388,47 @@ class TestScheduledTasks:
         assert processed[0].result == 3  # task1
         assert processed[1].result == 7  # task2
         assert processed[2].result == 11  # task3
+
+
+class TestCronOperations:
+    """Test cron task operations with TestQueue."""
+
+    def test_add_cron(self):
+        queue = TestQueue()
+
+        crons = [
+            (simple_async_task(1, 2), '*/5 * * * *'),
+            (simple_async_task(1, 2), '0 * * * *'),  # different cron schedule
+            (simple_async_task(2, 2), '*/5 * * * *'),  # different input
+            (simple_sync_task(1, 2), '*/5 * * * *'),  # different function
+        ]
+
+        for task, schedule in crons:
+            for i in range(5):
+                # Only first run should be successful, because cron doesn't exist yet.
+                # Exactly same cron definitions (same task, same input, same cron schedule)
+                # should not be added (would be duplicated crons)
+                should_succeed = True if i == 0 else False
+                print(i, should_succeed)
+
+                success = queue.add_cron(task, schedule)
+                assert success is should_succeed
+
+        all_crons = queue.list_crons()
+        assert len(all_crons) == 4
+
+        for task, schedule in crons:
+            for i in range(5):
+                # same for deleting them - only first should be successful
+                should_succeed = True if i == 0 else False
+
+                success = queue.delete_cron(task, schedule)
+                assert success is should_succeed
+
+        all_crons = queue.list_crons()
+        assert len(all_crons) == 0
+
+    def test_delete_nonexistent_cron(self):
+        queue = TestQueue()
+        success = queue.delete_cron(simple_async_task(5, 6), "1 * * * *")
+        assert success == False

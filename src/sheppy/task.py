@@ -2,8 +2,10 @@ import importlib
 import sys
 import os
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC
+from croniter import croniter
 from functools import wraps
+from base64 import b64encode
 from typing import (
     Any,
     ParamSpec,
@@ -11,12 +13,43 @@ from typing import (
     get_type_hints,
     overload,
 )
-from uuid import UUID, uuid4
+from uuid import UUID, uuid3, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 P = ParamSpec('P')
 R = TypeVar('R')
+
+
+TASK_CRON_NS = UUID('7005b432-c135-4131-b19e-d3dc89703a9a')
+
+
+class TaskCron(BaseModel):
+    id: str | None = None
+    func: str = None
+    args: list[Any] = Field(default_factory=list)
+    kwargs: dict[str, Any] = Field(default_factory=dict)
+    cron: str
+
+    def next_run(self, start: datetime | None = None) -> datetime | None:
+        if not start:
+            start = datetime.now(UTC)
+        return croniter(self.cron, start).get_next(datetime)
+
+    def create_task(self, start: datetime) -> "Task":
+        task_id = str(uuid3(TASK_CRON_NS, self.id + str(start.timestamp())))
+
+        return Task(
+            id=task_id,
+            internal=TaskInternal(
+                func=self.func,
+                args=self.args,
+                kwargs=self.kwargs,
+                #return_type=return_type  # fixme?
+            ),
+            #metadata=TaskMetadata(**task_metadata)
+        )
+
 
 
 class TaskInternal(BaseModel):
@@ -90,6 +123,24 @@ class Task(BaseModel):
 
         return f"Task({', '.join([f'{k}={v}' for k, v in parts.items()])})"
 
+    def copy(self) -> "Task":
+        print("KINDA BUGGY")
+        return self.model_validate(self.model_dump(exclude_unset=True))
+
+    def _create_task_cron(self, cron: str, queue_name: str = None) -> TaskCron:
+        # create deterministic ID if not provided
+        s = self.internal.model_dump_json(include=["func", "args", "kwargs"])
+        s += b64encode(cron.encode()).decode()
+        s += (queue_name if queue_name else "")
+        cron_id = str(uuid3(TASK_CRON_NS, s))
+
+        return TaskCron(
+            id=cron_id,
+            func=self.internal.func,
+            args=self.internal.args,
+            kwargs=self.internal.kwargs,
+            cron=cron
+        )
 
 class TaskFactory:
 

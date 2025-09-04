@@ -21,6 +21,7 @@ class MemoryBackend(Backend):
         self._scheduled: dict[str, list[ScheduledTask]] = defaultdict(list)
         self._in_progress: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
         self._results: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+        self._cron_tasks: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)  # for thread-safety
         self._connected = False
 
@@ -217,3 +218,22 @@ class MemoryBackend(Backend):
                 tasks.append(task_data)
 
             return tasks
+
+    async def add_cron(self, queue_name: str, task_cron: dict[str, Any]) -> bool:
+        async with self._locks[queue_name]:
+            cron_id = task_cron['id']
+            if cron_id not in self._cron_tasks[queue_name]:
+                self._cron_tasks[queue_name][cron_id] = task_cron
+                return True
+            return False
+
+    async def delete_cron(self, queue_name: str, cron_id: str) -> bool:
+        async with self._locks[queue_name]:
+            if cron_id in self._cron_tasks[queue_name]:
+                del self._cron_tasks[queue_name][cron_id]
+                return True
+            return False
+
+    async def list_crons(self, queue_name: str) -> list[dict[str, Any]]:
+        async with self._locks[queue_name]:
+            return list(self._cron_tasks[queue_name].values())

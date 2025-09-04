@@ -6,7 +6,7 @@ from uuid import UUID
 
 from .backend.memory import MemoryBackend
 from .queue import Queue
-from .task import Task
+from .task import Task, TaskCron
 from .utils.task_execution import TaskStatus, TaskProcessor
 
 
@@ -46,6 +46,15 @@ class TestQueue:
 
     def schedule(self, task: Task, at: datetime | timedelta) -> bool:
         return asyncio.run(self._queue.schedule(task, at))
+
+    def add_cron(self, task: Task, cron: str) -> bool:
+        return asyncio.run(self._queue.add_cron(task, cron))
+
+    def delete_cron(self, task: Task, cron: str) -> bool:
+        return asyncio.run(self._queue.delete_cron(task, cron))
+
+    def list_crons(self) -> list[TaskCron]:
+        return asyncio.run(self._queue.list_crons())
 
     def process_next(self) -> Task | None:
         return asyncio.run(self._process_next_async())

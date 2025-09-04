@@ -4,6 +4,7 @@ from rich import print as rprint
 from sheppy import __version__
 
 from .commands.queue.list import list_queues
+from .commands.cron.list import list_crons
 from .commands.task.add import add
 from .commands.task.info import info
 from .commands.task.list import list_tasks
@@ -45,5 +46,10 @@ queue_app = typer.Typer(help="Queue management commands", no_args_is_help=True)
 queue_app.command(name="list")(list_queues)
 
 app.add_typer(queue_app, name="queue")
+
+cron_app = typer.Typer(help="Cron management commands", no_args_is_help=True)
+cron_app.command(name="list")(list_crons)
+
+app.add_typer(cron_app, name="cron")
 
 app.command()(work)

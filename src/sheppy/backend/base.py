@@ -77,3 +77,15 @@ class Backend(ABC):
     @abstractmethod
     async def list_scheduled(self, queue_name: str) -> list[dict[str, Any]]:
         pass
+
+    @abstractmethod
+    async def add_cron(self, queue_name: str, task_cron: dict[str, Any]) -> bool:
+        pass
+
+    @abstractmethod
+    async def delete_cron(self, queue_name: str, task_id: str) -> bool:
+        pass
+
+    @abstractmethod
+    async def list_crons(self, queue_name: str) -> list[dict[str, Any]]:
+        pass

@@ -15,6 +15,8 @@ except ImportError as e:
 from ..utils.task_execution import generate_unique_worker_id
 from .base import Backend, BackendError
 
+from ..task import TaskCron
+
 
 class RedisBackend(Backend):
 
@@ -72,6 +74,10 @@ class RedisBackend(Backend):
     def _scheduled_tasks_key(self, queue_name: str) -> str:
         """Scheduled tasks (sorted set)"""
         return f"sheppy:scheduled:{queue_name}"
+
+    def _cron_tasks_key(self, queue_name: str) -> str:
+        """Cron tasks (hset)"""
+        return f"sheppy:cron:{queue_name}"
 
     def _pending_tasks_key(self, queue_name: str) -> str:
         """Queued tasks to be processed (stream)"""
@@ -202,7 +208,11 @@ class RedisBackend(Backend):
 
         try:
             # create task metadata
-            await self.client.hset(tasks_metadata_key, task_data["id"], json.dumps(task_data))  # type: ignore[misc]
+            success = await self.client.hsetnx(tasks_metadata_key, task_data["id"], json.dumps(task_data))  # type: ignore[misc]
+
+            # task already exists, don't add it to zset
+            if not success:
+                return False
 
             # add to sorted set with timestamp as score
             score = at.timestamp()
@@ -381,3 +391,15 @@ class RedisBackend(Backend):
             tasks.append(task_data)
 
         return tasks
+
+    async def add_cron(self, queue_name: str, task_cron: dict[str, Any]) -> bool:
+        cron_tasks_key = self._cron_tasks_key(queue_name)
+        return bool(await self.client.hsetnx(cron_tasks_key, task_cron['id'], json.dumps(task_cron)))
+
+    async def delete_cron(self, queue_name: str, cron_id: str) -> bool:
+        cron_tasks_key = self._cron_tasks_key(queue_name)
+        return bool(await self.client.hdel(cron_tasks_key, cron_id))
+
+    async def list_crons(self, queue_name: str) -> list[dict[str, Any]]:
+        cron_tasks_key = self._cron_tasks_key(queue_name)
+        return [json.loads(d) for _, d in (await self.client.hgetall(cron_tasks_key)).items()]

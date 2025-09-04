@@ -11,7 +11,7 @@ from rich.table import Table
 
 from sheppy import Queue
 
-from ...utils import BackendType, OutputFormat, console, get_backend
+from ...utils import BackendType, OutputFormat, console, get_backend, humanize_datetime
 
 
 class StatusFilter(str, Enum):
@@ -91,16 +91,13 @@ def list_tasks(
             table.add_column("Finished (UTC)", style="blue")
 
             for (task, queue_status) in tasks:  # enumerate(tasks[:limit], 1):
-                # FIXME - humanize time (X hours ago, etc)
-                created_str = task.metadata.created_datetime.strftime("%Y-%m-%d %H:%M:%S") if task.metadata.created_datetime else "N/A"
-                finished_str = task.metadata.finished_datetime.strftime("%Y-%m-%d %H:%M:%S") if task.metadata.finished_datetime else "N/A"
 
                 table.add_row(
                     str(task.id),
                     task.internal.func,
                     queue_status,
-                    created_str,
-                    finished_str
+                    humanize_datetime(task.metadata.created_datetime),
+                    humanize_datetime(task.metadata.finished_datetime)
                 )
 
             console.print(table)

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from sheppy import Queue, Worker
-from tests.dependencies import TaskTestCase, TaskTestCases, simple_async_task
+from tests.dependencies import TaskTestCase, TaskTestCases, simple_async_task, simple_sync_task
 
 
 class TestSuccessfulTasks:
@@ -315,3 +315,45 @@ class TestBatchOperations:
         assert not t2.error
         assert t2.result == 25
         assert t2.metadata.finished_datetime is not None
+
+
+class TestCronOperations:
+    """Test cron task operations."""
+
+    async def test_add_cron(self, queue: Queue):
+
+        crons = [
+            (simple_async_task(1, 2), '*/5 * * * *'),
+            (simple_async_task(1, 2), '0 * * * *'),  # different cron schedule
+            (simple_async_task(2, 2), '*/5 * * * *'),  # different input
+            (simple_sync_task(1, 2), '*/5 * * * *'),  # different function
+        ]
+
+        for task, schedule in crons:
+            for i in range(5):
+                # Only first run should be successful, because cron doesn't exist yet.
+                # Exactly same cron definitions (same task, same input, same cron schedule)
+                # should not be added (would be duplicated crons)
+                should_succeed = True if i == 0 else False
+                print(i, should_succeed)
+
+                success = await queue.add_cron(task, schedule)
+                assert success is should_succeed
+
+        all_crons = await queue.list_crons()
+        assert len(all_crons) == 4
+
+        for task, schedule in crons:
+            for i in range(5):
+                # same for deleting them - only first should be successful
+                should_succeed = True if i == 0 else False
+
+                success = await queue.delete_cron(task, schedule)
+                assert success is should_succeed
+
+        all_crons = await queue.list_crons()
+        assert len(all_crons) == 0
+
+    async def test_delete_nonexistent_cron(self, queue: Queue):
+        success = await queue.delete_cron(simple_async_task(5, 6), "1 * * * *")
+        assert success == False
