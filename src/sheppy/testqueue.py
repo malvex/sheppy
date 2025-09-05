@@ -1,13 +1,11 @@
 import asyncio
-from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import Any
 from uuid import UUID
 
 from .backend.memory import MemoryBackend
 from .queue import Queue
 from .task import Task, TaskCron
-from .utils.task_execution import TaskStatus, TaskProcessor
+from .utils.task_execution import TaskProcessor, TaskStatus
 
 
 class TestQueue:

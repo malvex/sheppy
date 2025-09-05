@@ -2,18 +2,16 @@
 This file contains utility functions meant for internal use only. Expect breaking changes if you use them directly.
 """
 
-from enum import Enum
-
-import inspect
 import importlib
+import inspect
 import socket
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Annotated, get_args, get_origin
+from enum import Enum
+from typing import TYPE_CHECKING, Annotated, Any, get_args, get_origin
 from uuid import uuid4
 
 import anyio
-
-from collections.abc import Callable
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
 
 from .fastapi import Depends
@@ -55,14 +53,11 @@ class TaskProcessor:
         return await anyio.to_thread.run_sync(lambda: func(*final_args, **final_kwargs))
 
     @staticmethod
-    async def execute_task(__task: "Task", worker_id: str):
-
-        _generators = []
+    async def execute_task(__task: "Task", worker_id: str) -> tuple[TaskStatus, Exception | None, "Task"]:
         try:
             __task, _generators = await __class__.process_pre_task_middleware(__task)
         except Exception as e:
-            print(e)
-            raise e # middleware error, TODO
+            raise Exception("Middleware error") from e
 
         try:
             result = await __class__._actually_execute_task(__task)
@@ -78,13 +73,12 @@ class TaskProcessor:
         try:
             task = await __class__.process_post_task_middleware(task, _generators)
         except Exception as e:
-            print(e)
-            raise e # middleware error, TODO
+            raise Exception("Middleware error") from e
 
         return task_status, exception, task
 
     @staticmethod
-    async def process_pre_task_middleware(task: "Task"):
+    async def process_pre_task_middleware(task: "Task") -> tuple["Task", list]:
         if not task.internal.middleware:
             return task, []
 
@@ -99,7 +93,7 @@ class TaskProcessor:
         return task, _generators
 
     @staticmethod
-    async def process_post_task_middleware(task: "Task", _generators: list):
+    async def process_post_task_middleware(task: "Task", _generators: list) -> "Task":
         if not _generators:
             return task
 

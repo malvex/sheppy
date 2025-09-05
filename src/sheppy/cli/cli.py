@@ -3,8 +3,8 @@ from rich import print as rprint
 
 from sheppy import __version__
 
-from .commands.queue.list import list_queues
 from .commands.cron.list import list_crons
+from .commands.queue.list import list_queues
 from .commands.task.add import add
 from .commands.task.info import info
 from .commands.task.list import list_tasks

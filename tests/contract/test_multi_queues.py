@@ -1,9 +1,8 @@
-import pytest
-
-from sheppy import Queue, Backend, Worker
+from sheppy import Backend, Queue, Worker
 from tests.dependencies import (
     simple_async_task,
 )
+
 
 class TestMultipleQueues:
 
@@ -19,15 +18,15 @@ class TestMultipleQueues:
         await queue2.add(t2 := simple_async_task(3, 4))
         await queue3.add(t3 := simple_async_task(5, 6))
 
-        await queue1.size() == 1
-        await queue2.size() == 1
-        await queue3.size() == 1
+        assert await queue1.size() == 1
+        assert await queue2.size() == 1
+        assert await queue3.size() == 1
 
         await worker.work(max_tasks=3)
 
-        await queue1.size() == 0
-        await queue2.size() == 0
-        await queue3.size() == 0
+        assert await queue1.size() == 0
+        assert await queue2.size() == 0
+        assert await queue3.size() == 0
 
         t1 = await queue1.refresh(t1)
         t2 = await queue2.refresh(t2)

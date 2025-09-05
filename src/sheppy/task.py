@@ -1,11 +1,10 @@
 import importlib
-import sys
 import os
-from collections.abc import Callable
-from datetime import datetime, timezone, UTC
-from croniter import croniter
-from functools import wraps
+import sys
 from base64 import b64encode
+from collections.abc import Callable
+from datetime import datetime, timezone
+from functools import wraps
 from typing import (
     Any,
     ParamSpec,
@@ -15,6 +14,7 @@ from typing import (
 )
 from uuid import UUID, uuid3, uuid4
 
+from croniter import croniter
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 P = ParamSpec('P')
@@ -33,7 +33,7 @@ class TaskCron(BaseModel):
 
     def next_run(self, start: datetime | None = None) -> datetime | None:
         if not start:
-            start = datetime.now(UTC)
+            start = datetime.now(timezone.utc)
         return croniter(self.cron, start).get_next(datetime)
 
     def create_task(self, start: datetime) -> "Task":
@@ -122,10 +122,6 @@ class Task(BaseModel):
             parts["retries"] = str(self.metadata.retry_count)
 
         return f"Task({', '.join([f'{k}={v}' for k, v in parts.items()])})"
-
-    def copy(self) -> "Task":
-        print("KINDA BUGGY")
-        return self.model_validate(self.model_dump(exclude_unset=True))
 
     def _create_task_cron(self, cron: str, queue_name: str = None) -> TaskCron:
         # create deterministic ID if not provided

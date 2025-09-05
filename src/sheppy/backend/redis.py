@@ -15,8 +15,6 @@ except ImportError as e:
 from ..utils.task_execution import generate_unique_worker_id
 from .base import Backend, BackendError
 
-from ..task import TaskCron
-
 
 class RedisBackend(Backend):
 

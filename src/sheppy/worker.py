@@ -9,8 +9,8 @@ from .backend.base import Backend
 from .queue import Queue
 from .task import Task, TaskCron
 from .utils.task_execution import (
-    TaskStatus,
     TaskProcessor,
+    TaskStatus,
     generate_unique_worker_id,
 )
 
@@ -139,7 +139,7 @@ class Worker:
                     if tasks:
                         _l = len(tasks)
                         _task_s = ", ".join([str(task.id) for task in tasks])
-                        logger.info(SCHEDULER_PREFIX + f"Enqueued {_l} scheduled task{"s" if _l > 1 else ""} for processing: {_task_s}")
+                        logger.info(SCHEDULER_PREFIX + f"Enqueued {_l} scheduled task{'s' if _l > 1 else ''} for processing: {_task_s}")
 
             except asyncio.CancelledError:
                 break

@@ -1,28 +1,27 @@
-import pytest
-
 from sheppy import Queue, Worker
 from tests.dependencies import (
-    simple_async_task,
     WrappedNumber,
-    middleware_noop,
-    #async_middleware_noop,
-    middleware_noop_no_val,
-    middleware_noop_return_no_val,
-    middleware_noop_yield_no_val,
-    middleware_noop_pass,
-    middleware_noop_yield_only_no_val,
-    middleware_noop_return_only_no_val,
-    middleware_no_args,
-    middleware_too_many_args,
-    middleware_change_arg,
-    middleware_change_return_value,
-    middleware_change_return_type,
-    task_add_with_middleware_noop,
+    # middleware_change_arg,
+    # middleware_change_return_type,
+    # middleware_change_return_value,
+    # middleware_no_args,
+    # middleware_noop,
+    # #async_middleware_noop,
+    # middleware_noop_no_val,
+    # middleware_noop_pass,
+    # middleware_noop_return_no_val,
+    # middleware_noop_return_only_no_val,
+    # middleware_noop_yield_no_val,
+    # middleware_noop_yield_only_no_val,
+    # middleware_too_many_args,
+    simple_async_task,
     task_add_with_middleware_change_arg,
+    task_add_with_middleware_change_return_type,
     task_add_with_middleware_change_return_value,
     task_add_with_middleware_multiple,
-    task_add_with_middleware_change_return_type,
+    task_add_with_middleware_noop,
 )
+
 
 class TestMiddleware:
 

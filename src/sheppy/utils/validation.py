@@ -1,3 +1,7 @@
+"""
+This file contains utility functions meant for internal use only. Expect breaking changes if you use them directly.
+"""
+
 import inspect
 from collections.abc import Callable
 from typing import Annotated, Any, get_args, get_origin, get_type_hints
@@ -87,7 +91,7 @@ def validate_input(
 
     if remaining_kwargs and not has_var_keyword:
         raise ValidationError.from_exception_data(
-            f"Unexpected keyword arguments: {", ".join(remaining_kwargs.keys())}", line_errors=[]
+            f"Unexpected keyword arguments: {', '.join(remaining_kwargs.keys())}", line_errors=[]
         )
 
     return final_args, final_kwargs

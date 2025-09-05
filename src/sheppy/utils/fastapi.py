@@ -7,7 +7,6 @@ __all__ = ["Depends"]
 from collections.abc import Callable
 from typing import Any
 
-
 try:
     from fastapi.params import Depends  # type: ignore
 except ImportError:
