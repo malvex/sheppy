@@ -57,6 +57,13 @@ class TaskProcessor:
     @staticmethod
     async def execute_task(__task: "Task", worker_id: str):
 
+        _generators = []
+        try:
+            __task, _generators = await __class__.process_pre_task_middleware(__task)
+        except Exception as e:
+            print(e)
+            raise e # middleware error, TODO
+
         try:
             result = await __class__._actually_execute_task(__task)
             task = __class__.handle_success_and_update_task_metadata(__task, result, worker_id)
@@ -68,7 +75,41 @@ class TaskProcessor:
 
             exception = e  # temporary
 
+        try:
+            task = await __class__.process_post_task_middleware(task, _generators)
+        except Exception as e:
+            print(e)
+            raise e # middleware error, TODO
+
         return task_status, exception, task
+
+    @staticmethod
+    async def process_pre_task_middleware(task: "Task"):
+        if not task.internal.middleware:
+            return task, []
+
+        _generators = []
+
+        for middleware_string in task.internal.middleware:
+            middleware = __class__.resolve_function(middleware_string, wrapped=False)
+            gen = middleware(task)
+            task = next(gen) or task
+            _generators.append(gen)
+
+        return task, _generators
+
+    @staticmethod
+    async def process_post_task_middleware(task: "Task", _generators: list):
+        if not _generators:
+            return task
+
+        for gen in _generators[::-1]:  # post task middleware goes in reverse order
+            try:
+                task = gen.send(task) or task
+            except StopIteration as e:
+                task = e.value or task
+
+        return task
 
     @staticmethod
     def handle_success_and_update_task_metadata(task: "Task", result: Any, worker_id: str) -> "Task":
@@ -136,12 +177,12 @@ class TaskProcessor:
         raise ValueError(f"Invalid retry_delay type: {type(task.metadata.retry_delay).__name__}. Expected None, float, or list.")
 
     @staticmethod
-    def resolve_function(func: str):
+    def resolve_function(func: str, wrapped: bool = True):
         try:
             module_name, function_name = func.split(':')
             module = importlib.import_module(module_name)
-
-            return getattr(module, function_name).__wrapped__
+            fn = getattr(module, function_name)
+            return fn.__wrapped__ if wrapped else fn
 
         except (ValueError, ImportError, AttributeError) as e:
             raise ValueError(f"Cannot resolve function: {func}") from e

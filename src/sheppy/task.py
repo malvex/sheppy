@@ -51,7 +51,6 @@ class TaskCron(BaseModel):
         )
 
 
-
 class TaskInternal(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -59,6 +58,7 @@ class TaskInternal(BaseModel):
     args: list[Any] | None = None
     kwargs: dict[str, Any] | None = None
     return_type: str | None = None
+    middleware: list | None = None
 
 
 class TaskMetadata(BaseModel):
@@ -178,7 +178,7 @@ class TaskFactory:
         return validate_input(func, args, kwargs)
 
     @staticmethod
-    def create_task(func, args, kwargs, retry, retry_delay) -> Task:
+    def create_task(func, args, kwargs, retry, retry_delay, middleware) -> Task:
         # Store return type to later reconstruct the result
         return_type = __class__._get_return_type(func)
 
@@ -192,12 +192,19 @@ class TaskFactory:
 
         args, kwargs = __class__.validate_input(func, list(args or []), dict(kwargs or {}))
 
+        stringified_middlewares = []
+        if middleware:
+            for m in middleware:
+                # todo: should probably also validate them here
+                stringified_middlewares.append(__class__._stringify_function(m))
+
         _task = Task(
             internal=TaskInternal(
                 func=func_string,
                 args=args,
                 kwargs=kwargs,
-                return_type=return_type
+                return_type=return_type,
+                middleware=stringified_middlewares
             ),
             metadata=TaskMetadata(**task_metadata)
         )
@@ -210,7 +217,8 @@ class TaskFactory:
 def task(
     *,
     retry: float = 0,
-    retry_delay: float | list[float] | None = None
+    retry_delay: float | list[float] | None = None,
+    middleware: list | None = None
 ) -> Callable[[Callable[P, R]], Callable[P, Task]]:
     ...
 
@@ -223,13 +231,14 @@ def task(
     func: Callable[P, R] | None = None,
     *,
     retry: float = 0,
-    retry_delay: float | list[float] | None = None
+    retry_delay: float | list[float] | None = None,
+    middleware: list | None = None
 ) -> Callable[[Callable[P, R]], Callable[P, Task]] | Callable[P, Task]:
     def decorator(func: Callable[P, R]) -> Callable[P, Task]:
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> Task:
 
-            return TaskFactory.create_task(func, args, kwargs, retry, retry_delay)
+            return TaskFactory.create_task(func, args, kwargs, retry, retry_delay, middleware)
 
         return wrapper
 

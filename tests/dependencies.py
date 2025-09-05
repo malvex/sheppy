@@ -524,3 +524,89 @@ class TaskTestCases:
             TaskTestCases.optional_args_tasks()[:2] +
             TaskTestCases.deep_recursion_tasks()[:2]
         )
+
+
+# middleware testing dependencies
+
+class WrappedNumber(BaseModel):
+    result: Any
+    extra: str = "hello"
+
+
+def middleware_noop(task: Task):
+    task = yield task
+    return task
+
+# todo!
+# async def async_middleware_noop(task: Task):
+#     task = yield task
+#     return task
+
+def middleware_noop_no_val(task: Task):
+    yield
+    return
+
+def middleware_noop_return_no_val(task: Task):
+    yield task
+    return
+
+def middleware_noop_yield_no_val(task: Task):
+    task = yield
+    return task
+
+def middleware_noop_pass(task: Task):
+    pass
+
+def middleware_noop_yield_only_no_val(task: Task):
+    yield
+
+# should fail (tbd: more wrong formats)
+def middleware_noop_return_only_no_val(task: Task):
+    return
+
+def middleware_no_args():
+    yield
+    return
+
+def middleware_too_many_args(task: Task, another_task: Task):
+    yield
+    return
+
+def middleware_change_arg(task: Task):
+    task.internal.__dict__["args"][0] = 5
+    yield task
+
+def middleware_change_return_value(task: Task):
+    returning_task = yield task
+    returning_task.__dict__["result"] += 100000
+    return returning_task
+
+def middleware_change_return_type(task: Task):
+    returning_task = yield task
+    wanted_value = WrappedNumber
+    aaa = f"{wanted_value.__module__}.{wanted_value.__qualname__}"  # ! FIXME - must be done automagically
+    returning_task.internal.__dict__["return_type"] = aaa
+
+    returning_task.__dict__["result"] = {"result": returning_task.result, "extra": "hi from middleware"}
+    return returning_task
+
+
+@task(middleware=[middleware_noop])
+def task_add_with_middleware_noop(x: int, y: int) -> int:
+    return x + y
+
+@task(middleware=[middleware_change_arg])
+def task_add_with_middleware_change_arg(x: int, y: int) -> int:
+    return x + y
+
+@task(middleware=[middleware_change_return_value])
+def task_add_with_middleware_change_return_value(x: int, y: int) -> int:
+    return x + y
+
+@task(middleware=[middleware_noop, middleware_change_arg, middleware_change_return_value])
+def task_add_with_middleware_multiple(x: int, y: int) -> int:
+    return x + y
+
+@task(middleware=[middleware_change_return_type, middleware_change_return_value])
+def task_add_with_middleware_change_return_type(x: int, y: int) -> int:
+    return x + y

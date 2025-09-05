@@ -8,6 +8,12 @@ from tests.dependencies import (
     TaskTestCases,
     simple_async_task,
     simple_sync_task,
+    WrappedNumber,
+    task_add_with_middleware_noop,
+    task_add_with_middleware_change_arg,
+    task_add_with_middleware_change_return_value,
+    task_add_with_middleware_multiple,
+    task_add_with_middleware_change_return_type,
 )
 
 
@@ -432,3 +438,74 @@ class TestCronOperations:
         queue = TestQueue()
         success = queue.delete_cron(simple_async_task(5, 6), "1 * * * *")
         assert success == False
+
+
+class TestMiddleware:
+
+    def test_persists_on_task(self):
+        queue = TestQueue()
+
+        t1 = simple_async_task(1, 2)
+        t2 = task_add_with_middleware_noop(1, 2)
+
+        assert len(t1.internal.middleware) == 0
+        assert len(t2.internal.middleware) == 1
+
+        queue.add([t1, t2])
+        t1, t2 = queue.process_all()
+
+        assert len(t1.internal.middleware) == 0
+        assert len(t2.internal.middleware) == 1
+
+        assert t1.result == 3
+        assert t2.result == 3
+
+    def test_noop(self):
+        queue = TestQueue()
+
+        task = task_add_with_middleware_noop(1, 2)
+
+        queue.add(task)
+        task = queue.process_next()
+
+        assert task.result == 3
+
+    def test_change_arg(self):
+        queue = TestQueue()
+
+        task = task_add_with_middleware_change_arg(1, 2)
+
+        queue.add(task)
+        task = queue.process_next()
+
+        assert task.result == 7
+
+    def test_change_return_value(self):
+        queue = TestQueue()
+
+        task = task_add_with_middleware_change_return_value(1, 2)
+
+        queue.add(task)
+        task = queue.process_next()
+
+        assert task.result == 100003
+
+    def test_multiple(self):
+        queue = TestQueue()
+
+        task = task_add_with_middleware_multiple(1, 2)
+
+        queue.add(task)
+        task = queue.process_next()
+
+        assert task.result == 100007
+
+    def test_change_return_type(self):
+        queue = TestQueue()
+
+        task = task_add_with_middleware_change_return_type(1, 2)
+
+        queue.add(task)
+        task = queue.process_next()
+
+        assert task.result == WrappedNumber(result=100003, extra="hi from middleware")
