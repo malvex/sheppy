@@ -8,7 +8,7 @@ from typing import Annotated, Any, get_args, get_origin, get_type_hints
 
 from pydantic import TypeAdapter, ValidationError
 
-from sheppy.task import Task
+from sheppy.models import Task
 
 from .fastapi import Depends
 

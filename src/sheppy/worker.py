@@ -6,8 +6,8 @@ from functools import partial
 from pydantic import BaseModel
 
 from .backend.base import Backend
+from .models import Task, TaskCron
 from .queue import Queue
-from .task import Task, TaskCron
 from .utils.task_execution import (
     TaskProcessor,
     TaskStatus,

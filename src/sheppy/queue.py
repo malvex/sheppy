@@ -3,7 +3,8 @@ from typing import Any
 from uuid import UUID
 
 from .backend.base import Backend
-from .task import Task, TaskCron, TaskFactory
+from .models import Task, TaskCron
+from .task_factory import TaskFactory
 
 
 class Queue:

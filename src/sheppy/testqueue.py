@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from .backend.memory import MemoryBackend
+from .models import Task, TaskCron
 from .queue import Queue
-from .task import Task, TaskCron
 from .utils.task_execution import TaskProcessor, TaskStatus
 
 

@@ -8,16 +8,34 @@ import socket
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, cast, get_args, get_origin
+from typing import Annotated, Any, cast, get_args, get_origin
 from uuid import uuid4
 
 import anyio
-from pydantic import PydanticSchemaGenerationError, TypeAdapter
+from pydantic import ConfigDict, PydanticSchemaGenerationError, TypeAdapter
 
+from ..models import Config, Spec, Task
 from .fastapi import Depends
 
-if TYPE_CHECKING:
-    from ..task import Task
+
+class SpecInternal(Spec):
+     model_config = ConfigDict(frozen=False)
+
+class ConfigInternal(Config):
+    model_config = ConfigDict(frozen=False)
+
+class TaskInternal(Task):
+    model_config = ConfigDict(frozen=False)
+
+    spec: SpecInternal
+    config: ConfigInternal
+
+    @staticmethod
+    def from_task(task: Task) -> "TaskInternal":
+        return TaskInternal.model_validate(task.model_dump(mode="json"))
+
+    def create_task(self) -> Task:
+        return Task.model_validate(self.model_dump(mode="json"))
 
 
 def generate_unique_worker_id(prefix: str) -> str:
@@ -36,7 +54,7 @@ class TaskStatus(str, Enum):
 class TaskProcessor:
 
     @staticmethod
-    async def _actually_execute_task(task: "Task") -> Any:
+    async def _actually_execute_task(task: TaskInternal) -> Any:
         # resolve the function from its string representation
         func = TaskProcessor.resolve_function(task.spec.func)
         args = task.spec.args or []
@@ -54,19 +72,21 @@ class TaskProcessor:
 
     @staticmethod
     async def execute_task(__task: "Task", worker_id: str) -> tuple[TaskStatus, Exception | None, "Task"]:
+        task = TaskInternal.from_task(__task)
+
         try:
-            __task, _generators = await TaskProcessor.process_pre_task_middleware(__task)
+            task, _generators = await TaskProcessor.process_pre_task_middleware(task)
         except Exception as e:
             raise Exception("Middleware error") from e
 
         try:
-            result = await TaskProcessor._actually_execute_task(__task)
-            task = TaskProcessor.handle_success_and_update_task_metadata(__task, result, worker_id)
+            result = await TaskProcessor._actually_execute_task(task)
+            task = TaskProcessor.handle_success_and_update_task_metadata(task, result, worker_id)
             task_status = TaskStatus.SUCCESS
             exception = None
 
         except Exception as e:
-            task_status, task = await TaskProcessor.handle_failed_task(__task, e)
+            task_status, task = await TaskProcessor.handle_failed_task(task, e)
 
             exception = e  # temporary
 
@@ -75,10 +95,10 @@ class TaskProcessor:
         except Exception as e:
             raise Exception("Middleware error") from e
 
-        return task_status, exception, task
+        return task_status, exception, task.create_task()
 
     @staticmethod
-    async def process_pre_task_middleware(task: "Task") -> tuple["Task", list[Any]]:
+    async def process_pre_task_middleware(task: TaskInternal) -> tuple[TaskInternal, list[Any]]:
         if not task.spec.middleware:
             return task, []
 
@@ -93,7 +113,7 @@ class TaskProcessor:
         return task, _generators
 
     @staticmethod
-    async def process_post_task_middleware(task: "Task", _generators: list[Any]) -> "Task":
+    async def process_post_task_middleware(task: TaskInternal, _generators: list[Any]) -> TaskInternal:
         if not _generators:
             return task
 
@@ -106,52 +126,48 @@ class TaskProcessor:
         return task
 
     @staticmethod
-    def handle_success_and_update_task_metadata(task: "Task", result: Any, worker_id: str) -> "Task":
-        # recreate an updated task, don't mutate the original  # ! FIXME
-        updated_task = task.model_copy(deep=True)
-        updated_task.__dict__["result"] = result
-        updated_task.__dict__["completed"] = True
-        updated_task.__dict__["error"] = None  # Clear any previous error on success
+    def handle_success_and_update_task_metadata(task: TaskInternal, result: Any, worker_id: str) -> TaskInternal:
+        task.result = result
+        task.completed = True
+        task.error = None  # Clear any previous error on success
 
-        #updated_task.config.__dict__["worker"] = worker_id
-        updated_task.__dict__["finished_at"] = datetime.now(timezone.utc)
+        #task.config.worker = worker_id
+        task.finished_at = datetime.now(timezone.utc)
 
-        return updated_task
+        return task
 
     @staticmethod
-    async def handle_failed_task(__task: "Task", exception: Exception) -> tuple[TaskStatus, "Task"]:
-        # recreate an updated task, don't mutate the original  # ! FIXME
-        task = __task.model_copy(deep=True)
-        task.__dict__["completed"] = False
-        task.__dict__["error"] = str(exception)
+    async def handle_failed_task(task: TaskInternal, exception: Exception) -> tuple[TaskStatus, TaskInternal]:
+        task.completed = False
+        task.error = str(exception)
 
         # Check if task should be retried
         if task.config.retry > 0:
             task_status, task = TaskProcessor.handle_retry(task)
         else:
-            task.__dict__["finished_at"] = datetime.now(timezone.utc)
+            task.finished_at = datetime.now(timezone.utc)
             task_status = TaskStatus.FAILED_NO_RETRY
 
         return task_status, task
 
     @staticmethod
-    def handle_retry(task: "Task") -> tuple[TaskStatus, "Task"]:  # ! FIXME - mutates input - temp
+    def handle_retry(task: TaskInternal) -> tuple[TaskStatus, TaskInternal]:
         if task.config.retry_count < task.config.retry:
-            task.config.__dict__["retry_count"] += 1
-            task.config.__dict__["last_retry_at"] = datetime.now(timezone.utc)
-            task.config.__dict__["next_retry_at"] = datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task))
+            task.config.retry_count += 1
+            task.config.last_retry_at = datetime.now(timezone.utc)
+            task.config.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task))
             # task will be retried  # ! FIXME
-            task.__dict__["finished_at"] = None
+            task.finished_at = None
             task_status = TaskStatus.FAILED_SHOULD_RETRY
         else:
             # final failure - no more retries  # ! FIXME
-            task.__dict__["finished_at"] = datetime.now(timezone.utc)
+            task.finished_at = datetime.now(timezone.utc)
             task_status = TaskStatus.FAILED_OUT_OF_RETRY
 
         return task_status, task
 
     @staticmethod
-    def calculate_retry_delay(task: "Task") -> float:
+    def calculate_retry_delay(task: TaskInternal) -> float:
         if isinstance(task.config.retry_delay, float):
             return task.config.retry_delay # constant delay for all retries
         if isinstance(task.config.retry_delay, list):
@@ -187,7 +203,7 @@ class TaskProcessor:
         func: Callable[..., Any],
         args: list[Any],
         kwargs: dict[str, Any],
-        task: "Task | None" = None,
+        task: TaskInternal | None = None,
     ) -> tuple[list[Any], dict[str, Any]]:
 
         final_args = []
@@ -229,7 +245,7 @@ class TaskProcessor:
             return ann == 'Task'
 
         return (getattr(ann, '__name__', None) == 'Task' and
-                getattr(ann, '__module__', None) == 'sheppy.task')
+                getattr(ann, '__module__', None) == 'sheppy.models')  # ! FIXME
 
     @staticmethod
     def _validate(value: Any, annotation: Any) -> Any:

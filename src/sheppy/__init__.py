@@ -1,6 +1,7 @@
 from .backend import Backend, BackendError, MemoryBackend, RedisBackend
+from .models import Task
 from .queue import Queue
-from .task import Task, task
+from .task_factory import task
 from .testqueue import TestQueue
 from .utils.fastapi import Depends
 from .worker import Worker
