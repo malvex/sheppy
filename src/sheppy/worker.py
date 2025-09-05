@@ -10,7 +10,6 @@ from .models import Task, TaskCron
 from .queue import Queue
 from .utils.task_execution import (
     TaskProcessor,
-    TaskStatus,
     generate_unique_worker_id,
 )
 
@@ -225,24 +224,24 @@ class Worker:
 
     async def process_task(self, queue: Queue, task: Task) -> Task:
 
-        task_status, exception, task = await self._task_processor.execute_task(task, self.worker_id)
+        exception, task = await self._task_processor.execute_task(task, self.worker_id)
 
-        if task_status == TaskStatus.SUCCESS:
+        if task.completed:
             self.stats.processed += 1
             logger.info(WORKER_PREFIX + f"Task {task.id} completed successfully")
         else:
             self.stats.failed += 1
 
         # non retriable task
-        if task_status == TaskStatus.FAILED_NO_RETRY:
+        if task.error and not task.is_retriable:
             logger.error(WORKER_PREFIX + f"Task {task.id} failed: {exception}", exc_info=True)
 
         # retriable task - final failure
-        if task_status == TaskStatus.FAILED_OUT_OF_RETRY:
+        if task.error and not task.should_retry:
             logger.error(WORKER_PREFIX + f"Task {task.id} failed after {task.retry_count} retries: {exception}", exc_info=True)
 
         # retriable task - reschedule
-        if task_status == TaskStatus.FAILED_SHOULD_RETRY:
+        if task.error and task.should_retry:
             logger.warning(WORKER_PREFIX + f"Task {task.id} failed (attempt {task.retry_count}/{task.config.retry}), scheduling retry at {task.next_retry_at}")
 
             # schedule the task for retry

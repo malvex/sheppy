@@ -28,7 +28,7 @@ def validate_input(
 
     for param_name, param in signature.parameters.items():
 
-        if _is_task_injection(param_name, param):
+        if _is_task_injection(param):
             if param.default != inspect.Parameter.empty:
                 raise ValidationError.from_exception_data(
                     f"Task injection parameter '{param_name}' cannot have a default value", line_errors=[]
@@ -97,8 +97,8 @@ def validate_input(
     return final_args, final_kwargs
 
 
-def _is_task_injection(param_name: str, param: inspect.Parameter) -> bool:
-    if param_name != 'self':
+def _is_task_injection(param: inspect.Parameter) -> bool:
+    if param.name != 'self':
         return False
 
     return param.annotation is Task or param.annotation == 'Task'

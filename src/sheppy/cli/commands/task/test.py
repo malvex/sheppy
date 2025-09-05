@@ -62,7 +62,7 @@ def test(
                 console.print(f"[red]Function '{function}' is not a task.[/red]")
                 return
 
-            _, exception, executed_task = await TaskProcessor.execute_task(task, "cli")
+            exception, executed_task = await TaskProcessor.execute_task(task, "cli")
 
             if exception:
                 raise exception

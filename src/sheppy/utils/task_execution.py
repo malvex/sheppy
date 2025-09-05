@@ -7,7 +7,6 @@ import inspect
 import socket
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from enum import Enum
 from typing import Annotated, Any, cast, get_args, get_origin
 from uuid import uuid4
 
@@ -33,15 +32,6 @@ def generate_unique_worker_id(prefix: str) -> str:
     return f"{prefix}-{socket.gethostname()}-{str(uuid4())[:8]}"
 
 
-class TaskStatus(str, Enum):
-    """Temporary, to make it easier to refactor."""
-
-    SUCCESS = "success"
-    FAILED_NO_RETRY = "failed_no_retry"
-    FAILED_SHOULD_RETRY = "failed_should_retry"
-    FAILED_OUT_OF_RETRY = "failed_ouf_of_retry"
-
-
 class TaskProcessor:
 
     @staticmethod
@@ -62,7 +52,7 @@ class TaskProcessor:
         return await anyio.to_thread.run_sync(lambda: func(*final_args, **final_kwargs))
 
     @staticmethod
-    async def execute_task(__task: "Task", worker_id: str) -> tuple[TaskStatus, Exception | None, "Task"]:
+    async def execute_task(__task: "Task", worker_id: str) -> tuple[Exception | None, "Task"]:
         task = TaskInternal.from_task(__task)
 
         try:
@@ -73,12 +63,10 @@ class TaskProcessor:
         try:
             result = await TaskProcessor._actually_execute_task(task)
             task = TaskProcessor.handle_success_and_update_task_metadata(task, result, worker_id)
-            task_status = TaskStatus.SUCCESS
             exception = None
 
         except Exception as e:
-            task_status, task = await TaskProcessor.handle_failed_task(task, e)
-
+            task = await TaskProcessor.handle_failed_task(task, e)
             exception = e  # temporary
 
         try:
@@ -86,7 +74,7 @@ class TaskProcessor:
         except Exception as e:
             raise Exception("Middleware error") from e
 
-        return task_status, exception, task.create_task()
+        return exception, task.create_task()
 
     @staticmethod
     async def process_pre_task_middleware(task: TaskInternal) -> tuple[TaskInternal, list[Any]]:
@@ -120,7 +108,7 @@ class TaskProcessor:
     def handle_success_and_update_task_metadata(task: TaskInternal, result: Any, worker_id: str) -> TaskInternal:
         task.result = result
         task.completed = True
-        task.error = None  # Clear any previous error on success
+        task.error = None
 
         #task.config.worker = worker_id
         task.finished_at = datetime.now(timezone.utc)
@@ -128,42 +116,36 @@ class TaskProcessor:
         return task
 
     @staticmethod
-    async def handle_failed_task(task: TaskInternal, exception: Exception) -> tuple[TaskStatus, TaskInternal]:
+    async def handle_failed_task(task: TaskInternal, exception: Exception) -> TaskInternal:
         task.completed = False
         task.error = str(exception)
 
-        # Check if task should be retried
-        if task.config.retry > 0:
-            task_status, task = TaskProcessor.handle_retry(task)
+        if task.is_retriable:
+            task = TaskProcessor.handle_retry(task)
         else:
             task.finished_at = datetime.now(timezone.utc)
-            task_status = TaskStatus.FAILED_NO_RETRY
 
-        return task_status, task
+        return task
 
     @staticmethod
-    def handle_retry(task: TaskInternal) -> tuple[TaskStatus, TaskInternal]:
-        if task.retry_count < task.config.retry:
+    def handle_retry(task: TaskInternal) -> TaskInternal:
+        if task.should_retry:
             task.retry_count += 1
             task.last_retry_at = datetime.now(timezone.utc)
             task.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task))
-            # task will be retried  # ! FIXME
             task.finished_at = None
-            task_status = TaskStatus.FAILED_SHOULD_RETRY
         else:
-            # final failure - no more retries  # ! FIXME
             task.finished_at = datetime.now(timezone.utc)
-            task_status = TaskStatus.FAILED_OUT_OF_RETRY
 
-        return task_status, task
+        return task
 
     @staticmethod
     def calculate_retry_delay(task: TaskInternal) -> float:
         if isinstance(task.config.retry_delay, float):
-            return task.config.retry_delay # constant delay for all retries
+            return task.config.retry_delay  # constant delay for all retries
         if isinstance(task.config.retry_delay, list):
             if len(task.config.retry_delay) == 0:
-                return 1.0  # empty list defaults to 1 second  # ! FIXME - we should probably refuse empty lists as input
+                return 1.0  # empty list defaults to 1 second  # todo - we should probably refuse empty lists as input
 
             if task.retry_count < len(task.config.retry_delay):
                 return float(task.config.retry_delay[task.retry_count])
@@ -171,11 +153,11 @@ class TaskProcessor:
                 # use last delay value for remaining retries
                 return float(task.config.retry_delay[-1])
 
-        # this should never happen if the library is used correctly  # ! FIXME
+        # this should never happen if the library is used correctly
         if isinstance(task.config.retry_delay, int):
             return float(task.config.retry_delay)
-        # this should never happen if the library is used correctly  # ! FIXME
-        raise ValueError(f"Invalid retry_delay type: {type(task.config.retry_delay).__name__}. Expected None, float, or list.")
+        # this should never happen if the library is used correctly
+        raise ValueError(f"Invalid retry_delay type: {type(task.config.retry_delay).__name__}. Expected float or list[float].")
 
     @staticmethod
     def resolve_function(func: str, wrapped: bool = True) -> Callable[..., Any]:
@@ -228,15 +210,11 @@ class TaskProcessor:
         if param.name != 'self':
             return False
 
-        ann = param.annotation
-        if ann == inspect.Parameter.empty:
+        if param.annotation == inspect.Parameter.empty:
             return False
 
-        if isinstance(ann, str):
-            return ann == 'Task'
+        return param.annotation is Task or param.annotation == 'Task'
 
-        return (getattr(ann, '__name__', None) == 'Task' and
-                getattr(ann, '__module__', None) == 'sheppy.models')  # ! FIXME
 
     @staticmethod
     def _validate(value: Any, annotation: Any) -> Any:

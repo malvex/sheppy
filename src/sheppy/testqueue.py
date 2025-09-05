@@ -5,7 +5,7 @@ from uuid import UUID
 from .backend.memory import MemoryBackend
 from .models import Task, TaskCron
 from .queue import Queue
-from .utils.task_execution import TaskProcessor, TaskStatus
+from .utils.task_execution import TaskProcessor
 
 
 class TestQueue:
@@ -86,11 +86,11 @@ class TestQueue:
 
         __task = tasks[0]
 
-        task_status, _, task = await self._task_processor.execute_task(__task, self._worker_id)
+        _, task = await self._task_processor.execute_task(__task, self._worker_id)
 
         self.processed_tasks.append(task)
 
-        if task_status != TaskStatus.SUCCESS:
+        if task.error:
             self.failed_tasks.append(task)
             # Final failure
             if not task.finished_at:
@@ -115,12 +115,12 @@ class TestQueue:
 
         for __task in tasks:
 
-            task_status, _, task = await self._task_processor.execute_task(__task, self._worker_id)
+            _, task = await self._task_processor.execute_task(__task, self._worker_id)
 
             self.processed_tasks.append(task)
             processed.append(task)
 
-            if task_status != TaskStatus.SUCCESS:
+            if task.error:
                 self.failed_tasks.append(task)
 
                 # Override next_retry_at to be immediate (ignore delay)  # ! FIXME
