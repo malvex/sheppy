@@ -1,20 +1,37 @@
 import importlib
 from datetime import datetime, timezone
 from typing import (
+    Annotated,
     Any,
     ParamSpec,
     TypeVar,
 )
-from uuid import UUID, uuid3, uuid4
+from uuid import UUID, uuid4, uuid5
 
 from croniter import croniter
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    model_validator,
+)
 
 P = ParamSpec('P')
 R = TypeVar('R')
 
 
 TASK_CRON_NS = UUID('7005b432-c135-4131-b19e-d3dc89703a9a')
+
+
+def cron_expression_validator(value: str) -> str:
+    if not croniter.is_valid(value):
+        raise ValueError(f"{value} is not a valid cron expression")
+
+    return value
+
+CronExpression = Annotated[str, AfterValidator(cron_expression_validator)]
 
 
 class Spec(BaseModel):
@@ -30,20 +47,11 @@ class Spec(BaseModel):
 class Config(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    # Task Retries
     retry: float = Field(default=0, ge=0)
     retry_delay: float | list[float] = Field(default=1.0)
-    retry_count: int = 0
-    last_retry_at: datetime | None = None
-    next_retry_at: datetime | None = None
 
     # timeout: float | None = None  # seconds
     # tags: dict[str, str] = Field(default_factory=dict)
-    # extra: dict[str, Any] = Field(default_factory=dict)
-
-    # status stuff...
-    # caller: str | None = None
-    # worker: str | None = None
 
 
 class Task(BaseModel):
@@ -61,6 +69,13 @@ class Task(BaseModel):
     finished_at: datetime | None = None
     scheduled_at: datetime | None = None
 
+    retry_count: int = 0
+    last_retry_at: datetime | None = None
+    next_retry_at: datetime | None = None
+    # caller: str | None = None
+    # worker: str | None = None
+
+    # extra: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def is_retriable(self) -> bool:
@@ -68,7 +83,7 @@ class Task(BaseModel):
 
     @property
     def should_retry(self) -> bool:
-        return self.config.retry > 0 and self.config.retry_count < self.config.retry
+        return self.config.retry > 0 and self.retry_count < self.config.retry
 
     @model_validator(mode='after')
     def _reconstruct_pydantic_result(self) -> 'Task':
@@ -96,8 +111,8 @@ class Task(BaseModel):
             "error": repr(self.error)
         }
 
-        if self.config.retry_count > 0:
-            parts["retries"] = str(self.config.retry_count)
+        if self.retry_count > 0:
+            parts["retry_count"] = str(self.retry_count)
 
         return f"Task({', '.join([f'{k}={v}' for k, v in parts.items()])})"
 
@@ -105,8 +120,8 @@ class Task(BaseModel):
 class TaskCron(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    id: UUID
-    expression: str
+    id: UUID = Field(default_factory=uuid4)
+    expression: CronExpression
 
     spec: Spec
     config: Config
@@ -115,7 +130,11 @@ class TaskCron(BaseModel):
     # last_run: datetime | None = None
     # next_run: datetime | None = None
 
-    #@computed_field  # use this instead of id for the dedup thing
+    @property
+    def deterministic_id(self) -> UUID:
+        """Deterministic UUID to prevent duplicated cron definitions."""
+        s = self.spec.model_dump_json() + self.config.model_dump_json() + self.expression
+        return uuid5(TASK_CRON_NS, s)
 
     def next_run(self, start: datetime | None = None) -> datetime:
         if not start:
@@ -124,7 +143,7 @@ class TaskCron(BaseModel):
 
     def create_task(self, start: datetime) -> Task:
         return Task(
-            id=uuid3(TASK_CRON_NS, str(self.id) + str(start.timestamp())),
+            id=uuid5(TASK_CRON_NS, str(self.deterministic_id) + str(start.timestamp())),
             spec=self.spec.model_copy(deep=True),
             config=self.config.model_copy(deep=True)
         )

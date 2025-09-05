@@ -95,7 +95,7 @@ class TestQueue:
             # Final failure
             if not task.finished_at:
                 # For tests, override next_retry_at to be immediate (ignore delay)
-                task.config.__dict__["next_retry_at"] = datetime.now(timezone.utc)
+                task.__dict__["next_retry_at"] = datetime.now(timezone.utc)
 
                 # Requeue for immediate retry
                 await self._queue.add(task)
@@ -124,7 +124,7 @@ class TestQueue:
                 self.failed_tasks.append(task)
 
                 # Override next_retry_at to be immediate (ignore delay)  # ! FIXME
-                task.config.__dict__["next_retry_at"] = datetime.now(timezone.utc)
+                task.__dict__["next_retry_at"] = datetime.now(timezone.utc)
 
                 # Requeue for immediate retry
                 await self._queue.add(task)

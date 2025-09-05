@@ -55,7 +55,7 @@ def info(
         if task.finished_at:
             console.print(f"  Finished: [dim]{task.finished_at}[/dim]")
         if task.config.retry:  # ! FIXME
-            console.print(f"  Retries: [magenta]{task.config.retry_count}[/magenta] (max [magenta]{task.config.retry}[/magenta])")
+            console.print(f"  Retries: [magenta]{task.retry_count}[/magenta] (max [magenta]{task.config.retry}[/magenta])")
 
         if task.spec.args:
             console.print("\n[bold]Arguments:[/bold]")

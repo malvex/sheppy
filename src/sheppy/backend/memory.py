@@ -218,18 +218,17 @@ class MemoryBackend(Backend):
 
             return tasks
 
-    async def add_cron(self, queue_name: str, task_cron: dict[str, Any]) -> bool:
+    async def add_cron(self, queue_name: str, deterministic_id: str, task_cron: dict[str, Any]) -> bool:
         async with self._locks[queue_name]:
-            cron_id = task_cron['id']
-            if cron_id not in self._cron_tasks[queue_name]:
-                self._cron_tasks[queue_name][cron_id] = task_cron
+            if deterministic_id not in self._cron_tasks[queue_name]:
+                self._cron_tasks[queue_name][deterministic_id] = task_cron
                 return True
             return False
 
-    async def delete_cron(self, queue_name: str, cron_id: str) -> bool:
+    async def delete_cron(self, queue_name: str, deterministic_id: str) -> bool:
         async with self._locks[queue_name]:
-            if cron_id in self._cron_tasks[queue_name]:
-                del self._cron_tasks[queue_name][cron_id]
+            if deterministic_id in self._cron_tasks[queue_name]:
+                del self._cron_tasks[queue_name][deterministic_id]
                 return True
             return False
 

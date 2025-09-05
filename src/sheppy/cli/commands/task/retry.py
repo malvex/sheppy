@@ -65,7 +65,7 @@ def retry(
             console.print(f"  Function: [blue]{task.spec.func}[/blue]")
             if task.error:
                 console.print(f"  Previous error: [dim]{task.error}[/dim]")
-            console.print(f"  Retry count: [magenta]{task.config.retry_count}[/magenta]")
+            console.print(f"  Retry count: [magenta]{task.retry_count}[/magenta]")
         else:
             console.print(f"[red]Failed to re-queue task {task_id}[/red]")
             raise typer.Exit(1)

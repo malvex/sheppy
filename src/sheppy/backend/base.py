@@ -79,11 +79,11 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def add_cron(self, queue_name: str, task_cron: dict[str, Any]) -> bool:
+    async def add_cron(self, queue_name: str, deterministic_id: str, task_cron: dict[str, Any]) -> bool:
         pass
 
     @abstractmethod
-    async def delete_cron(self, queue_name: str, task_id: str) -> bool:
+    async def delete_cron(self, queue_name: str, deterministic_id: str) -> bool:
         pass
 
     @abstractmethod

@@ -1,6 +1,5 @@
 import os
 import sys
-from base64 import b64encode
 from collections.abc import Callable
 from functools import wraps
 from typing import (
@@ -10,9 +9,8 @@ from typing import (
     get_type_hints,
     overload,
 )
-from uuid import UUID, uuid3
 
-from .models import TASK_CRON_NS, Config, Spec, Task, TaskCron
+from .models import Config, Spec, Task, TaskCron
 from .utils.validation import validate_input
 
 P = ParamSpec('P')
@@ -89,15 +87,8 @@ class TaskFactory:
         return _task
 
     @staticmethod
-    def create_cron_from_task(task: Task, cron_expression: str, queue_name: str | None = None) -> TaskCron:
-        # create deterministic ID if not provided
-        s = task.spec.model_dump_json(include={"func", "args", "kwargs"})
-        s += b64encode(cron_expression.encode()).decode()
-        s += (queue_name if queue_name else "")
-        cron_id = str(uuid3(TASK_CRON_NS, s))
-
+    def create_cron_from_task(task: Task, cron_expression: str) -> TaskCron:
         return TaskCron(
-            id=UUID(cron_id),
             expression=cron_expression,
             spec=task.spec.model_copy(deep=True),
             config=task.config.model_copy(deep=True),

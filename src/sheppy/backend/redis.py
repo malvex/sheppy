@@ -390,13 +390,13 @@ class RedisBackend(Backend):
 
         return tasks
 
-    async def add_cron(self, queue_name: str, task_cron: dict[str, Any]) -> bool:
+    async def add_cron(self, queue_name: str, deterministic_id: str, task_cron: dict[str, Any]) -> bool:
         cron_tasks_key = self._cron_tasks_key(queue_name)
-        return bool(await self.client.hsetnx(cron_tasks_key, task_cron['id'], json.dumps(task_cron)))  # type: ignore[misc]
+        return bool(await self.client.hsetnx(cron_tasks_key, deterministic_id, json.dumps(task_cron)))  # type: ignore[misc]
 
-    async def delete_cron(self, queue_name: str, cron_id: str) -> bool:
+    async def delete_cron(self, queue_name: str, deterministic_id: str) -> bool:
         cron_tasks_key = self._cron_tasks_key(queue_name)
-        return bool(await self.client.hdel(cron_tasks_key, cron_id))  # type: ignore[misc]
+        return bool(await self.client.hdel(cron_tasks_key, deterministic_id))  # type: ignore[misc]
 
     async def list_crons(self, queue_name: str) -> list[dict[str, Any]]:
         cron_tasks_key = self._cron_tasks_key(queue_name)

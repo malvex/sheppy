@@ -14,21 +14,12 @@ from uuid import uuid4
 import anyio
 from pydantic import ConfigDict, PydanticSchemaGenerationError, TypeAdapter
 
-from ..models import Config, Spec, Task
+from ..models import Task
 from .fastapi import Depends
 
 
-class SpecInternal(Spec):
-     model_config = ConfigDict(frozen=False)
-
-class ConfigInternal(Config):
-    model_config = ConfigDict(frozen=False)
-
 class TaskInternal(Task):
     model_config = ConfigDict(frozen=False)
-
-    spec: SpecInternal
-    config: ConfigInternal
 
     @staticmethod
     def from_task(task: Task) -> "TaskInternal":
@@ -152,10 +143,10 @@ class TaskProcessor:
 
     @staticmethod
     def handle_retry(task: TaskInternal) -> tuple[TaskStatus, TaskInternal]:
-        if task.config.retry_count < task.config.retry:
-            task.config.retry_count += 1
-            task.config.last_retry_at = datetime.now(timezone.utc)
-            task.config.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task))
+        if task.retry_count < task.config.retry:
+            task.retry_count += 1
+            task.last_retry_at = datetime.now(timezone.utc)
+            task.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task))
             # task will be retried  # ! FIXME
             task.finished_at = None
             task_status = TaskStatus.FAILED_SHOULD_RETRY
@@ -174,8 +165,8 @@ class TaskProcessor:
             if len(task.config.retry_delay) == 0:
                 return 1.0  # empty list defaults to 1 second  # ! FIXME - we should probably refuse empty lists as input
 
-            if task.config.retry_count < len(task.config.retry_delay):
-                return float(task.config.retry_delay[task.config.retry_count])
+            if task.retry_count < len(task.config.retry_delay):
+                return float(task.config.retry_delay[task.retry_count])
             else:
                 # use last delay value for remaining retries
                 return float(task.config.retry_delay[-1])
