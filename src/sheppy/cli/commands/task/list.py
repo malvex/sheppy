@@ -44,9 +44,6 @@ def list_tasks(
         tasks = []
 
         all_backend_tasks = await q.get_all_tasks()
-        all_scheduled_tasks = await q.list_scheduled()
-
-        all_scheduled_task_ids = [str(st.id) for _at, st in all_scheduled_tasks]
 
         #if status_filter in ["all", "completed", "failed"]:
 
@@ -55,7 +52,8 @@ def list_tasks(
                 queue_status = "[green]completed[/green]"
             elif task.error:
                 queue_status = "[red]failed[/red]"
-            elif str(task.id) in all_scheduled_task_ids:
+            #elif str(task.id) in all_scheduled_task_ids:
+            elif task.scheduled_at:
                 queue_status = "[magenta]scheduled[/magenta]"
             else:
                 queue_status = "pending"
@@ -89,15 +87,18 @@ def list_tasks(
             table.add_column("Status", style="yellow")
             table.add_column("Created (UTC)", style="blue")
             table.add_column("Finished (UTC)", style="blue")
+            table.add_column("Scheduled (UTC)", style="blue")
 
             for (task, queue_status) in tasks:  # enumerate(tasks[:limit], 1):
+
 
                 table.add_row(
                     str(task.id),
                     task.spec.func,
                     queue_status,
                     humanize_datetime(task.created_at),
-                    humanize_datetime(task.finished_at)
+                    humanize_datetime(task.finished_at),
+                    humanize_datetime(task.scheduled_at if not task.finished_at else None),
                 )
 
             console.print(table)

@@ -48,6 +48,8 @@ class Queue:
         if isinstance(at, timedelta):
             at = datetime.now(timezone.utc) + at
 
+        task.__dict__["scheduled_at"] = at
+
         return await self.backend.schedule(self.name, task.model_dump(mode='json'), at)
 
     async def enqueue_scheduled(self, now: datetime | None = None) -> list[Task]:
@@ -61,16 +63,10 @@ class Queue:
 
         return tasks
 
-    async def list_scheduled(self) -> list[tuple[datetime, Task]]:
+    async def list_scheduled(self) -> list[Task]:
         """List scheduled tasks."""
         await self._ensure_backend_is_connected()
-
-        scheduled_tasks = []
-        for task_data in await self.backend.list_scheduled(self.name):
-            scheduled_at = task_data.pop("_scheduled_at")
-            scheduled_tasks.append((scheduled_at, Task.model_validate(task_data)))
-
-        return scheduled_tasks
+        return [Task.model_validate(t) for t in await self.backend.list_scheduled(self.name)]
 
     async def wait_for_result(self, task: Task | UUID, timeout: float = 0) -> Task | None:
         await self._ensure_backend_is_connected()

@@ -181,9 +181,8 @@ class RedisBackend(Backend):
 
         count = 0
 
-        # Clear stream (XTRIM to 0 entries)
         stream_info = await self.client.xinfo_stream(pending_tasks_key)
-        count += stream_info.get("length", 0)  #  ! fixme?
+        count += stream_info.get("length", 0)
         await self.client.xtrim(pending_tasks_key, maxlen=0)
 
         count += await self.client.zcard(scheduled_key)
@@ -214,7 +213,7 @@ class RedisBackend(Backend):
 
             # add to sorted set with timestamp as score
             score = at.timestamp()
-            await self.client.zadd(scheduled_key, {json.dumps(task_data): score})  # ! FIXME? only store task_id?
+            await self.client.zadd(scheduled_key, {json.dumps(task_data): score})
 
             return True
         except Exception as e:
@@ -246,7 +245,6 @@ class RedisBackend(Backend):
 
         await self._ensure_consumer_group(finished_tasks_key)
 
-        # ! FIXME - scheduled tasks currently skip pop() and so they aren't in stream!
         message_id = None
         if task_data["id"] in self._pending_messages:
             stored_queue, message_id = self._pending_messages[task_data["id"]]
@@ -381,11 +379,11 @@ class RedisBackend(Backend):
         task_jsons = await self.client.zrange(scheduled_key, 0, -1, withscores=True)
 
         tasks = []
-        for task_json, score in task_jsons:
+        for task_json, _score in task_jsons:
             task_data = json.loads(task_json)
 
             # we don't store scheduled time so get it from score
-            task_data["_scheduled_at"] = datetime.fromtimestamp(score).isoformat()
+            #task_data["_scheduled_at"] = datetime.fromtimestamp(score).isoformat()
             tasks.append(task_data)
 
         return tasks
