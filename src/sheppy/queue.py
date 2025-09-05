@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from .backend.base import Backend
-from .task import Task, TaskCron
+from .task import Task, TaskCron, TaskFactory
 
 
 class Queue:
@@ -111,13 +111,13 @@ class Queue:
 
     async def add_cron(self, task: Task, cron: str) -> bool:
         await self._ensure_backend_is_connected()
-        task_cron = task._create_task_cron(cron, self.name)
+        task_cron = TaskFactory.create_cron_from_task(task, cron, self.name)
         return await self.backend.add_cron(self.name, task_cron.model_dump(mode="json"))
 
     async def delete_cron(self, task: Task, cron: str) -> bool:
         await self._ensure_backend_is_connected()
-        task_cron = task._create_task_cron(cron, self.name)
-        return await self.backend.delete_cron(self.name, task_cron.id)
+        task_cron = TaskFactory.create_cron_from_task(task, cron, self.name)
+        return await self.backend.delete_cron(self.name, str(task_cron.id))
 
     async def list_crons(self) -> list[TaskCron]:
         await self._ensure_backend_is_connected()

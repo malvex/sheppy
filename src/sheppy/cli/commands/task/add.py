@@ -59,7 +59,7 @@ def add(
             raise typer.Exit(1) from None
 
         console.print(f"  Task ID: [yellow]{task.id}[/yellow]")
-        console.print(f"  Function: [blue]{task.internal.func}[/blue]")
+        console.print(f"  Function: [blue]{task.spec.func}[/blue]")
         console.print(f"  Queue: [cyan]{queue}[/cyan]")
         if parsed_args:
             console.print(f"  Arguments: {json.dumps(parsed_args, indent=2)}")

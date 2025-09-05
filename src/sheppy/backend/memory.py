@@ -155,8 +155,7 @@ class MemoryBackend(Backend):
                 if task_id in self._results[queue_name]:
                     task_data = self._results[queue_name][task_id]
 
-                    metadata = task_data.get("metadata", {})
-                    if metadata.get("finished_datetime") or task_data.get("completed") or task_data.get("error"):
+                    if task_data.get("finished_at") or task_data.get("completed") or task_data.get("error"):
                         return task_data
 
             if timeout is None or timeout < 0:

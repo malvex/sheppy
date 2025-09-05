@@ -21,7 +21,7 @@ class TestSuccessfulTasks:
         assert not task.completed
         assert not task.error
         assert not task.result
-        assert not task.metadata.finished_datetime
+        assert not task.finished_at
 
         # process the task
         await worker.work(max_tasks=1)
@@ -32,7 +32,7 @@ class TestSuccessfulTasks:
         assert task.completed
         assert not task.error
         assert task.result == test_case.expected_result
-        assert task.metadata.finished_datetime is not None
+        assert task.finished_at is not None
 
 
     @pytest.mark.parametrize("test_case", TaskTestCases.subset_successful_tasks(), ids=lambda tc: tc.name)
@@ -81,7 +81,7 @@ class TestFailingTasks:
         assert not task.completed
         assert task.error
         assert task.error == test_case.expected_error
-        assert task.metadata.finished_datetime is not None
+        assert task.finished_at is not None
 
 
 class TestTaskSelfReference:
@@ -303,7 +303,7 @@ class TestBatchOperations:
         assert t1.completed
         assert not t1.error
         assert t1.result == 3
-        assert t1.metadata.finished_datetime is not None
+        assert t1.finished_at is not None
 
         await worker.work(max_tasks=1)
 
@@ -314,7 +314,7 @@ class TestBatchOperations:
         assert t2.completed
         assert not t2.error
         assert t2.result == 25
-        assert t2.metadata.finished_datetime is not None
+        assert t2.finished_at is not None
 
 
 class TestCronOperations:
@@ -335,7 +335,6 @@ class TestCronOperations:
                 # Exactly same cron definitions (same task, same input, same cron schedule)
                 # should not be added (would be duplicated crons)
                 should_succeed = True if i == 0 else False
-                print(i, should_succeed)
 
                 success = await queue.add_cron(task, schedule)
                 assert success is should_succeed

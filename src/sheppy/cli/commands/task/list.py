@@ -62,7 +62,7 @@ def list_tasks(
 
             tasks.append((task, queue_status))
 
-        tasks.sort(key=lambda x: x[0].metadata.created_datetime or datetime.min, reverse=True)
+        tasks.sort(key=lambda x: x[0].created_at or datetime.min, reverse=True)
 
         if format_output == OutputFormat.json:
 
@@ -94,10 +94,10 @@ def list_tasks(
 
                 table.add_row(
                     str(task.id),
-                    task.internal.func,
+                    task.spec.func,
                     queue_status,
-                    humanize_datetime(task.metadata.created_datetime),
-                    humanize_datetime(task.metadata.finished_datetime)
+                    humanize_datetime(task.created_at),
+                    humanize_datetime(task.finished_at)
                 )
 
             console.print(table)

@@ -573,7 +573,7 @@ def middleware_too_many_args(task: Task, another_task: Task):
     return
 
 def middleware_change_arg(task: Task):
-    task.internal.__dict__["args"][0] = 5
+    task.spec.__dict__["args"][0] = 5
     yield task
 
 def middleware_change_return_value(task: Task):
@@ -585,7 +585,7 @@ def middleware_change_return_type(task: Task):
     returning_task = yield task
     wanted_value = WrappedNumber
     aaa = f"{wanted_value.__module__}.{wanted_value.__qualname__}"  # ! FIXME - must be done automagically
-    returning_task.internal.__dict__["return_type"] = aaa
+    returning_task.spec.__dict__["return_type"] = aaa
 
     returning_task.__dict__["result"] = {"result": returning_task.result, "extra": "hi from middleware"}
     return returning_task

@@ -38,9 +38,9 @@ class TaskProcessor:
     @staticmethod
     async def _actually_execute_task(task: "Task") -> Any:
         # resolve the function from its string representation
-        func = __class__.resolve_function(task.internal.func)
-        args = task.internal.args or []
-        kwargs = task.internal.kwargs or {}
+        func = __class__.resolve_function(task.spec.func)
+        args = task.spec.args or []
+        kwargs = task.spec.kwargs or {}
 
         # validate all parameters, inject DI and Task
         final_args, final_kwargs = await __class__.process_function_parameters(func, args, kwargs, task)
@@ -79,12 +79,12 @@ class TaskProcessor:
 
     @staticmethod
     async def process_pre_task_middleware(task: "Task") -> tuple["Task", list]:
-        if not task.internal.middleware:
+        if not task.spec.middleware:
             return task, []
 
         _generators = []
 
-        for middleware_string in task.internal.middleware:
+        for middleware_string in task.spec.middleware:
             middleware = __class__.resolve_function(middleware_string, wrapped=False)
             gen = middleware(task)
             task = next(gen) or task
@@ -113,8 +113,8 @@ class TaskProcessor:
         updated_task.__dict__["completed"] = True
         updated_task.__dict__["error"] = None  # Clear any previous error on success
 
-        updated_task.metadata.__dict__["worker"] = worker_id
-        updated_task.metadata.__dict__["finished_datetime"] = datetime.now(timezone.utc)
+        #updated_task.config.__dict__["worker"] = worker_id
+        updated_task.__dict__["finished_at"] = datetime.now(timezone.utc)
 
         return updated_task
 
@@ -126,49 +126,49 @@ class TaskProcessor:
         task.__dict__["error"] = str(exception)
 
         # Check if task should be retried
-        if task.metadata.retry > 0:
+        if task.config.retry > 0:
             task_status, task = __class__.handle_retry(task)
         else:
-            task.metadata.__dict__["finished_datetime"] = datetime.now(timezone.utc)
+            task.__dict__["finished_at"] = datetime.now(timezone.utc)
             task_status = TaskStatus.FAILED_NO_RETRY
 
         return task_status, task
 
     @staticmethod
     def handle_retry(task: "Task"):  # ! FIXME - mutates input - temp
-        if task.metadata.retry_count < task.metadata.retry:
-            task.metadata.__dict__["retry_count"] += 1
-            task.metadata.__dict__["last_retry_at"] = datetime.now(timezone.utc)
-            task.metadata.__dict__["next_retry_at"] = datetime.now(timezone.utc) + timedelta(seconds=__class__.calculate_retry_delay(task))
+        if task.config.retry_count < task.config.retry:
+            task.config.__dict__["retry_count"] += 1
+            task.config.__dict__["last_retry_at"] = datetime.now(timezone.utc)
+            task.config.__dict__["next_retry_at"] = datetime.now(timezone.utc) + timedelta(seconds=__class__.calculate_retry_delay(task))
             # task will be retried  # ! FIXME
-            task.metadata.__dict__["finished_datetime"] = None
+            task.__dict__["finished_at"] = None
             task_status = TaskStatus.FAILED_SHOULD_RETRY
         else:
             # final failure - no more retries  # ! FIXME
-            task.metadata.__dict__["finished_datetime"] = datetime.now(timezone.utc)
+            task.__dict__["finished_at"] = datetime.now(timezone.utc)
             task_status = TaskStatus.FAILED_OUT_OF_RETRY
 
         return task_status, task
 
     @staticmethod
     def calculate_retry_delay(task: "Task") -> float:
-        if isinstance(task.metadata.retry_delay, float):
-            return task.metadata.retry_delay # constant delay for all retries
-        if isinstance(task.metadata.retry_delay, list):
-            if len(task.metadata.retry_delay) == 0:
+        if isinstance(task.config.retry_delay, float):
+            return task.config.retry_delay # constant delay for all retries
+        if isinstance(task.config.retry_delay, list):
+            if len(task.config.retry_delay) == 0:
                 return 1.0  # empty list defaults to 1 second  # ! FIXME - we should probably refuse empty lists as input
 
-            if task.metadata.retry_count < len(task.metadata.retry_delay):
-                return float(task.metadata.retry_delay[task.metadata.retry_count])
+            if task.config.retry_count < len(task.config.retry_delay):
+                return float(task.config.retry_delay[task.config.retry_count])
             else:
                 # use last delay value for remaining retries
-                return float(task.metadata.retry_delay[-1])
+                return float(task.config.retry_delay[-1])
 
         # this should never happen if the library is used correctly  # ! FIXME
-        if isinstance(task.metadata.retry_delay, int):
-            return float(task.metadata.retry_delay)
+        if isinstance(task.config.retry_delay, int):
+            return float(task.config.retry_delay)
         # this should never happen if the library is used correctly  # ! FIXME
-        raise ValueError(f"Invalid retry_delay type: {type(task.metadata.retry_delay).__name__}. Expected None, float, or list.")
+        raise ValueError(f"Invalid retry_delay type: {type(task.config.retry_delay).__name__}. Expected None, float, or list.")
 
     @staticmethod
     def resolve_function(func: str, wrapped: bool = True):

@@ -83,7 +83,7 @@ def test(
 
             console.print("\n[bold]Task Details:[/bold]")
             console.print(f"  Task ID: {task.id}")
-            console.print(f"  Function: {task.internal.func}")
+            console.print(f"  Function: {task.spec.func}")
 
         except Exception as e:
             if trace:

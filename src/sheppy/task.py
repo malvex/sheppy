@@ -24,79 +24,58 @@ R = TypeVar('R')
 TASK_CRON_NS = UUID('7005b432-c135-4131-b19e-d3dc89703a9a')
 
 
-class TaskCron(BaseModel):
-    id: str | None = None
-    func: str = None
-    args: list[Any] = Field(default_factory=list)
-    kwargs: dict[str, Any] = Field(default_factory=dict)
-    cron: str
-
-    def next_run(self, start: datetime | None = None) -> datetime | None:
-        if not start:
-            start = datetime.now(timezone.utc)
-        return croniter(self.cron, start).get_next(datetime)
-
-    def create_task(self, start: datetime) -> "Task":
-        task_id = str(uuid3(TASK_CRON_NS, self.id + str(start.timestamp())))
-
-        return Task(
-            id=task_id,
-            internal=TaskInternal(
-                func=self.func,
-                args=self.args,
-                kwargs=self.kwargs,
-                #return_type=return_type  # fixme?
-            ),
-            #metadata=TaskMetadata(**task_metadata)
-        )
-
-
-class TaskInternal(BaseModel):
+class Spec(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    func: str | None = None
-    args: list[Any] | None = None
-    kwargs: dict[str, Any] | None = None
+    func: str
+    args: list[Any] = Field(default_factory=list)
+    kwargs: dict[str, Any] = Field(default_factory=dict)
     return_type: str | None = None
     middleware: list | None = None
 
 
-class TaskMetadata(BaseModel):
+class Config(BaseModel):
     model_config = ConfigDict(frozen=True)
-
-    created_datetime: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    finished_datetime: datetime | None = None
-    caller: str | None = None
-    worker: str | None = None
 
     # Task Retries
     retry: float = Field(default=0, ge=0)
     retry_delay: float | list[float] = Field(default=1.0)
     retry_count: int = 0
-    last_retry_at: datetime | None = None
-    next_retry_at: datetime | None = None
+
+    # timeout: float | None = None  # seconds
+    # tags: dict[str, str] = Field(default_factory=dict)
+    # extra: dict[str, Any] = Field(default_factory=dict)
+
+    # status stuff...
+    # caller: str | None = None
+    # worker: str | None = None
+    # last_retry_at: datetime | None = None
+    # next_retry_at: datetime | None = None
 
 
 class Task(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    # Core task fields
     id: UUID = Field(default_factory=uuid4)
     completed: bool = False
     error: str | None = None
     result: Any = None
 
-    # Metadata
-    metadata: TaskMetadata = Field(default_factory=TaskMetadata)
-    internal: TaskInternal = Field(default_factory=TaskInternal, description="Internal task execution details")
+    spec: Spec = Field(default_factory=Spec)
+    config: Config = Field(default_factory=Config)
+
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    finished_at: datetime | None = None
+    scheduled_at: datetime | None = None
+
 
     @model_validator(mode='after')
     def _reconstruct_pydantic_result(self) -> 'Task':
         """Reconstruct result if it's pydantic model."""
 
-        if self.result and self.internal.return_type:
+        if self.result and self.spec.return_type:
             # Reconstruct return if it's pydantic model
-            module_name, type_name = self.internal.return_type.rsplit('.', 1)
+            module_name, type_name = self.spec.return_type.rsplit('.', 1)
             module = importlib.import_module(module_name)
             return_type = getattr(module, type_name)
             self.__dict__["result"] = TypeAdapter(return_type).validate_python(self.result)
@@ -107,36 +86,50 @@ class Task(BaseModel):
         return self.__repr__()
 
     def __repr__(self) -> str:
-        func_name = self.internal.func or "None"
-
         parts = {
             "id": repr(self.id),
-            "func": repr(func_name),
-            "args": repr(self.internal.args),
-            "kwargs": repr(self.internal.kwargs),
+            "func": repr(self.spec.func),
+            "args": repr(self.spec.args),
+            "kwargs": repr(self.spec.kwargs),
             "completed": repr(self.completed),
             "error": repr(self.error)
         }
 
-        if self.metadata.retry_count > 0:
-            parts["retries"] = str(self.metadata.retry_count)
+        if self.config.retry_count > 0:
+            parts["retries"] = str(self.config.retry_count)
 
         return f"Task({', '.join([f'{k}={v}' for k, v in parts.items()])})"
 
-    def _create_task_cron(self, cron: str, queue_name: str = None) -> TaskCron:
-        # create deterministic ID if not provided
-        s = self.internal.model_dump_json(include=["func", "args", "kwargs"])
-        s += b64encode(cron.encode()).decode()
-        s += (queue_name if queue_name else "")
-        cron_id = str(uuid3(TASK_CRON_NS, s))
 
-        return TaskCron(
-            id=cron_id,
-            func=self.internal.func,
-            args=self.internal.args,
-            kwargs=self.internal.kwargs,
-            cron=cron
+class TaskCron(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    expression: str
+
+    spec: Spec
+    config: Config
+
+    # enabled: bool = True
+    # last_run: datetime | None = None
+    # next_run: datetime | None = None
+
+    #@computed_field  # use this instead of id for the dedup thing
+
+    def next_run(self, start: datetime | None = None) -> datetime | None:
+        if not start:
+            start = datetime.now(timezone.utc)
+        return croniter(self.expression, start).get_next(datetime)
+
+    def create_task(self, start: datetime) -> Task:
+        task_id = str(uuid3(TASK_CRON_NS, str(self.id) + str(start.timestamp())))
+
+        return Task(
+            id=task_id,
+            spec=self.spec.model_copy(deep=True),
+            config=self.config.model_copy(deep=True)
         )
+
 
 class TaskFactory:
 
@@ -178,11 +171,11 @@ class TaskFactory:
         # Store return type to later reconstruct the result
         return_type = __class__._get_return_type(func)
 
-        task_metadata = {
+        task_config = {
             "retry": retry
         }
         if retry_delay:
-            task_metadata["retry_delay"] = retry_delay
+            task_config["retry_delay"] = retry_delay
 
         func_string = __class__._stringify_function(func)
 
@@ -195,17 +188,32 @@ class TaskFactory:
                 stringified_middlewares.append(__class__._stringify_function(m))
 
         _task = Task(
-            internal=TaskInternal(
+            spec=Spec(
                 func=func_string,
                 args=args,
                 kwargs=kwargs,
                 return_type=return_type,
                 middleware=stringified_middlewares
             ),
-            metadata=TaskMetadata(**task_metadata)
+            config=Config(**task_config)
         )
 
         return _task
+
+    @staticmethod
+    def create_cron_from_task(task: Task, cron_expression: str, queue_name: str = None) -> TaskCron:
+        # create deterministic ID if not provided
+        s = task.spec.model_dump_json(include=["func", "args", "kwargs"])
+        s += b64encode(cron_expression.encode()).decode()
+        s += (queue_name if queue_name else "")
+        cron_id = str(uuid3(TASK_CRON_NS, s))
+
+        return TaskCron(
+            id=cron_id,
+            expression=cron_expression,
+            spec=task.spec.model_copy(deep=True),
+            config=task.config.model_copy(deep=True),
+        )
 
 
 # Overload for @task() or @task(retry=..., retry_delay=...)

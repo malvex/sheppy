@@ -48,23 +48,23 @@ def info(
 
         console.print("\n[bold cyan]Task Information[/bold cyan]")
         console.print(f"  ID: [yellow]{task.id}[/yellow]")
-        console.print(f"  Function: [blue]{task.internal.func or 'Unknown'}[/blue]")
+        console.print(f"  Function: [blue]{task.spec.func or 'Unknown'}[/blue]")
         console.print(f"  Status: {status}")
         console.print(f"  Queue: [cyan]{queue}[/cyan]")
-        console.print(f"  Created: [dim]{task.metadata.created_datetime}[/dim]")
-        if task.metadata.finished_datetime:
-            console.print(f"  Finished: [dim]{task.metadata.finished_datetime}[/dim]")
-        if task.metadata.retry:  # ! FIXME
-            console.print(f"  Retries: [magenta]{task.metadata.retry_count}[/magenta] (max [magenta]{task.metadata.retry}[/magenta])")
+        console.print(f"  Created: [dim]{task.created_at}[/dim]")
+        if task.finished_at:
+            console.print(f"  Finished: [dim]{task.finished_at}[/dim]")
+        if task.config.retry:  # ! FIXME
+            console.print(f"  Retries: [magenta]{task.config.retry_count}[/magenta] (max [magenta]{task.config.retry}[/magenta])")
 
-        if task.internal.args:
+        if task.spec.args:
             console.print("\n[bold]Arguments:[/bold]")
-            for arg in task.internal.args:
+            for arg in task.spec.args:
                 console.print(f"  - {arg}")
 
-        if task.internal.kwargs:
+        if task.spec.kwargs:
             console.print("\n[bold]Keyword Arguments:[/bold]")
-            for k, v in task.internal.kwargs.items():
+            for k, v in task.spec.kwargs.items():
                 console.print(f"  {k}: {v}")
 
         if task.result is not None:

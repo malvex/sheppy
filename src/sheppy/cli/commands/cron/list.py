@@ -39,10 +39,10 @@ def list_crons(
         for cron in crons:
             table.add_row(
                 str(cron.id),
-                cron.func,
-                str(cron.args),
-                str(cron.kwargs),
-                cron.cron,
+                str(cron.spec.func),
+                str(cron.spec.args),
+                str(cron.spec.kwargs),
+                str(cron.expression),
                 # todo - last run
                 humanize_datetime(cron.next_run())
             )

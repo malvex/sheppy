@@ -40,7 +40,7 @@ def retry(
             console.print(f"[red]Error: Task {task_id} not found in queue '{queue}'[/red]")
             raise typer.Exit(1)
 
-        is_failed = task.error and (task.metadata.finished_datetime or not task.completed)
+        is_failed = task.error and (task.finished_at or not task.completed)
 
         if not is_failed and not force:
             if task.completed:
@@ -55,17 +55,17 @@ def retry(
         retried_task.__dict__["completed"] = False
         retried_task.__dict__["error"] = None
         retried_task.__dict__["result"] = None
-        retried_task.metadata.__dict__["finished_datetime"] = None
-        retried_task.metadata.__dict__["worker"] = None
+        retried_task.__dict__["finished_at"] = None
+        #retried_task.config.__dict__["worker"] = None
 
         success = await q.add(retried_task)
 
         if success:
             console.print(f"[green]✓ Task {task_id} has been re-queued for retry[/green]")
-            console.print(f"  Function: [blue]{task.internal.func}[/blue]")
+            console.print(f"  Function: [blue]{task.spec.func}[/blue]")
             if task.error:
                 console.print(f"  Previous error: [dim]{task.error}[/dim]")
-            console.print(f"  Retry count: [magenta]{task.metadata.retry_count}[/magenta]")
+            console.print(f"  Retry count: [magenta]{task.config.retry_count}[/magenta]")
         else:
             console.print(f"[red]Failed to re-queue task {task_id}[/red]")
             raise typer.Exit(1)

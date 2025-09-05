@@ -31,7 +31,7 @@ class TestSuccessfulTasks:
         assert not task.completed
         assert not task.error
         assert not task.result
-        assert not task.metadata.finished_datetime
+        assert not task.finished_at
 
         # process the task
         task = queue.process_next()
@@ -41,7 +41,7 @@ class TestSuccessfulTasks:
         assert task.completed
         assert not task.error
         assert task.result == test_case.expected_result
-        assert task.metadata.finished_datetime is not None
+        assert task.finished_at is not None
 
         # task should be in processed list
         assert len(queue.processed_tasks) == 1
@@ -68,7 +68,7 @@ class TestSuccessfulTasks:
             assert p_task.completed
             assert not p_task.error
             assert p_task.result == test_case.expected_result
-            assert p_task.metadata.finished_datetime is not None
+            assert p_task.finished_at is not None
 
         # all tasks should be in processed list
         assert len(queue.processed_tasks) == 3
@@ -95,7 +95,7 @@ class TestFailingTasks:
         assert not task.completed
         assert task.error
         assert task.error == test_case.expected_error
-        assert task.metadata.finished_datetime is not None
+        assert task.finished_at is not None
 
         # failed task should still be in processed list
         assert len(queue.processed_tasks) == 1
@@ -415,7 +415,6 @@ class TestCronOperations:
                 # Exactly same cron definitions (same task, same input, same cron schedule)
                 # should not be added (would be duplicated crons)
                 should_succeed = True if i == 0 else False
-                print(i, should_succeed)
 
                 success = queue.add_cron(task, schedule)
                 assert success is should_succeed
@@ -448,14 +447,14 @@ class TestMiddleware:
         t1 = simple_async_task(1, 2)
         t2 = task_add_with_middleware_noop(1, 2)
 
-        assert len(t1.internal.middleware) == 0
-        assert len(t2.internal.middleware) == 1
+        assert len(t1.spec.middleware) == 0
+        assert len(t2.spec.middleware) == 1
 
         queue.add([t1, t2])
         t1, t2 = queue.process_all()
 
-        assert len(t1.internal.middleware) == 0
-        assert len(t2.internal.middleware) == 1
+        assert len(t1.spec.middleware) == 0
+        assert len(t2.spec.middleware) == 1
 
         assert t1.result == 3
         assert t2.result == 3

@@ -29,8 +29,8 @@ class TestMiddleware:
         t1 = simple_async_task(1, 2)
         t2 = task_add_with_middleware_noop(1, 2)
 
-        assert len(t1.internal.middleware) == 0
-        assert len(t2.internal.middleware) == 1
+        assert len(t1.spec.middleware) == 0
+        assert len(t2.spec.middleware) == 1
 
         await queue.add([t1, t2])
         await worker.work(max_tasks=2)
@@ -38,8 +38,8 @@ class TestMiddleware:
         t1 = await queue.refresh(t1)
         t2 = await queue.refresh(t2)
 
-        assert len(t1.internal.middleware) == 0
-        assert len(t2.internal.middleware) == 1
+        assert len(t1.spec.middleware) == 0
+        assert len(t2.spec.middleware) == 1
 
         assert t1.result == 3
         assert t2.result == 3

@@ -166,7 +166,7 @@ class Worker:
                             task = cron.create_task(_next_run)
                             success = await queue.schedule(task, at=_next_run)
                             if success:
-                                logger.info(CRON_MANAGER_PREFIX + f"Cron {cron.id} ({cron.func}) scheduled at {_next_run}")
+                                logger.info(CRON_MANAGER_PREFIX + f"Cron {cron.id} ({cron.spec.func}) scheduled at {_next_run}")
 
                 # if tasks:
                 #     _l = len(tasks)
@@ -209,7 +209,7 @@ class Worker:
                                                limit=capacity)
 
             for task in available_tasks:
-                logger.info(WORKER_PREFIX + f"Processing task {task.id} ({task.internal.func})")
+                logger.info(WORKER_PREFIX + f"Processing task {task.id} ({task.spec.func})")
                 task_future = asyncio.create_task(self.process_task_semaphore_wrap(queue, task))
                 self._active_tasks[queue.name][task_future] = task
 
@@ -239,15 +239,15 @@ class Worker:
 
         # retriable task - final failure
         if task_status == TaskStatus.FAILED_OUT_OF_RETRY:
-            logger.error(WORKER_PREFIX + f"Task {task.id} failed after {task.metadata.retry_count} retries: {exception}", exc_info=True)
+            logger.error(WORKER_PREFIX + f"Task {task.id} failed after {task.config.retry_count} retries: {exception}", exc_info=True)
 
         # retriable task - reschedule
         if task_status == TaskStatus.FAILED_SHOULD_RETRY:
-            logger.warning(WORKER_PREFIX + f"Task {task.id} failed (attempt {task.metadata.retry_count}/{task.metadata.retry}), scheduling retry at {task.metadata.next_retry_at}")
+            logger.warning(WORKER_PREFIX + f"Task {task.id} failed (attempt {task.config.retry_count}/{task.config.retry}), scheduling retry at {task.config.next_retry_at}")
 
             # schedule the task for retry
-            if task.metadata.next_retry_at is not None:
-                await queue.schedule(task, task.metadata.next_retry_at)
+            if task.config.next_retry_at is not None:
+                await queue.schedule(task, task.config.next_retry_at)
 
         return task
 
