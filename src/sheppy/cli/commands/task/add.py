@@ -28,7 +28,7 @@ def add(
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
 
-    async def _add():
+    async def _add() -> None:
         backend_instance = get_backend(backend, redis_url)
         q = Queue(queue, backend_instance)
 
@@ -83,7 +83,7 @@ def add(
             console.print(f"[yellow]Task is still running in the background. Use 'sheppy task info {task.id}' to check status.[/yellow]")
             raise typer.Exit(1)
 
-        if result_task.completed:
+        if result_task and result_task.completed:
             console.print("\n[green]✓ Task completed successfully[/green]")
             console.print("\n[bold]Result:[/bold]")
             if result_task.result is None:
@@ -92,7 +92,7 @@ def add(
                 console.print(json.dumps(result_task.result, indent=2, default=str))
             else:
                 console.print(str(result_task.result))
-        elif result_task.error:
+        elif result_task and result_task.error:
             console.print("\n[red]✗ Task failed[/red]")
             console.print("\n[bold red]Error:[/bold red]")
             console.print(f"  {result_task.error}")

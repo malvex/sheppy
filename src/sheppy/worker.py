@@ -51,9 +51,9 @@ class Worker:
         self._task_semaphore = asyncio.Semaphore(max_concurrent_tasks)
         self._blocking_timeout = 5
 
-        self._work_queue_tasks: list[asyncio.Task] = []
-        self._scheduler_task: asyncio.Task = None
-        self._cron_manager_task: asyncio.Task = None
+        self._work_queue_tasks: list[asyncio.Task[None]] = []
+        self._scheduler_task: asyncio.Task[None] | None = None
+        self._cron_manager_task: asyncio.Task[None] | None = None
 
         self._tasks_to_process: int | None = None
 
@@ -128,7 +128,7 @@ class Worker:
 
         logger.info(f"Worker stopped. Processed: {self.stats.processed}, Failed: {self.stats.failed}")
 
-    async def _run_scheduler(self, poll_interval: float = 1.0):
+    async def _run_scheduler(self, poll_interval: float = 1.0) -> None:
         logger.info(SCHEDULER_PREFIX + "started")
 
         while not self._shutdown_event.is_set():
@@ -151,7 +151,7 @@ class Worker:
 
         logger.info(SCHEDULER_PREFIX + "stopped")
 
-    async def _run_cron_manager(self, poll_interval: float = 10.0):
+    async def _run_cron_manager(self, poll_interval: float = 10.0) -> None:
         logger.info(CRON_MANAGER_PREFIX + "started")
 
         while not self._shutdown_event.is_set():

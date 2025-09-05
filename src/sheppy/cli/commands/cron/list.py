@@ -16,7 +16,7 @@ def list_crons(
 ) -> None:
     """List all active crons."""
 
-    async def _list():
+    async def _list() -> None:
         backend_instance = get_backend(backend, redis_url)
         q = Queue(queue, backend_instance)
 

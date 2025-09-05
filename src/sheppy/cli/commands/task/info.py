@@ -23,7 +23,7 @@ def info(
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
 
-    async def _info():
+    async def _info() -> None:
         backend_instance = get_backend(backend, redis_url)
         q = Queue(queue, backend_instance)
 

@@ -193,7 +193,7 @@ class MemoryBackend(Backend):
             return all_tasks
 
     async def list_queues(self) -> dict[str, int]:
-        queue_names = set()
+        queue_names: set[str] = set()
         queue_names.update(self._queues.keys())
         queue_names.update(self._scheduled.keys())
         queue_names.update(self._in_progress.keys())

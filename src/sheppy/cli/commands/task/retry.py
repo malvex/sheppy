@@ -24,7 +24,7 @@ def retry(
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
 
-    async def _retry():
+    async def _retry() -> None:
         backend_instance = get_backend(backend, redis_url)
         q = Queue(queue, backend_instance)
 

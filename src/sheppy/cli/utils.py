@@ -43,7 +43,7 @@ def get_backend(backend_type: BackendType, redis_url: str) -> Backend:
         raise ValueError(f"Unknown backend: {backend_type}")
 
 
-def humanize_datetime(dt: datetime, now: datetime = None) -> str:
+def humanize_datetime(dt: datetime | None, now: datetime | None = None) -> str:
     if not dt:
         return "N/A"
 

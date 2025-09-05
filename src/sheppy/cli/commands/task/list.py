@@ -26,7 +26,7 @@ class StatusFilter(str, Enum):
 def list_tasks(
     queue: Annotated[str, typer.Option("--queue", "-q", help="Name of queue")] = "default",
     status_filter: Annotated[StatusFilter, typer.Option("--status", "-s", help="Filter by status")] = StatusFilter.all,
-    limit: Annotated[int, typer.Option("--limit", "-l", help="Maximum number of tasks to show")] = 100,
+    # limit: Annotated[int, typer.Option("--limit", "-l", help="Maximum number of tasks to show")] = 100,
     backend: Annotated[BackendType, typer.Option("--backend", "-b", help="Queue backend type")] = BackendType.redis,
     redis_url: Annotated[str, typer.Option("--redis-url", "-r", help="Redis server URL")] = "redis://127.0.0.1:6379",
     format_output: Annotated[OutputFormat, typer.Option("--format", "-f", help="Output format")] = OutputFormat.table,
@@ -37,7 +37,7 @@ def list_tasks(
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
 
-    async def _list():
+    async def _list() -> None:
         backend_instance = get_backend(backend, redis_url)
         q = Queue(queue, backend_instance)
 

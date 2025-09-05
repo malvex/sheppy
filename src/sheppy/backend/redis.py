@@ -279,13 +279,13 @@ class RedisBackend(Backend):
         pending_tasks_key = self._pending_tasks_key(queue_name)
         finished_tasks_key = self._finished_tasks_key(queue_name)
 
-        total = await self.client.hlen(tasks_metadata_key)
+        total = await self.client.hlen(tasks_metadata_key)  # type: ignore[misc]
         pending = await self.client.xlen(pending_tasks_key)
         completed = await self.client.xlen(finished_tasks_key)
 
         return {
             "pending": pending,
-            "in_progress": None,
+            "in_progress": -1,
             "completed": completed,
             "scheduled": await self.client.zcard(scheduled_tasks_key),
         }
@@ -293,7 +293,7 @@ class RedisBackend(Backend):
     async def get_all_tasks(self, queue_name: str) -> list[dict[str, Any]]:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
 
-        all_tasks_data = await self.client.hgetall(tasks_metadata_key)
+        all_tasks_data = await self.client.hgetall(tasks_metadata_key)  # type: ignore[misc]
 
         return [json.loads(task_json) for task_json in all_tasks_data.values()]
 
@@ -392,12 +392,12 @@ class RedisBackend(Backend):
 
     async def add_cron(self, queue_name: str, task_cron: dict[str, Any]) -> bool:
         cron_tasks_key = self._cron_tasks_key(queue_name)
-        return bool(await self.client.hsetnx(cron_tasks_key, task_cron['id'], json.dumps(task_cron)))
+        return bool(await self.client.hsetnx(cron_tasks_key, task_cron['id'], json.dumps(task_cron)))  # type: ignore[misc]
 
     async def delete_cron(self, queue_name: str, cron_id: str) -> bool:
         cron_tasks_key = self._cron_tasks_key(queue_name)
-        return bool(await self.client.hdel(cron_tasks_key, cron_id))
+        return bool(await self.client.hdel(cron_tasks_key, cron_id))  # type: ignore[misc]
 
     async def list_crons(self, queue_name: str) -> list[dict[str, Any]]:
         cron_tasks_key = self._cron_tasks_key(queue_name)
-        return [json.loads(d) for _, d in (await self.client.hgetall(cron_tasks_key)).items()]
+        return [json.loads(d) for _, d in (await self.client.hgetall(cron_tasks_key)).items()]  # type: ignore[misc]

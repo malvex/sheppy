@@ -15,8 +15,8 @@ from ...utils import BackendType, console, get_backend
 
 def schedule(
     function: Annotated[str, typer.Argument(help="Function to schedule (module:function format")],
-    delay: Annotated[str, typer.Option("--delay", "-d", help="Delay before task execution (e.g., 30s, 5m, 2h, 1d)")] = None,
-    at: Annotated[str, typer.Option("--at", help="Execute at specific time (ISO format: 2024-01-20T15:30:00)")] = None,
+    delay: Annotated[str | None, typer.Option("--delay", "-d", help="Delay before task execution (e.g., 30s, 5m, 2h, 1d)")] = None,
+    at: Annotated[str | None, typer.Option("--at", help="Execute at specific time (ISO format: 2024-01-20T15:30:00)")] = None,
     args: Annotated[str, typer.Option("--args", "-a", help="JSON array of positional arguments")] = "[]",
     kwargs: Annotated[str, typer.Option("--kwargs", "-k", help="JSON object of keyword arguments")] = "{}",
     queue: Annotated[str, typer.Option("--queue", "-q", help="Name of queue")] = "default",
@@ -37,7 +37,7 @@ def schedule(
         console.print("[red]Error: Cannot specify both --delay and --at[/red]")
         raise typer.Exit(1)
 
-    async def _schedule():
+    async def _schedule() -> None:
         backend_instance = get_backend(backend, redis_url)
         q = Queue(queue, backend_instance)
 
@@ -70,15 +70,17 @@ def schedule(
                 else:
                     delta = timedelta(seconds=int(delay))
 
-                schedule_time = delta
+                schedule_time: datetime | timedelta = delta
             except (ValueError, TypeError):
                 console.print(f"[red]Error: Invalid delay format '{delay}'. Use format like '30s', '5m', '2h', '1d'[/red]")
                 raise typer.Exit(1) from None
         else:
             try:
-                schedule_time = datetime.fromisoformat(at)
-                if schedule_time.tzinfo is None:
-                    schedule_time = schedule_time.replace(tzinfo=timezone.utc)
+                assert at is not None
+                dt = datetime.fromisoformat(at)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                schedule_time = dt
             except ValueError:
                 console.print(f"[red]Error: Invalid datetime format '{at}'. Use ISO format (e.g., 2024-01-20T15:30:00)[/red]")
                 raise typer.Exit(1) from None

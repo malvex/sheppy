@@ -13,7 +13,7 @@ def list_queues(
 ) -> None:
     """List all queues with their pending task counts."""
 
-    async def _list():
+    async def _list() -> None:
         backend_instance = get_backend(backend, redis_url)
 
         await backend_instance.connect()

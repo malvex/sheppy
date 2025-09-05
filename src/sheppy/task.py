@@ -31,7 +31,7 @@ class Spec(BaseModel):
     args: list[Any] = Field(default_factory=list)
     kwargs: dict[str, Any] = Field(default_factory=dict)
     return_type: str | None = None
-    middleware: list | None = None
+    middleware: list[str] | None = None
 
 
 class Config(BaseModel):
@@ -41,6 +41,8 @@ class Config(BaseModel):
     retry: float = Field(default=0, ge=0)
     retry_delay: float | list[float] = Field(default=1.0)
     retry_count: int = 0
+    last_retry_at: datetime | None = None
+    next_retry_at: datetime | None = None
 
     # timeout: float | None = None  # seconds
     # tags: dict[str, str] = Field(default_factory=dict)
@@ -49,8 +51,6 @@ class Config(BaseModel):
     # status stuff...
     # caller: str | None = None
     # worker: str | None = None
-    # last_retry_at: datetime | None = None
-    # next_retry_at: datetime | None = None
 
 
 class Task(BaseModel):
@@ -61,7 +61,7 @@ class Task(BaseModel):
     error: str | None = None
     result: Any = None
 
-    spec: Spec = Field(default_factory=Spec)
+    spec: Spec
     config: Config = Field(default_factory=Config)
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -116,16 +116,14 @@ class TaskCron(BaseModel):
 
     #@computed_field  # use this instead of id for the dedup thing
 
-    def next_run(self, start: datetime | None = None) -> datetime | None:
+    def next_run(self, start: datetime | None = None) -> datetime:
         if not start:
             start = datetime.now(timezone.utc)
         return croniter(self.expression, start).get_next(datetime)
 
     def create_task(self, start: datetime) -> Task:
-        task_id = str(uuid3(TASK_CRON_NS, str(self.id) + str(start.timestamp())))
-
         return Task(
-            id=task_id,
+            id=uuid3(TASK_CRON_NS, str(self.id) + str(start.timestamp())),
             spec=self.spec.model_copy(deep=True),
             config=self.config.model_copy(deep=True)
         )
@@ -133,11 +131,11 @@ class TaskCron(BaseModel):
 
 class TaskFactory:
 
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     @staticmethod
-    def _get_return_type(func):
+    def _get_return_type(func: Callable[..., Any]) -> str | None:
         """Get function return type"""
         try:
             return_type = get_type_hints(func).get('return')
@@ -149,7 +147,7 @@ class TaskFactory:
         return return_type
 
     @staticmethod
-    def _stringify_function(func):
+    def _stringify_function(func: Callable[..., Any]) -> str:
         _module = func.__module__
         # special case if the task is in the main python file that is executed
         if _module == "__main__":
@@ -167,25 +165,31 @@ class TaskFactory:
         return validate_input(func, args, kwargs)
 
     @staticmethod
-    def create_task(func, args, kwargs, retry, retry_delay, middleware) -> Task:
+    def create_task(func: Callable[..., Any],
+                    args: list[Any],
+                    kwargs: dict[str, Any],
+                    retry: float,
+                    retry_delay: float | list[float] | None,
+                    middleware: list[Callable[..., Any]] | None
+                    ) -> Task:
         # Store return type to later reconstruct the result
-        return_type = __class__._get_return_type(func)
+        return_type = TaskFactory._get_return_type(func)
 
-        task_config = {
+        task_config: dict[str, Any] = {
             "retry": retry
         }
         if retry_delay:
             task_config["retry_delay"] = retry_delay
 
-        func_string = __class__._stringify_function(func)
+        func_string = TaskFactory._stringify_function(func)
 
-        args, kwargs = __class__.validate_input(func, list(args or []), dict(kwargs or {}))
+        args, kwargs = TaskFactory.validate_input(func, list(args or []), dict(kwargs or {}))
 
         stringified_middlewares = []
         if middleware:
             for m in middleware:
                 # todo: should probably also validate them here
-                stringified_middlewares.append(__class__._stringify_function(m))
+                stringified_middlewares.append(TaskFactory._stringify_function(m))
 
         _task = Task(
             spec=Spec(
@@ -201,15 +205,15 @@ class TaskFactory:
         return _task
 
     @staticmethod
-    def create_cron_from_task(task: Task, cron_expression: str, queue_name: str = None) -> TaskCron:
+    def create_cron_from_task(task: Task, cron_expression: str, queue_name: str | None = None) -> TaskCron:
         # create deterministic ID if not provided
-        s = task.spec.model_dump_json(include=["func", "args", "kwargs"])
+        s = task.spec.model_dump_json(include={"func", "args", "kwargs"})
         s += b64encode(cron_expression.encode()).decode()
         s += (queue_name if queue_name else "")
         cron_id = str(uuid3(TASK_CRON_NS, s))
 
         return TaskCron(
-            id=cron_id,
+            id=UUID(cron_id),
             expression=cron_expression,
             spec=task.spec.model_copy(deep=True),
             config=task.config.model_copy(deep=True),
@@ -222,7 +226,7 @@ def task(
     *,
     retry: float = 0,
     retry_delay: float | list[float] | None = None,
-    middleware: list | None = None
+    middleware: list[Callable[..., Any]] | None = None
 ) -> Callable[[Callable[P, R]], Callable[P, Task]]:
     ...
 
@@ -236,13 +240,13 @@ def task(
     *,
     retry: float = 0,
     retry_delay: float | list[float] | None = None,
-    middleware: list | None = None
+    middleware: list[Callable[..., Any]] | None = None
 ) -> Callable[[Callable[P, R]], Callable[P, Task]] | Callable[P, Task]:
     def decorator(func: Callable[P, R]) -> Callable[P, Task]:
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> Task:
 
-            return TaskFactory.create_task(func, args, kwargs, retry, retry_delay, middleware)
+            return TaskFactory.create_task(func, list(args), kwargs, retry, retry_delay, middleware)
 
         return wrapper
 

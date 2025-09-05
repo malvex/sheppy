@@ -8,7 +8,7 @@ import socket
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Annotated, Any, get_args, get_origin
+from typing import TYPE_CHECKING, Annotated, Any, cast, get_args, get_origin
 from uuid import uuid4
 
 import anyio
@@ -38,12 +38,12 @@ class TaskProcessor:
     @staticmethod
     async def _actually_execute_task(task: "Task") -> Any:
         # resolve the function from its string representation
-        func = __class__.resolve_function(task.spec.func)
+        func = TaskProcessor.resolve_function(task.spec.func)
         args = task.spec.args or []
         kwargs = task.spec.kwargs or {}
 
         # validate all parameters, inject DI and Task
-        final_args, final_kwargs = await __class__.process_function_parameters(func, args, kwargs, task)
+        final_args, final_kwargs = await TaskProcessor.process_function_parameters(func, args, kwargs, task)
 
         # async task
         if inspect.iscoroutinefunction(func):
@@ -55,37 +55,37 @@ class TaskProcessor:
     @staticmethod
     async def execute_task(__task: "Task", worker_id: str) -> tuple[TaskStatus, Exception | None, "Task"]:
         try:
-            __task, _generators = await __class__.process_pre_task_middleware(__task)
+            __task, _generators = await TaskProcessor.process_pre_task_middleware(__task)
         except Exception as e:
             raise Exception("Middleware error") from e
 
         try:
-            result = await __class__._actually_execute_task(__task)
-            task = __class__.handle_success_and_update_task_metadata(__task, result, worker_id)
+            result = await TaskProcessor._actually_execute_task(__task)
+            task = TaskProcessor.handle_success_and_update_task_metadata(__task, result, worker_id)
             task_status = TaskStatus.SUCCESS
             exception = None
 
         except Exception as e:
-            task_status, task = await __class__.handle_failed_task(__task, e)
+            task_status, task = await TaskProcessor.handle_failed_task(__task, e)
 
             exception = e  # temporary
 
         try:
-            task = await __class__.process_post_task_middleware(task, _generators)
+            task = await TaskProcessor.process_post_task_middleware(task, _generators)
         except Exception as e:
             raise Exception("Middleware error") from e
 
         return task_status, exception, task
 
     @staticmethod
-    async def process_pre_task_middleware(task: "Task") -> tuple["Task", list]:
+    async def process_pre_task_middleware(task: "Task") -> tuple["Task", list[Any]]:
         if not task.spec.middleware:
             return task, []
 
         _generators = []
 
         for middleware_string in task.spec.middleware:
-            middleware = __class__.resolve_function(middleware_string, wrapped=False)
+            middleware = TaskProcessor.resolve_function(middleware_string, wrapped=False)
             gen = middleware(task)
             task = next(gen) or task
             _generators.append(gen)
@@ -93,7 +93,7 @@ class TaskProcessor:
         return task, _generators
 
     @staticmethod
-    async def process_post_task_middleware(task: "Task", _generators: list) -> "Task":
+    async def process_post_task_middleware(task: "Task", _generators: list[Any]) -> "Task":
         if not _generators:
             return task
 
@@ -119,7 +119,7 @@ class TaskProcessor:
         return updated_task
 
     @staticmethod
-    async def handle_failed_task(__task: "Task", exception: Exception):
+    async def handle_failed_task(__task: "Task", exception: Exception) -> tuple[TaskStatus, "Task"]:
         # recreate an updated task, don't mutate the original  # ! FIXME
         task = __task.model_copy(deep=True)
         task.__dict__["completed"] = False
@@ -127,7 +127,7 @@ class TaskProcessor:
 
         # Check if task should be retried
         if task.config.retry > 0:
-            task_status, task = __class__.handle_retry(task)
+            task_status, task = TaskProcessor.handle_retry(task)
         else:
             task.__dict__["finished_at"] = datetime.now(timezone.utc)
             task_status = TaskStatus.FAILED_NO_RETRY
@@ -135,11 +135,11 @@ class TaskProcessor:
         return task_status, task
 
     @staticmethod
-    def handle_retry(task: "Task"):  # ! FIXME - mutates input - temp
+    def handle_retry(task: "Task") -> tuple[TaskStatus, "Task"]:  # ! FIXME - mutates input - temp
         if task.config.retry_count < task.config.retry:
             task.config.__dict__["retry_count"] += 1
             task.config.__dict__["last_retry_at"] = datetime.now(timezone.utc)
-            task.config.__dict__["next_retry_at"] = datetime.now(timezone.utc) + timedelta(seconds=__class__.calculate_retry_delay(task))
+            task.config.__dict__["next_retry_at"] = datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task))
             # task will be retried  # ! FIXME
             task.__dict__["finished_at"] = None
             task_status = TaskStatus.FAILED_SHOULD_RETRY
@@ -171,12 +171,13 @@ class TaskProcessor:
         raise ValueError(f"Invalid retry_delay type: {type(task.config.retry_delay).__name__}. Expected None, float, or list.")
 
     @staticmethod
-    def resolve_function(func: str, wrapped: bool = True):
+    def resolve_function(func: str, wrapped: bool = True) -> Callable[..., Any]:
         try:
             module_name, function_name = func.split(':')
             module = importlib.import_module(module_name)
             fn = getattr(module, function_name)
-            return fn.__wrapped__ if wrapped else fn
+            result = fn.__wrapped__ if wrapped else fn
+            return cast(Callable[..., Any], result)
 
         except (ValueError, ImportError, AttributeError) as e:
             raise ValueError(f"Cannot resolve function: {func}") from e
@@ -195,23 +196,23 @@ class TaskProcessor:
 
         for param_name, param in list(inspect.signature(func).parameters.items()):
             # Task injection (self: Task)
-            if task and __class__._is_task_injection(param):
+            if task and TaskProcessor._is_task_injection(param):
                 final_args.append(task)
                 continue
 
             # validate positional args
             if remaining_args:
-                final_args.append(__class__._validate(remaining_args.pop(0), param.annotation))
+                final_args.append(TaskProcessor._validate(remaining_args.pop(0), param.annotation))
                 continue
 
             # dependency injection
-            if depends := __class__.get_depends_from_param(param):
-                final_kwargs[param_name] = await __class__._resolve_dependency(depends.dependency)
+            if depends := TaskProcessor.get_depends_from_param(param):
+                final_kwargs[param_name] = await TaskProcessor._resolve_dependency(depends.dependency)
                 continue
 
             # validate kwargs
             if param_name in kwargs:
-                final_kwargs[param_name] = __class__._validate(kwargs[param_name], param.annotation)
+                final_kwargs[param_name] = TaskProcessor._validate(kwargs[param_name], param.annotation)
 
         return final_args, final_kwargs
 
@@ -241,11 +242,11 @@ class TaskProcessor:
         return value
 
     @staticmethod
-    async def _resolve_dependency(func: Callable) -> Any:
+    async def _resolve_dependency(func: Callable[..., Any]) -> Any:
         # func = resolver.dependency_overrides.get(dep_func, dep_func)  # ! FIXME
 
         # resolve nested dependencies
-        _, kwargs = await __class__.process_function_parameters(func, [], {}, None)
+        _, kwargs = await TaskProcessor.process_function_parameters(func, [], {}, None)
 
         # execute dependency
         if inspect.iscoroutinefunction(func):

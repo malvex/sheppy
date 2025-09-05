@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import UUID
 
 from .backend.base import Backend
@@ -16,7 +17,7 @@ class Queue:
         await self._ensure_backend_is_connected()
 
         if isinstance(task, list):
-            data = [t.model_dump(mode='json') for t in task]
+            data: list[dict[str, Any]] | dict[str, Any] = [t.model_dump(mode='json') for t in task]
         else:
             data = task.model_dump(mode='json')
 

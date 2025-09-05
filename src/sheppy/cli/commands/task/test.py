@@ -26,7 +26,7 @@ def test(
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
 
-    async def run_test():
+    async def run_test() -> None:
 
         try:
             # ! FIXME - better input method
