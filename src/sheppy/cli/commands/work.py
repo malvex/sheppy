@@ -13,7 +13,7 @@ from ..utils import BackendType, LogLevel, console, get_backend
 
 
 def work(
-    queue: str = typer.Option("default", "--queue", "-q", help="Name of queue to process"),
+    queue: list[str] = typer.Option(["default"], "--queue", "-q", help="Name of queue to process (can be used multiple times)"),
     backend: BackendType = typer.Option(BackendType.redis, "--backend", "-b", help="Queue backend type"),
     redis_url: str = typer.Option("redis://127.0.0.1:6379", "--redis-url", "-r", help="Redis server URL"),
     max_concurrent: int = typer.Option(10, "--max-concurrent", "-c", help="Max concurrent tasks", min=1),
@@ -21,6 +21,14 @@ def work(
     log_level: LogLevel = typer.Option(LogLevel.info, "--log-level", "-l", help="Logging level"),
 ) -> None:
     """Start a worker to process tasks from a queue."""
+
+    # deduplicate queues to prevent unexpected behavior
+    queues = []
+    for q in queue:
+        if q in queues:
+            console.print(f"[yellow]Warning: Queue '{q}' provided multiple times.[/yellow]")
+            continue
+        queues.append(q)
 
     # add current working directory to Python path to allow importing tasks
     cwd = os.getcwd()
@@ -33,20 +41,23 @@ def work(
     if backend == BackendType.redis:
         _bs = f" [gray0]\\[{redis_url}][/gray0]"
 
-    console.print(f"[cyan]Starting worker for queue '[bold]{queue}[/bold]'...[/cyan]")
+    _s = "s" if len(queues) > 1 else ""
+    queue_s = "[/bold]', '[bold]".join(queues)
+
+    console.print(f"[cyan]Starting worker for queue{_s} '[bold]{queue_s}[/bold]'[/cyan]")
     console.print(f"  Backend: [yellow]{backend.value}[/yellow]{_bs}")
     console.print(f"  Max concurrent tasks: [yellow]{max_concurrent}[/yellow]")
     console.print()
 
     if autoreload:
         run_process('.', target=_start_worker,
-                    args=(queue, backend_instance, max_concurrent, log_level),
+                    args=(queues, backend_instance, max_concurrent, log_level),
                     callback=lambda _: console.print("Detected file changes, reloading worker..."))
     else:
-        _start_worker(queue, backend_instance, max_concurrent, log_level)
+        _start_worker(queues, backend_instance, max_concurrent, log_level)
 
 
-def _start_worker(queue: str, backend: Backend, max_concurrent: int, log_level: LogLevel) -> None:
+def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, log_level: LogLevel) -> None:
 
     worker_logger = logging.getLogger("sheppy.worker")
 
@@ -59,5 +70,5 @@ def _start_worker(queue: str, backend: Backend, max_concurrent: int, log_level: 
             show_path=False
         ))
 
-    worker = Worker(queue, backend=backend, max_concurrent_tasks=max_concurrent)
+    worker = Worker(queues, backend=backend, max_concurrent_tasks=max_concurrent)
     asyncio.run(worker.work())
