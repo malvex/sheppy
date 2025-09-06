@@ -32,9 +32,6 @@ class Queue:
 
         return Task.model_validate(task_data) if task_data else None
 
-    async def refresh(self, task: Task | UUID) -> Task | None:  # ! FIXME
-        return await self.get_task(task)
-
     async def peek(self, count: int = 1) -> list[Task]:
         """Peek into the queue without removing tasks from it."""
         await self._ensure_backend_is_connected()

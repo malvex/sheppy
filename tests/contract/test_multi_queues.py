@@ -28,9 +28,9 @@ class TestMultipleQueues:
         assert await queue2.size() == 0
         assert await queue3.size() == 0
 
-        t1 = await queue1.refresh(t1)
-        t2 = await queue2.refresh(t2)
-        t3 = await queue3.refresh(t3)
+        t1 = await queue1.get_task(t1)
+        t2 = await queue2.get_task(t2)
+        t3 = await queue3.get_task(t3)
 
         assert t1.completed
         assert t2.completed

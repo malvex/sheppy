@@ -27,7 +27,7 @@ class TestSuccessfulTasks:
         await worker.work(max_tasks=1)
 
         # refresh and verify completion
-        task = await queue.refresh(task)
+        task = await queue.get_task(task)
 
         assert task.completed
         assert not task.error
@@ -76,7 +76,7 @@ class TestFailingTasks:
         await worker.work(max_tasks=1)
 
         # refresh and verify failure
-        task = await queue.refresh(task)
+        task = await queue.get_task(task)
 
         assert not task.completed
         assert task.error
@@ -96,7 +96,7 @@ class TestTaskSelfReference:
 
         await queue.add(task)
         await worker.work(max_tasks=1)
-        task = await queue.refresh(task)
+        task = await queue.get_task(task)
 
         assert task.completed
         assert not task.error
@@ -119,7 +119,7 @@ class TestScheduledTasks:
         popped = await queue._pop(timeout=0.01)
         assert not popped
 
-        task = await queue.refresh(task)
+        task = await queue.get_task(task)
         assert not task.completed
         assert not task.error
 
@@ -127,7 +127,7 @@ class TestScheduledTasks:
 
         await worker.work(max_tasks=1)
 
-        task = await queue.refresh(task)
+        task = await queue.get_task(task)
         assert task.completed
         assert not task.error
         assert task.result == test_case.expected_result
@@ -148,7 +148,7 @@ class TestScheduledTasks:
 
         await worker.work(max_tasks=1)
 
-        task = await queue.refresh(task)
+        task = await queue.get_task(task)
         assert task.completed
         assert not task.error
         assert task.result == test_case.expected_result
@@ -170,27 +170,27 @@ class TestScheduledTasks:
 
         await asyncio.sleep(0.25)
         await worker.work(max_tasks=1)
-        task1 = await queue.refresh(task1)
+        task1 = await queue.get_task(task1)
         assert task1.completed
         assert task1.result == 3
 
-        task2 = await queue.refresh(task2)
-        task3 = await queue.refresh(task3)
+        task2 = await queue.get_task(task2)
+        task3 = await queue.get_task(task3)
         assert not task2.completed
         assert not task3.completed
 
         await asyncio.sleep(0.2)
         await worker.work(max_tasks=1)
-        task2 = await queue.refresh(task2)
+        task2 = await queue.get_task(task2)
         assert task2.completed
         assert task2.result == 7
 
-        task3 = await queue.refresh(task3)
+        task3 = await queue.get_task(task3)
         assert not task3.completed
 
         await asyncio.sleep(0.2)
         await worker.work(max_tasks=1)
-        task3 = await queue.refresh(task3)
+        task3 = await queue.get_task(task3)
         assert task3.completed
         assert task3.result == 11
 
@@ -206,8 +206,8 @@ class TestScheduledTasks:
 
         await worker.work(max_tasks=1)
 
-        immediate_task = await queue.refresh(immediate_task)
-        scheduled_task = await queue.refresh(scheduled_task)
+        immediate_task = await queue.get_task(immediate_task)
+        scheduled_task = await queue.get_task(scheduled_task)
 
         assert immediate_task.completed
         assert immediate_task.result == 7
@@ -217,7 +217,7 @@ class TestScheduledTasks:
         await asyncio.sleep(0.25)
         await worker.work(max_tasks=1)
 
-        scheduled_task = await queue.refresh(scheduled_task)
+        scheduled_task = await queue.get_task(scheduled_task)
         assert scheduled_task.completed
         assert scheduled_task.result == 3
 
@@ -232,7 +232,7 @@ class TestScheduledTasks:
 
         await worker.work(max_tasks=1)
 
-        task = await queue.refresh(task)
+        task = await queue.get_task(task)
         assert not task.completed
         assert task.error
         assert task.error == test_case.expected_error
@@ -248,7 +248,7 @@ class TestScheduledTasks:
 
         await worker.work(max_tasks=1)
 
-        task = await queue.refresh(task)
+        task = await queue.get_task(task)
         assert task.completed
         assert task.result == 3
 
@@ -267,7 +267,7 @@ class TestBatchOperations:
 
         assert await queue.size() == 1
 
-        t1 = await queue.refresh(t1)
+        t1 = await queue.get_task(t1)
 
         assert t1.completed
         assert not t1.error
@@ -278,7 +278,7 @@ class TestBatchOperations:
 
         assert await queue.size() == 0
 
-        t2 = await queue.refresh(t2)
+        t2 = await queue.get_task(t2)
 
         assert t2.completed
         assert not t2.error

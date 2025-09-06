@@ -35,8 +35,8 @@ class TestMiddleware:
         await queue.add([t1, t2])
         await worker.work(max_tasks=2)
 
-        t1 = await queue.refresh(t1)
-        t2 = await queue.refresh(t2)
+        t1 = await queue.get_task(t1)
+        t2 = await queue.get_task(t2)
 
         assert len(t1.spec.middleware) == 0
         assert len(t2.spec.middleware) == 1
@@ -51,7 +51,7 @@ class TestMiddleware:
 
         await queue.add(task)
         await worker.work(max_tasks=1)
-        task = await queue.refresh(task)
+        task = await queue.get_task(task)
 
         assert task.result == 3
 
@@ -61,7 +61,7 @@ class TestMiddleware:
 
         await queue.add(task)
         await worker.work(max_tasks=1)
-        task = await queue.refresh(task)
+        task = await queue.get_task(task)
 
         assert task.result == 7
 
@@ -71,7 +71,7 @@ class TestMiddleware:
 
         await queue.add(task)
         await worker.work(max_tasks=1)
-        task = await queue.refresh(task)
+        task = await queue.get_task(task)
 
         assert task.result == 100003
 
@@ -81,7 +81,7 @@ class TestMiddleware:
 
         await queue.add(task)
         await worker.work(max_tasks=1)
-        task = await queue.refresh(task)
+        task = await queue.get_task(task)
 
         assert task.result == 100007
 
@@ -91,6 +91,6 @@ class TestMiddleware:
 
         await queue.add(task)
         await worker.work(max_tasks=1)
-        task = await queue.refresh(task)
+        task = await queue.get_task(task)
 
         assert task.result == WrappedNumber(result=100003, extra="hi from middleware")
