@@ -211,9 +211,6 @@ class MemoryBackend(Backend):
             tasks = []
             for scheduled_task in self._scheduled[queue_name]:
                 task_data = scheduled_task.task_data.copy()
-
-                # we don't store scheduled time in Task object
-                task_data["_scheduled_at"] = scheduled_task.scheduled_time.isoformat()
                 tasks.append(task_data)
 
             return tasks

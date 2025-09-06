@@ -76,7 +76,9 @@ def schedule(
                 raise typer.Exit(1) from None
         else:
             try:
-                assert at is not None
+                if at is None:  # this cannot happen, this is just to make mypy happy
+                    return
+
                 dt = datetime.fromisoformat(at)
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=timezone.utc)

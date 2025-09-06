@@ -211,27 +211,22 @@ class TestScheduledTasks:
         queue = TestQueue()
         task = test_case.create_task()
 
-        # Schedule the task for 1 second from now
-        delay = timedelta(seconds=1)
+        delay = timedelta(hours=1)
         result = queue.schedule(task, at=delay)
         assert result is True
 
-        # Task should not be immediately available
         immediate = queue.process_next()
         assert immediate is None
 
-        # Process scheduled tasks (with time in the future)
-        future_time = datetime.now(timezone.utc) + timedelta(seconds=2)
+        future_time = datetime.now(timezone.utc) + timedelta(hours=2)
         processed = queue.process_scheduled(at=future_time)
 
-        # Task should have been processed
         assert len(processed) == 1
         processed_task = processed[0]
         assert processed_task.completed
         assert not processed_task.error
         assert processed_task.result == test_case.expected_result
 
-        # Task should be in processed list
         assert len(queue.processed_tasks) == 1
         assert queue.processed_tasks[0].id == task.id
 
@@ -241,15 +236,12 @@ class TestScheduledTasks:
         queue = TestQueue()
         task = test_case.create_task()
 
-        # Schedule for a specific time
-        scheduled_time = datetime.now(timezone.utc) + timedelta(seconds=1)
+        scheduled_time = datetime.now(timezone.utc) + timedelta(hours=1)
         result = queue.schedule(task, at=scheduled_time)
         assert result is True
 
-        # Process scheduled tasks at that time
         processed = queue.process_scheduled(at=scheduled_time)
 
-        # Task should have been processed
         assert len(processed) == 1
         assert processed[0].completed
         assert processed[0].result == test_case.expected_result
@@ -258,71 +250,56 @@ class TestScheduledTasks:
         """Test scheduling multiple tasks at different times."""
         queue = TestQueue()
 
-        # Create tasks with different scheduled times
         task1 = simple_sync_task(1, 2)
         task2 = simple_sync_task(3, 4)
         task3 = simple_sync_task(5, 6)
 
         now = datetime.now(timezone.utc)
 
-        # Schedule tasks at different times
-        queue.schedule(task1, at=now + timedelta(seconds=1))
-        queue.schedule(task2, at=now + timedelta(seconds=2))
-        queue.schedule(task3, at=now + timedelta(seconds=3))
+        queue.schedule(task1, at=now + timedelta(hours=1))
+        queue.schedule(task2, at=now + timedelta(hours=2))
+        queue.schedule(task3, at=now + timedelta(hours=3))
 
-        # Process scheduled tasks up to 1.5 seconds
-        processed = queue.process_scheduled(at=now + timedelta(seconds=1.5))
+        processed = queue.process_scheduled(at=now + timedelta(hours=1))
 
-        # Only first task should be processed
         assert len(processed) == 1
         assert processed[0].result == 3
 
-        # Process up to 2.5 seconds
-        processed = queue.process_scheduled(at=now + timedelta(seconds=2.5))
+        processed = queue.process_scheduled(at=now + timedelta(hours=2))
 
-        # Second task should be processed
         assert len(processed) == 1
         assert processed[0].result == 7
 
-        # Process all remaining
-        processed = queue.process_scheduled(at=now + timedelta(seconds=4))
+        processed = queue.process_scheduled(at=now + timedelta(hours=10))
 
-        # Third task should be processed
         assert len(processed) == 1
         assert processed[0].result == 11
 
-        # All tasks should be in processed list
         assert len(queue.processed_tasks) == 3
 
     def test_scheduled_task_with_immediate_task(self):
         """Test that immediate and scheduled tasks work independently."""
         queue = TestQueue()
 
-        # Schedule a task for later
         scheduled_task = simple_sync_task(1, 2)
-        future_time = datetime.now(timezone.utc) + timedelta(seconds=1)
+        future_time = datetime.now(timezone.utc) + timedelta(hours=1)
         queue.schedule(scheduled_task, at=future_time)
 
-        # Add an immediate task
         immediate_task = simple_sync_task(3, 4)
         queue.add(immediate_task)
 
-        # Process immediate task
         processed_immediate = queue.process_next()
         assert processed_immediate is not None
         assert processed_immediate.completed
         assert processed_immediate.result == 7
 
-        # No more immediate tasks
         assert queue.process_next() is None
 
-        # Process scheduled task
         processed_scheduled = queue.process_scheduled(at=future_time)
         assert len(processed_scheduled) == 1
         assert processed_scheduled[0].completed
         assert processed_scheduled[0].result == 3
 
-        # Both should be in processed list
         assert len(queue.processed_tasks) == 2
 
     @pytest.mark.parametrize("test_case", TaskTestCases.failing_tasks()[:1], ids=lambda tc: tc.name)
@@ -331,14 +308,11 @@ class TestScheduledTasks:
         queue = TestQueue()
         task = test_case.create_task()
 
-        # Schedule the task
-        future_time = datetime.now(timezone.utc) + timedelta(seconds=1)
+        future_time = datetime.now(timezone.utc) + timedelta(hours=1)
         queue.schedule(task, at=future_time)
 
-        # Process the task
         queue.process_scheduled(at=future_time)
 
-        # Task should be in failed list
         assert len(queue.failed_tasks) == 1
         failed = queue.failed_tasks[0]
         assert not failed.completed
@@ -350,12 +324,10 @@ class TestScheduledTasks:
         queue = TestQueue()
         task = simple_sync_task(1, 2)
 
-        past_time = datetime.now(timezone.utc) - timedelta(seconds=10)
+        past_time = datetime.now(timezone.utc) - timedelta(hours=10)
 
-        # Schedule in the past
         queue.schedule(task, at=past_time)
 
-        # Should be available when processing scheduled tasks for "now"
         processed = queue.process_scheduled()
 
         assert len(processed) == 1
@@ -366,7 +338,6 @@ class TestScheduledTasks:
         """Test processing scheduled tasks when queue is empty."""
         queue = TestQueue()
 
-        # Should handle empty queue gracefully
         processed = queue.process_scheduled()
         assert processed == []
         assert len(queue.processed_tasks) == 0
@@ -377,19 +348,16 @@ class TestScheduledTasks:
 
         now = datetime.now(timezone.utc)
 
-        # Add tasks in non-chronological order
         task3 = simple_sync_task(5, 6)
         task1 = simple_sync_task(1, 2)
         task2 = simple_sync_task(3, 4)
 
-        queue.schedule(task3, at=now + timedelta(seconds=3))
-        queue.schedule(task1, at=now + timedelta(seconds=1))
-        queue.schedule(task2, at=now + timedelta(seconds=2))
+        queue.schedule(task3, at=now + timedelta(hours=3))
+        queue.schedule(task1, at=now + timedelta(hours=1))
+        queue.schedule(task2, at=now + timedelta(hours=2))
 
-        # Process all scheduled tasks
-        processed = queue.process_scheduled(at=now + timedelta(seconds=5))
+        processed = queue.process_scheduled(at=now + timedelta(hours=5))
 
-        # Should be processed in chronological order
         assert len(processed) == 3
         assert processed[0].result == 3  # task1
         assert processed[1].result == 7  # task2

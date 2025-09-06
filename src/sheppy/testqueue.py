@@ -36,14 +36,22 @@ class TestQueue:
     def peek(self, count: int = 1) -> list[Task]:
         return asyncio.run(self._queue.peek(count))
 
+    def schedule(self, task: Task, at: datetime | timedelta) -> bool:
+        return asyncio.run(self._queue.schedule(task, at))
+
+    def list_scheduled(self) -> list[Task]:
+        """List scheduled tasks."""
+        return asyncio.run(self._queue.list_scheduled())
+
     def size(self) -> int:
         return asyncio.run(self._queue.size())
 
     def clear(self) -> int:
         return asyncio.run(self._queue.clear())
 
-    def schedule(self, task: Task, at: datetime | timedelta) -> bool:
-        return asyncio.run(self._queue.schedule(task, at))
+    def get_all_tasks(self) -> list[Task]:
+        """Get all tasks, including completed/failed ones."""
+        return asyncio.run(self._queue.get_all_tasks())
 
     def add_cron(self, task: Task, cron: str) -> bool:
         return asyncio.run(self._queue.add_cron(task, cron))
@@ -55,81 +63,53 @@ class TestQueue:
         return asyncio.run(self._queue.list_crons())
 
     def process_next(self) -> Task | None:
-        return asyncio.run(self._process_next_async())
+
+        async def _process_next_async() -> Task | None:
+            tasks = await self._queue._pop(limit=1)
+            return await self._execute_task(tasks[0]) if tasks else None
+
+        return asyncio.run(_process_next_async())
 
     def process_all(self) -> list[Task]:
         processed = []
 
-        while self.size() > 0:
+        for _ in range(self.size()):
             task = self.process_next()
-            if task:
-                processed.append(task)
-            else:
+            if not task:
                 break
+            processed.append(task)
+
         return processed
 
     def process_scheduled(self, at: datetime | timedelta | None = None) -> list[Task]:
-        # Convert timedelta to datetime if needed
         if isinstance(at, timedelta):
             at = datetime.now(timezone.utc) + at
         elif at is None:
             at = datetime.now(timezone.utc)
 
-        # Run async processing
-        return asyncio.run(self._process_scheduled_async(at))
+        async def _process_scheduled_async(at: datetime) -> list[Task]:
+            tasks = [Task.model_validate(t) for t in await self._backend.get_scheduled(self.name, at)]
+            return [await self._execute_task(task) for task in tasks]
 
-    async def _process_next_async(self) -> Task | None:  # ! FIXME - messy
-        tasks = await self._queue._pop(limit=1)
+        return asyncio.run(_process_scheduled_async(at))
 
-        if not tasks:
-            return None
-
-        __task = tasks[0]
-
+    async def _execute_task(self, __task: Task) -> Task:
         _, task = await self._task_processor.execute_task(__task, self._worker_id)
 
         self.processed_tasks.append(task)
 
         if task.error:
             self.failed_tasks.append(task)
-            # Final failure
-            if not task.finished_at:
-                # For tests, override next_retry_at to be immediate (ignore delay)
-                task.__dict__["next_retry_at"] = datetime.now(timezone.utc)
 
-                # Requeue for immediate retry
+            if task.should_retry:
+                # retry immediately
                 await self._queue.add(task)
 
         await self._backend.store_result(self.name, task.model_dump(mode='json'))
 
         stored_task_data = await self._backend.get_task(self.name, str(task.id))
+
         if stored_task_data:
             return Task.model_validate(stored_task_data)
+
         return task
-
-    async def _process_scheduled_async(self, at: datetime) -> list[Task]:  # ! FIXME - messy
-        processed = []
-
-        # Get all scheduled tasks up to specified time
-        tasks = [Task.model_validate(data) for data in await self._backend.get_scheduled(self.name, at)]
-
-        for __task in tasks:
-
-            _, task = await self._task_processor.execute_task(__task, self._worker_id)
-
-            self.processed_tasks.append(task)
-            processed.append(task)
-
-            if task.error:
-                self.failed_tasks.append(task)
-
-                # Override next_retry_at to be immediate (ignore delay)  # ! FIXME
-                task.__dict__["next_retry_at"] = datetime.now(timezone.utc)
-
-                # Requeue for immediate retry
-                await self._queue.add(task)
-
-            # Store result
-            await self._backend.store_result(self.name, task.model_dump(mode='json'))
-
-        return processed

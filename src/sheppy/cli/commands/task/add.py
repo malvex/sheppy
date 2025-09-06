@@ -81,7 +81,7 @@ def add(
         except TimeoutError:
             console.print(f"\n[yellow]Timeout: Task did not complete within {timeout} seconds[/yellow]")
             console.print(f"[yellow]Task is still running in the background. Use 'sheppy task info {task.id}' to check status.[/yellow]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
         if result_task and result_task.completed:
             console.print("\n[green]✓ Task completed successfully[/green]")

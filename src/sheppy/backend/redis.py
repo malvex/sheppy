@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 from datetime import datetime
 from time import time
@@ -104,7 +105,7 @@ class RedisBackend(Backend):
 
         # batch operation if list of tasks is provided
         _tasks = task_data if isinstance(task_data, list) else [task_data]
-        transaction = False if len(_tasks) > 1 else True  # disable atomic calls for batch to prevent freezes
+        transaction = False if len(_tasks) > 1 else True  # disable atomic calls for batch to prevent freezes  # noqa
 
         try:
             async with self.client.pipeline(transaction=transaction) as pipe:
@@ -272,12 +273,12 @@ class RedisBackend(Backend):
             raise BackendError(f"Failed to store task result: {e}") from e
 
     async def stats(self, queue_name: str) -> dict[str, int]:
-        tasks_metadata_key = self._tasks_metadata_key(queue_name)
+        # tasks_metadata_key = self._tasks_metadata_key(queue_name)
         scheduled_tasks_key = self._scheduled_tasks_key(queue_name)
         pending_tasks_key = self._pending_tasks_key(queue_name)
         finished_tasks_key = self._finished_tasks_key(queue_name)
 
-        total = await self.client.hlen(tasks_metadata_key)  # type: ignore[misc]
+        # total = await self.client.hlen(tasks_metadata_key)  # type: ignore[misc]
         pending = await self.client.xlen(pending_tasks_key)
         completed = await self.client.xlen(finished_tasks_key)
 
@@ -301,10 +302,8 @@ class RedisBackend(Backend):
 
         last_id = "0-0"
         if timeout is not None and timeout >= 0:
-            try:
+            with contextlib.suppress(redis.ResponseError):
                 last_id = (await self.client.xinfo_stream(finished_tasks_key))["last-generated-id"]
-            except redis.ResponseError:
-                pass
 
         task_data_json = await self.client.hget(tasks_metadata_key, task_id)  # type: ignore[misc]
         if task_data_json:

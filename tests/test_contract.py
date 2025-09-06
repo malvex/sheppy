@@ -113,26 +113,20 @@ class TestScheduledTasks:
         task = test_case.create_task()
         delay = timedelta(seconds=0.1)
 
-        # Schedule the task
         result = await queue.schedule(task, at=delay)
         assert result is True
 
-        # Task should not be immediately available for worker to process
         popped = await queue._pop(timeout=0.01)
         assert not popped
 
-        # Task should not be completed yet
         task = await queue.refresh(task)
         assert not task.completed
         assert not task.error
 
-        # Wait for the scheduled time
         await asyncio.sleep(0.15)
 
-        # Process scheduled tasks
         await worker.work(max_tasks=1)
 
-        # Task should now be completed
         task = await queue.refresh(task)
         assert task.completed
         assert not task.error
@@ -144,21 +138,16 @@ class TestScheduledTasks:
         task = test_case.create_task()
         scheduled_time = datetime.now(timezone.utc) + timedelta(seconds=0.1)
 
-        # Schedule the task
         result = await queue.schedule(task, at=scheduled_time)
         assert result is True
 
-        # Task should not be immediately available for worker to process
         popped = await queue._pop(timeout=0.01)
         assert not popped
 
-        # Wait for the scheduled time
         await asyncio.sleep(0.15)
 
-        # Process scheduled tasks
         await worker.work(max_tasks=1)
 
-        # Task should now be completed
         task = await queue.refresh(task)
         assert task.completed
         assert not task.error
@@ -168,45 +157,37 @@ class TestScheduledTasks:
         """Test scheduling multiple tasks at different times."""
         from tests.dependencies import simple_sync_task
 
-        # Create tasks with different scheduled times
         task1 = simple_sync_task(1, 2)
         task2 = simple_sync_task(3, 4)
         task3 = simple_sync_task(5, 6)
 
-        # Schedule tasks at different times with longer intervals for Redis
         await queue.schedule(task1, at=timedelta(seconds=0.2))
         await queue.schedule(task2, at=timedelta(seconds=0.4))
         await queue.schedule(task3, at=timedelta(seconds=0.6))
 
-        # No tasks should be immediately available
         popped = await queue._pop(timeout=0.01)
         assert not popped
 
-        # Wait and process first task
         await asyncio.sleep(0.25)
         await worker.work(max_tasks=1)
         task1 = await queue.refresh(task1)
         assert task1.completed
         assert task1.result == 3
 
-        # Others should still be pending
         task2 = await queue.refresh(task2)
         task3 = await queue.refresh(task3)
         assert not task2.completed
         assert not task3.completed
 
-        # Wait and process second task
         await asyncio.sleep(0.2)
         await worker.work(max_tasks=1)
         task2 = await queue.refresh(task2)
         assert task2.completed
         assert task2.result == 7
 
-        # Third should still be pending
         task3 = await queue.refresh(task3)
         assert not task3.completed
 
-        # Wait and process third task
         await asyncio.sleep(0.2)
         await worker.work(max_tasks=1)
         task3 = await queue.refresh(task3)
@@ -217,28 +198,22 @@ class TestScheduledTasks:
         """Test that immediate tasks are processed before scheduled tasks."""
         from tests.dependencies import simple_sync_task
 
-        # Schedule a task for later
         scheduled_task = simple_sync_task(1, 2)
         await queue.schedule(scheduled_task, at=timedelta(seconds=0.2))
 
-        # Add an immediate task
         immediate_task = simple_sync_task(3, 4)
         await queue.add(immediate_task)
 
-        # Process immediate task first
         await worker.work(max_tasks=1)
 
         immediate_task = await queue.refresh(immediate_task)
         scheduled_task = await queue.refresh(scheduled_task)
 
-        # Immediate task should be completed
         assert immediate_task.completed
         assert immediate_task.result == 7
 
-        # Scheduled task should still be pending
         assert not scheduled_task.completed
 
-        # Wait for scheduled time and process
         await asyncio.sleep(0.25)
         await worker.work(max_tasks=1)
 
@@ -251,16 +226,12 @@ class TestScheduledTasks:
         """Test that scheduled tasks can fail as expected."""
         task = test_case.create_task()
 
-        # Schedule the task
         await queue.schedule(task, at=timedelta(seconds=0.1))
 
-        # Wait for scheduled time
         await asyncio.sleep(0.15)
 
-        # Process the task
         await worker.work(max_tasks=1)
 
-        # Task should have failed
         task = await queue.refresh(task)
         assert not task.completed
         assert task.error
@@ -273,10 +244,8 @@ class TestScheduledTasks:
         task = simple_sync_task(1, 2)
         past_time = datetime.now(timezone.utc) - timedelta(seconds=10)
 
-        # Schedule in the past
         await queue.schedule(task, at=past_time)
 
-        # Should be available immediately
         await worker.work(max_tasks=1)
 
         task = await queue.refresh(task)

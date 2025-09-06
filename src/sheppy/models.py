@@ -75,7 +75,7 @@ class Task(BaseModel):
     # caller: str | None = None
     # worker: str | None = None
 
-    # extra: dict[str, Any] = Field(default_factory=dict)
+    # extra: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def is_retriable(self) -> bool:

@@ -94,7 +94,7 @@ def test(
             console.print(f"\n[bold red]✗ Failed[/bold red] (took {end_time:.3f}s)")
             console.print("\n[bold]Exception:[/bold]")
             console.print(f"  Type: [red]{type(e).__name__}[/red]")
-            console.print(f"  Message: [red]{str(e)}[/red]")
+            console.print(f"  Message: [red]{e!s}[/red]")
 
 
     asyncio.run(run_test())
