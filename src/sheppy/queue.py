@@ -9,7 +9,7 @@ from .task_factory import TaskFactory
 
 class Queue:
 
-    def __init__(self, name: str, backend: Backend):
+    def __init__(self, backend: Backend, name: str = "default"):
         self.name = name
         self.backend = backend
 

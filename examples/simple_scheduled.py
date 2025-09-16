@@ -18,11 +18,11 @@ async def send_email(email: Email) -> dict[str, str]:
     return {"status": "sent"}
 
 
-queue = Queue("email-queue", backend=MemoryBackend())
+queue = Queue(MemoryBackend())
 
 
 async def run_worker():
-    w = Worker("email-queue", backend=queue.backend)
+    w = Worker("default", backend=queue.backend)
     await w.work()
 
 

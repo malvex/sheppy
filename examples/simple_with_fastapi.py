@@ -45,7 +45,7 @@ class Status(BaseModel):
 
 @task
 async def send_welcome_email(user_id: int,
-                             session: Session = Depends(get_session),  # Supports Dependency Injection
+                             session: Session = Depends(get_session),  # supports Dependency Injection
                              ) -> Status:
 
     db_user = session.get(User, user_id)
@@ -65,12 +65,12 @@ backend = MemoryBackend()
 
 # FastAPI dependency injection
 def get_queue():
-    return Queue("example-queue", backend=backend)
+    return Queue(backend)
 
 
 # DEMO ONLY: in production run this as separate process
 async def run_worker():
-    w = Worker("example-queue", backend)
+    w = Worker(backend=backend)
     await w.work()
 
 ################################################
@@ -121,4 +121,3 @@ async def register(user_data: UserCreate,
     return db_user
 
 # run with: `fastapi run examples/simple_with_fastapi.py` and go to http://localhost:8000/docs
-# known bug: auto-reload doesn't work yet

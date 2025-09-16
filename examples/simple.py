@@ -18,11 +18,11 @@ async def send_email(email: Email) -> dict[str, str]:
     return {"status": "sent"}
 
 
-queue = Queue("email-queue", backend=MemoryBackend())
+queue = Queue(MemoryBackend())
 
 
 async def run_worker():
-    w = Worker("email-queue", backend=queue.backend)
+    w = Worker("default", backend=queue.backend)
     await w.work()
 
 
@@ -41,7 +41,7 @@ async def main():
     # wait for results to verify welcome email was sent
     task = await queue.wait_for_result(task)
 
-    assert task.result.get("status", None) == "sent"
+    assert task.result == {"status": "sent"}
     assert task.completed
     assert not task.error
 

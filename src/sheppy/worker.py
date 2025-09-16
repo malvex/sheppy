@@ -38,7 +38,7 @@ class Worker:
         self._backend = backend
         if not isinstance(queue_name, list|tuple):
             queue_name = [str(queue_name)]
-        self.queues = [Queue(q, backend) for q in queue_name]
+        self.queues = [Queue(backend, q) for q in queue_name]
 
         self.shutdown_timeout = shutdown_timeout
         self.worker_id = generate_unique_worker_id("worker")

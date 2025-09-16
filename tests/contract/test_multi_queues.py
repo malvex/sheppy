@@ -7,9 +7,9 @@ from tests.dependencies import (
 class TestMultipleQueues:
 
     async def test_multiple_queues(self, backend: Backend, worker_backend: Backend):
-        queue1 = Queue("queue1", backend=backend)
-        queue2 = Queue("queue2", backend=backend)
-        queue3 = Queue("queue3", backend=backend)
+        queue1 = Queue(backend, "queue1")
+        queue2 = Queue(backend, "queue2")
+        queue3 = Queue(backend, "queue3")
 
         worker = Worker(["queue1", "queue2", "queue3"], backend)
         worker._blocking_timeout = 0.01

@@ -9,7 +9,7 @@ async def calculate(x: int, y: int) -> int:
 
 
 backend = RedisBackend("redis://127.0.0.1:6379")
-queue = Queue("default", backend)
+queue = Queue(backend)
 
 
 async def main() -> None:

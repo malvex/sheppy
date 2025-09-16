@@ -25,7 +25,7 @@ def info(
 
     async def _info() -> None:
         backend_instance = get_backend(backend, redis_url)
-        q = Queue(queue, backend_instance)
+        q = Queue(backend_instance, queue)
 
         try:
             uuid_obj = UUID(task_id)

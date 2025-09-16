@@ -39,7 +39,7 @@ def list_tasks(
 
     async def _list() -> None:
         backend_instance = get_backend(backend, redis_url)
-        q = Queue(queue, backend_instance)
+        q = Queue(backend_instance, queue)
 
         tasks = []
 

@@ -19,7 +19,7 @@ class TestQueue:
         self.name = name
 
         self._backend = MemoryBackend()
-        self._queue = Queue(self.name, self._backend)
+        self._queue = Queue(self._backend, self.name)
         #self._dependency_resolver = DependencyResolver(dependency_overrides)
         self._worker_id = "TestQueue"
         self._task_processor = TaskProcessor()

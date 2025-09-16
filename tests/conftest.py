@@ -53,4 +53,4 @@ async def worker(worker_backend: Backend) -> Worker:
 
 @pytest_asyncio.fixture
 async def queue(backend: Backend) -> Queue:
-    return Queue(TEST_QUEUE_NAME, backend)
+    return Queue(backend, TEST_QUEUE_NAME)
