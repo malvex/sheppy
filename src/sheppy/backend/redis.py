@@ -308,7 +308,7 @@ class RedisBackend(Backend):
         task_data_json = await self.client.hget(tasks_metadata_key, task_id)  # type: ignore[misc]
         if task_data_json:
             task_data = json.loads(task_data_json)
-            if task_data.get("metadata", {}).get("finished_at"):
+            if task_data.get("finished_at"):
                 return task_data  # type: ignore[no-any-return]
 
         if timeout is None or timeout < 0:
