@@ -21,7 +21,6 @@ class WorkerStats(BaseModel):
     failed: int = 0
 
 
-# ! FIXME - do this differently
 WORKER_PREFIX = "<Worker> "
 SCHEDULER_PREFIX = "<Scheduler> "
 CRON_MANAGER_PREFIX = "<CronManager> "
@@ -42,6 +41,7 @@ class Worker:
             raise ValueError("At least one processing type must be enabled")
 
         self._backend = backend
+
         if not isinstance(queue_name, list|tuple):
             queue_name = [str(queue_name)]
         self.queues = [Queue(backend, q) for q in queue_name]
@@ -51,17 +51,19 @@ class Worker:
         self.stats = WorkerStats()
 
         self._task_processor = TaskProcessor()
-        self._shutdown_event = asyncio.Event()
-        self._active_tasks: dict[str, dict[asyncio.Task[Task], Task]] = {}
         self._task_semaphore = asyncio.Semaphore(max_concurrent_tasks)
+        self._shutdown_event = asyncio.Event()
+        self._ctrl_c_counter = 0
+
         self._blocking_timeout = 5
+        self._scheduler_polling_interval = 1.0
+        self._cron_polling_interval = 10.0
+
+        self._active_tasks: dict[str, dict[asyncio.Task[Task], Task]] = {queue.name: {} for queue in self.queues}
 
         self.enable_job_processing = enable_job_processing
         self.enable_scheduler = enable_scheduler
         self.enable_cron_manager = enable_cron_manager
-
-        self._scheduler_polling_interval = 1.0
-        self._cron_polling_interval = 10.0
 
         self._work_queue_tasks: list[asyncio.Task[None]] = []
         self._scheduler_task: asyncio.Task[None] | None = None
@@ -70,54 +72,38 @@ class Worker:
         self._tasks_to_process: int | None = None
 
     async def work(self, max_tasks: int | None = None) -> None:
+        # register signals
         loop = asyncio.get_event_loop()
         self.__register_signal_handlers(loop)
 
         self._tasks_to_process = max_tasks
+
+        # reset state (likely relevant only for tests)
         self._shutdown_event.clear()
+        self._ctrl_c_counter = 0
 
-        try:
-            await self._verify_connection(self._backend)
+        # test connection
+        await self._verify_connection(self._backend)
 
-            if self.enable_scheduler:
-                self._scheduler_task = asyncio.create_task(self._run_scheduler(self._scheduler_polling_interval))
+        # start scheduler
+        if self.enable_scheduler:
+            self._scheduler_task = asyncio.create_task(self._run_scheduler(self._scheduler_polling_interval))
 
-            if self.enable_cron_manager:
-                self._cron_manager_task = asyncio.create_task(self._run_cron_manager(self._cron_polling_interval))
+        # start cron manager
+        if self.enable_cron_manager:
+            self._cron_manager_task = asyncio.create_task(self._run_cron_manager(self._cron_polling_interval))
 
-            if self.enable_job_processing:
-                for queue in self.queues:
-                    if queue.name not in self._active_tasks:
-                        self._active_tasks[queue.name] = {}
+        # start job processing
+        if self.enable_job_processing:
+            for queue in self.queues:
+                self._work_queue_tasks.append(asyncio.create_task(self._run_worker_loop(queue)))
 
-                    self._work_queue_tasks.append(
-                        asyncio.create_task(
-                            self._run_worker_loop(queue)
-                        )
-                    )
-
-                await asyncio.wait(self._work_queue_tasks, return_when=asyncio.FIRST_EXCEPTION)
-                self._shutdown_event.set()
-            else:
-                __futures = []
-                if self._scheduler_task:
-                    __futures.append(self._scheduler_task)
-                if self._cron_manager_task:
-                    __futures.append(self._cron_manager_task)
-                await asyncio.gather(*__futures)
-
-        except asyncio.CancelledError:
-            logger.info("Cancelled")
-
-        except Exception as e:
-            logger.error(f"Error in worker loop: {e}", exc_info=True)
-            self._shutdown_event.set()
-
-        if self._scheduler_task:
-            self._scheduler_task.cancel()
-
-        if self._cron_manager_task:
-            self._cron_manager_task.cancel()
+        # blocking wait for created asyncio tasks
+        _futures = self._work_queue_tasks
+        _futures += [self._scheduler_task] if self._scheduler_task else []
+        _futures += [self._cron_manager_task] if self._cron_manager_task else []
+        await asyncio.gather(*_futures, return_exceptions=True)
+        self._shutdown_event.set()
 
         # this is starting to feel like Perl
         remaining_tasks = {k: v for inner_dict in self._active_tasks.values() for k, v in inner_dict.items()}
@@ -146,7 +132,7 @@ class Worker:
                         # except Exception as e:
                         #     logger.error(f"Failed to requeue task {task.id}: {e}", exc_info=True)
 
-        # signal cleanup
+        # unregister signals
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.remove_signal_handler(sig)
 
@@ -166,10 +152,13 @@ class Worker:
                         logger.info(SCHEDULER_PREFIX + f"Enqueued {_l} scheduled task{'s' if _l > 1 else ''} for processing: {_task_s}")
 
             except asyncio.CancelledError:
+                logger.warning(SCHEDULER_PREFIX + "cancelled")
                 break
 
             except Exception as e:
                 logger.exception(SCHEDULER_PREFIX + f"Scheduling failed with error: {e}", exc_info=True)
+                self._shutdown_event.set()
+                break
 
             await asyncio.sleep(poll_interval)  # TODO: replace polling with notifications when worker notifications are implemented
 
@@ -192,16 +181,14 @@ class Worker:
                             if success:
                                 logger.info(CRON_MANAGER_PREFIX + f"Cron {cron.id} ({cron.spec.func}) scheduled at {_next_run}")
 
-                # if tasks:
-                #     _l = len(tasks)
-                #     _task_s = ", ".join([str(task.id) for task in tasks])
-                #     logger.info(f"Enqueued {_l} scheduled task{"s" if _l > 1 else ""} for processing: {_task_s}")
-
             except asyncio.CancelledError:
+                logger.warning(CRON_MANAGER_PREFIX + "cancelled")
                 break
 
             except Exception as e:
                 logger.exception(CRON_MANAGER_PREFIX + f"failed with error: {e}", exc_info=True)
+                self._shutdown_event.set()
+                break
 
             await asyncio.sleep(poll_interval)  # TODO: replace polling with notifications when worker notifications are implemented
 
@@ -212,6 +199,7 @@ class Worker:
         while not self._shutdown_event.is_set():
 
             if self._tasks_to_process is not None and self._tasks_to_process <= 0:
+                self._shutdown_event.set()
                 break
 
             # clean up completed tasks
@@ -229,16 +217,27 @@ class Worker:
             if self._tasks_to_process is not None:
                 capacity = min(capacity, self._tasks_to_process)
 
-            available_tasks = await queue._pop(timeout=self._blocking_timeout,
-                                               limit=capacity)
+            try:
 
-            for task in available_tasks:
-                logger.info(WORKER_PREFIX + f"Processing task {task.id} ({task.spec.func})")
-                task_future = asyncio.create_task(self.process_task_semaphore_wrap(queue, task))
-                self._active_tasks[queue.name][task_future] = task
+                available_tasks = await queue._pop(timeout=self._blocking_timeout,
+                                                limit=capacity)
 
-                if self._tasks_to_process is not None:
-                    self._tasks_to_process -= 1
+                for task in available_tasks:
+                    logger.info(WORKER_PREFIX + f"Processing task {task.id} ({task.spec.func})")
+                    task_future = asyncio.create_task(self.process_task_semaphore_wrap(queue, task))
+                    self._active_tasks[queue.name][task_future] = task
+
+                    if self._tasks_to_process is not None:
+                        self._tasks_to_process -= 1
+
+            except asyncio.CancelledError:
+                logger.warning(WORKER_PREFIX + "cancelled")
+                break
+
+            except Exception as e:
+                logger.exception(WORKER_PREFIX + f"failed with error: {e}", exc_info=True)
+                self._shutdown_event.set()
+                break
 
     async def process_task_semaphore_wrap(self, queue: Queue, task: Task) -> Task:
         async with self._task_semaphore:
@@ -282,9 +281,29 @@ class Worker:
             logger.exception(f"Failed to store result for task {task.id}", exc_info=True)
 
     def __register_signal_handlers(self, loop: asyncio.AbstractEventLoop) -> None:
+        CTRL_C_THRESHOLD = 3
         def signal_handler(sig: signal.Signals) -> None:
-            logger.info(f"Received signal {sig}, initiating graceful shutdown...")
-            self._shutdown_event.set()
+            if self._shutdown_event.is_set():
+                if self._ctrl_c_counter == CTRL_C_THRESHOLD:
+                    logger.warning("Forcing shutdown...")
+                    # cancel all tasks on shutdown
+                    _futures = self._work_queue_tasks
+                    _futures += [k for inner_dict in self._active_tasks.values() for k, v in inner_dict.items()]
+                    _futures += [self._scheduler_task] if self._scheduler_task else []
+                    _futures += [self._cron_manager_task] if self._cron_manager_task else []
+                    for future in _futures:
+                        future.cancel()
+                    # we cancelled active tasks, so clear all dicts as well
+                    for d in self._active_tasks.values():
+                        d.clear()
+                    return
+
+                logger.info(f"Press CTRL+C {CTRL_C_THRESHOLD - self._ctrl_c_counter} more times to force shutdown...")
+                self._ctrl_c_counter += 1
+
+            else:
+                logger.info(f"Received signal {sig.name}, initiating graceful shutdown...")
+                self._shutdown_event.set()
 
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, partial(signal_handler, sig))
