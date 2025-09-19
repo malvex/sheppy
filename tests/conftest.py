@@ -6,7 +6,7 @@ import pytest_asyncio
 from sheppy import Queue, Worker
 from sheppy.backend import Backend, MemoryBackend, RedisBackend
 
-TEST_QUEUE_NAME = "pytest-queue"
+TEST_QUEUE_NAME = "pytest"
 
 
 @pytest_asyncio.fixture(params=["memory", "redis"])
@@ -15,13 +15,13 @@ async def backend(request: pytest.FixtureRequest) -> AsyncGenerator[Backend, Non
     if request.param == "memory":
 
         backend = MemoryBackend()
-        await backend.connect()
 
     elif request.param == "redis":
 
-        backend = RedisBackend(url="redis://localhost:6379/0", consumer_group="group-pytest")
+        backend = RedisBackend(url="redis://localhost:6379/0", consumer_group="pytest")
         await backend.connect()
         await backend._client.flushdb()
+        await backend.disconnect()
 
     else:
         raise NotImplementedError(f"backend {request.param} doesn't exist")
@@ -32,13 +32,12 @@ async def backend(request: pytest.FixtureRequest) -> AsyncGenerator[Backend, Non
 @pytest_asyncio.fixture
 async def worker_backend(backend: Backend) -> AsyncGenerator[Backend, None]:
     if isinstance(backend, MemoryBackend):
-        # Memory backend must be the same instance to access the same task data
+        # memory backend must be the same instance to access the same task data
         yield backend
 
     elif isinstance(backend, RedisBackend):
 
         worker_backend = RedisBackend(url=backend.url, consumer_group=backend.consumer_group)
-        await worker_backend.connect()
         yield worker_backend
 
     else:
