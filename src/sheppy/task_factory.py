@@ -60,7 +60,7 @@ class TaskFactory:
         task_config: dict[str, Any] = {
             "retry": retry
         }
-        if retry_delay:
+        if retry_delay is not None:
             task_config["retry_delay"] = retry_delay
 
         func_string = TaskFactory._stringify_function(func)
