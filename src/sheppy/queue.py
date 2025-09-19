@@ -45,6 +45,9 @@ class Queue:
         if isinstance(at, timedelta):
             at = datetime.now(timezone.utc) + at
 
+        if not at.tzinfo:
+            raise TypeError("provided datetime must be offset-aware")
+
         task.__dict__["scheduled_at"] = at
 
         return await self.backend.schedule(self.name, task.model_dump(mode='json'), at)
