@@ -33,8 +33,14 @@ class Worker:
         queue_name: str | list[str],
         backend: Backend,
         shutdown_timeout: float = 30.0,
-        max_concurrent_tasks: int = 10
+        max_concurrent_tasks: int = 10,
+        enable_job_processing: bool = True,
+        enable_scheduler: bool = True,
+        enable_cron_manager: bool = True,
     ):
+        if not any([enable_job_processing, enable_scheduler, enable_cron_manager]):
+            raise ValueError("At least one processing type must be enabled")
+
         self._backend = backend
         if not isinstance(queue_name, list|tuple):
             queue_name = [str(queue_name)]
@@ -49,6 +55,13 @@ class Worker:
         self._active_tasks: dict[str, dict[asyncio.Task[Task], Task]] = {}
         self._task_semaphore = asyncio.Semaphore(max_concurrent_tasks)
         self._blocking_timeout = 5
+
+        self.enable_job_processing = enable_job_processing
+        self.enable_scheduler = enable_scheduler
+        self.enable_cron_manager = enable_cron_manager
+
+        self._scheduler_polling_interval = 1.0
+        self._cron_polling_interval = 10.0
 
         self._work_queue_tasks: list[asyncio.Task[None]] = []
         self._scheduler_task: asyncio.Task[None] | None = None
@@ -65,21 +78,33 @@ class Worker:
 
         try:
             await self._verify_connection(self._backend)
-            self._scheduler_task = asyncio.create_task(self._run_scheduler())
-            self._cron_manager_task = asyncio.create_task(self._run_cron_manager())
 
-            for queue in self.queues:
-                if queue.name not in self._active_tasks:
-                    self._active_tasks[queue.name] = {}
+            if self.enable_scheduler:
+                self._scheduler_task = asyncio.create_task(self._run_scheduler(self._scheduler_polling_interval))
 
-                self._work_queue_tasks.append(
-                    asyncio.create_task(
-                        self._run_worker_loop(queue)
+            if self.enable_cron_manager:
+                self._cron_manager_task = asyncio.create_task(self._run_cron_manager(self._cron_polling_interval))
+
+            if self.enable_job_processing:
+                for queue in self.queues:
+                    if queue.name not in self._active_tasks:
+                        self._active_tasks[queue.name] = {}
+
+                    self._work_queue_tasks.append(
+                        asyncio.create_task(
+                            self._run_worker_loop(queue)
+                        )
                     )
-                )
 
-            await asyncio.wait(self._work_queue_tasks, return_when=asyncio.FIRST_EXCEPTION)
-            self._shutdown_event.set()
+                await asyncio.wait(self._work_queue_tasks, return_when=asyncio.FIRST_EXCEPTION)
+                self._shutdown_event.set()
+            else:
+                __futures = []
+                if self._scheduler_task:
+                    __futures.append(self._scheduler_task)
+                if self._cron_manager_task:
+                    __futures.append(self._cron_manager_task)
+                await asyncio.gather(*__futures)
 
         except asyncio.CancelledError:
             logger.info("Cancelled")
@@ -127,7 +152,7 @@ class Worker:
 
         logger.info(f"Worker stopped. Processed: {self.stats.processed}, Failed: {self.stats.failed}")
 
-    async def _run_scheduler(self, poll_interval: float = 1.0) -> None:
+    async def _run_scheduler(self, poll_interval: float) -> None:
         logger.info(SCHEDULER_PREFIX + "started")
 
         while not self._shutdown_event.is_set():
@@ -150,7 +175,7 @@ class Worker:
 
         logger.info(SCHEDULER_PREFIX + "stopped")
 
-    async def _run_cron_manager(self, poll_interval: float = 10.0) -> None:
+    async def _run_cron_manager(self, poll_interval: float) -> None:
         logger.info(CRON_MANAGER_PREFIX + "started")
 
         while not self._shutdown_event.is_set():

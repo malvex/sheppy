@@ -19,8 +19,14 @@ def work(
     max_concurrent: int = typer.Option(10, "--max-concurrent", "-c", help="Max concurrent tasks", min=1),
     autoreload: bool = typer.Option(False, "--reload", help="Reload worker on file changes"),
     log_level: LogLevel = typer.Option(LogLevel.info, "--log-level", "-l", help="Logging level"),
+    disable_job_processing: bool = typer.Option(False, "--disable-job-processing", help="Disable job processing"),
+    disable_scheduler: bool = typer.Option(False, "--disable-scheduler", help="Disable scheduler"),
+    disable_cron_manager: bool = typer.Option(False, "--disable-cron-manager", help="Disable cron manager"),
 ) -> None:
     """Start a worker to process tasks from a queue."""
+
+    if all([disable_job_processing, disable_scheduler, disable_cron_manager]):
+        raise ValueError("At least one processing type must be enabled")
 
     # deduplicate queues to prevent unexpected behavior
     queues = []
@@ -46,18 +52,25 @@ def work(
 
     console.print(f"[cyan]Starting worker for queue{_s} '[bold]{queue_s}[/bold]'[/cyan]")
     console.print(f"  Backend: [yellow]{backend.value}[/yellow]{_bs}")
+    console.print(f"  Job processing: [yellow]{not disable_job_processing}[/yellow]"
+                  f"  Scheduler: [yellow]{not disable_scheduler}[/yellow]"
+                  f"  Cron Manager: [yellow]{not disable_cron_manager}[/yellow]")
     console.print(f"  Max concurrent tasks: [yellow]{max_concurrent}[/yellow]")
     console.print()
 
     if autoreload:
         run_process('.', target=_start_worker,
-                    args=(queues, backend_instance, max_concurrent, log_level),
+                    args=(queues, backend_instance, max_concurrent, log_level,
+                          disable_job_processing, disable_scheduler, disable_cron_manager),
                     callback=lambda _: console.print("Detected file changes, reloading worker..."))
     else:
-        _start_worker(queues, backend_instance, max_concurrent, log_level)
+        _start_worker(queues, backend_instance, max_concurrent, log_level,
+                      disable_job_processing, disable_scheduler, disable_cron_manager)
 
 
-def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, log_level: LogLevel) -> None:
+def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, log_level: LogLevel,
+                  disable_job_processing: bool, disable_scheduler: bool, disable_cron_manager: bool
+                  ) -> None:
 
     worker_logger = logging.getLogger("sheppy.worker")
 
@@ -70,5 +83,8 @@ def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, log_
             show_path=False
         ))
 
-    worker = Worker(queues, backend=backend, max_concurrent_tasks=max_concurrent)
+    worker = Worker(queues, backend=backend, max_concurrent_tasks=max_concurrent,
+                    enable_job_processing=not disable_job_processing,
+                    enable_scheduler=not disable_scheduler,
+                    enable_cron_manager=not disable_cron_manager)
     asyncio.run(worker.work())
