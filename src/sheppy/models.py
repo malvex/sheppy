@@ -47,7 +47,7 @@ class Spec(BaseModel):
 class Config(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    retry: float = Field(default=0, ge=0)
+    retry: int = Field(default=0, ge=0)
     retry_delay: float | list[float] = Field(default=1.0)
 
     # timeout: float | None = None  # seconds
