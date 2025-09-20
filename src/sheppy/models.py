@@ -11,6 +11,7 @@ from uuid import UUID, uuid4, uuid5
 from croniter import croniter
 from pydantic import (
     AfterValidator,
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -65,13 +66,13 @@ class Task(BaseModel):
     spec: Spec
     config: Config = Field(default_factory=Config)
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    finished_at: datetime | None = None
-    scheduled_at: datetime | None = None
+    created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    finished_at: AwareDatetime | None = None
+    scheduled_at: AwareDatetime | None = None
 
     retry_count: int = 0
-    last_retry_at: datetime | None = None
-    next_retry_at: datetime | None = None
+    last_retry_at: AwareDatetime | None = None
+    next_retry_at: AwareDatetime | None = None
     # caller: str | None = None
     # worker: str | None = None
 
@@ -127,8 +128,8 @@ class TaskCron(BaseModel):
     config: Config
 
     # enabled: bool = True
-    # last_run: datetime | None = None
-    # next_run: datetime | None = None
+    # last_run: AwareDatetime | None = None
+    # next_run: AwareDatetime | None = None
 
     @property
     def deterministic_id(self) -> UUID:
