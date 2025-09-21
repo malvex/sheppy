@@ -1,6 +1,6 @@
 [project]
 name = "sheppy"
-version = "0.1.0"
+dynamic = ["version"]
 description = ""
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,6 +30,9 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/sheppy/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sheppy"]
