@@ -31,7 +31,7 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def peek(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
+    async def list_pending(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
         pass
 
     @abstractmethod

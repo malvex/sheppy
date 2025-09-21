@@ -157,7 +157,7 @@ class RedisBackend(Backend):
         except Exception as e:
             raise BackendError(f"Failed to dequeue task: {e}") from e
 
-    async def peek(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
+    async def list_pending(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
         pending_tasks_key = self._pending_tasks_key(queue_name)
 
         await self._ensure_consumer_group(pending_tasks_key)

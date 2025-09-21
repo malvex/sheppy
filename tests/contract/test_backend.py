@@ -241,7 +241,7 @@ async def test_pop(backend: Backend):
     assert await backend.pop(Q, limit=3, timeout=0.01) == [t4]
 
 
-async def test_peek(backend: Backend):
+async def test_list_pending(backend: Backend):
     t1 = simple_async_task(1, 2).model_dump(mode="json")
     t2 = simple_async_task(3, 4).model_dump(mode="json")
     t3 = simple_async_task(5, 6).model_dump(mode="json")
@@ -251,13 +251,13 @@ async def test_peek(backend: Backend):
     success = await backend.append(Q, [t1, t2, t3, t4])
     assert success
 
-    assert await backend.peek(Q) == [t1]
-    assert await backend.peek(Q, count=2) == [t1, t2]
-    assert await backend.peek(Q, count=50) == [t1, t2, t3, t4]
+    assert await backend.list_pending(Q) == [t1]
+    assert await backend.list_pending(Q, count=2) == [t1, t2]
+    assert await backend.list_pending(Q, count=50) == [t1, t2, t3, t4]
 
-    assert await backend.peek("different-queue") == []
-    assert await backend.peek("different-queue", count=2) == []
-    assert await backend.peek("different-queue", count=50) == []
+    assert await backend.list_pending("different-queue") == []
+    assert await backend.list_pending("different-queue", count=2) == []
+    assert await backend.list_pending("different-queue", count=50) == []
 
 
 async def test_clear(backend: Backend):

@@ -220,7 +220,7 @@ class Worker:
                 capacity = min(capacity, self._tasks_to_process)
 
             try:
-                available_tasks = await queue._pop(timeout=self._blocking_timeout,
+                available_tasks = await queue.pop_pending(timeout=self._blocking_timeout,
                                                 limit=capacity)
 
                 if oneshot and not available_tasks:

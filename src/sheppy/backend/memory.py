@@ -71,7 +71,7 @@ class MemoryBackend(Backend):
 
             await asyncio.sleep(min(0.05, timeout - elapsed))
 
-    async def peek(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
+    async def list_pending(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
         async with self._locks[queue_name]:
             return list(self._queues[queue_name])[:count]
 

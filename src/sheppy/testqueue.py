@@ -33,8 +33,8 @@ class TestQueue:
     def get_task(self, task_id: UUID) -> Task | None:
         return asyncio.run(self._queue.get_task(task_id))
 
-    def peek(self, count: int = 1) -> list[Task]:
-        return asyncio.run(self._queue.peek(count))
+    def list_pending(self, count: int = 1) -> list[Task]:
+        return asyncio.run(self._queue.list_pending(count))
 
     def schedule(self, task: Task, at: datetime | timedelta) -> bool:
         return asyncio.run(self._queue.schedule(task, at))
@@ -65,7 +65,7 @@ class TestQueue:
     def process_next(self) -> Task | None:
 
         async def _process_next_async() -> Task | None:
-            tasks = await self._queue._pop(limit=1)
+            tasks = await self._queue.pop_pending(limit=1)
             return await self._execute_task(tasks[0]) if tasks else None
 
         return asyncio.run(_process_next_async())
