@@ -180,7 +180,7 @@ class RedisBackend(Backend):
 
         await self._ensure_consumer_group(pending_tasks_key)
 
-        count = await self.client.hlen(tasks_metadata_key)
+        count = await self.client.hlen(tasks_metadata_key)  # type: ignore[misc]
 
         await self.client.xtrim(pending_tasks_key, maxlen=0)
         await self.client.delete(scheduled_key)

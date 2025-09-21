@@ -65,9 +65,9 @@ def work(
 
     if autoreload:
         if max_tasks:
-            console.print(f"[yellow]Warning: --max-tasks is not compatible with --reload, ignoring[/yellow]")
+            console.print("[yellow]Warning: --max-tasks is not compatible with --reload, ignoring[/yellow]")
         if oneshot:
-            console.print(f"[yellow]Warning: --oneshot is not compatible with --reload, ignoring[/yellow]")
+            console.print("[yellow]Warning: --oneshot is not compatible with --reload, ignoring[/yellow]")
 
         run_process('.', target=_start_worker,
                     args=(queues, backend_instance, max_concurrent, log_level,
