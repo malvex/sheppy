@@ -34,6 +34,10 @@ class Queue:
 
     async def peek(self, count: int = 1) -> list[Task]:
         """Peek into the queue without removing tasks from it."""
+
+        if count <= 0:
+            raise ValueError("Value must be larger than zero")
+
         await self._ensure_backend_is_connected()
 
         return [Task.model_validate(t) for t in await self.backend.peek(self.name, count)]
