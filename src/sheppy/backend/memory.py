@@ -81,17 +81,17 @@ class MemoryBackend(Backend):
 
     async def clear(self, queue_name: str) -> int:
         async with self._locks[queue_name]:
-            # Count all tasks before clearing
             queue_size = len(self._queues[queue_name])
             scheduled_size = len(self._scheduled[queue_name])
             in_progress_size = len(self._in_progress[queue_name])
+            results_size = len(self._results[queue_name])
 
-            # Clear all data structures for this queue
             self._queues[queue_name].clear()
             self._scheduled[queue_name].clear()
             self._in_progress[queue_name].clear()
+            self._results[queue_name].clear()
 
-            return queue_size + scheduled_size + in_progress_size
+            return queue_size + scheduled_size + in_progress_size + results_size
 
     async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:  # ! FIXME
         async with self._locks[queue_name]:
@@ -155,7 +155,7 @@ class MemoryBackend(Backend):
                 if task_id in self._results[queue_name]:
                     task_data = self._results[queue_name][task_id]
 
-                    if task_data.get("finished_at") or task_data.get("completed") or task_data.get("error"):
+                    if task_data.get("finished_at"):
                         return task_data
 
             if timeout is None or timeout < 0:
@@ -175,8 +175,8 @@ class MemoryBackend(Backend):
     async def stats(self, queue_name: str) -> dict[str, int]:
         async with self._locks[queue_name]:
             return {
-                "pending": len(self._queues[queue_name]),
-                "in_progress": len(self._in_progress[queue_name]),
+                "pending": len(self._queues[queue_name]) + len(self._in_progress[queue_name]),
+                # "in_progress":
                 "completed": len(self._results[queue_name]),
                 "scheduled": len(self._scheduled[queue_name]),
             }

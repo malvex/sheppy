@@ -180,14 +180,9 @@ class RedisBackend(Backend):
 
         await self._ensure_consumer_group(pending_tasks_key)
 
-        count = 0
+        count = await self.client.hlen(tasks_metadata_key)
 
-        stream_info = await self.client.xinfo_stream(pending_tasks_key)
-        count += stream_info.get("length", 0)
         await self.client.xtrim(pending_tasks_key, maxlen=0)
-
-        count += await self.client.zcard(scheduled_key)
-
         await self.client.delete(scheduled_key)
         await self.client.delete(tasks_metadata_key)
 
@@ -209,7 +204,7 @@ class RedisBackend(Backend):
             success = await self.client.hsetnx(tasks_metadata_key, task_data["id"], json.dumps(task_data))  # type: ignore[misc]
 
             # task already exists, don't add it to zset
-            if not success:
+            if not success and not task_data["error"] and not task_data["scheduled_at"]:  # ! FIXME - temporary hack
                 return False
 
             # add to sorted set with timestamp as score
@@ -284,7 +279,7 @@ class RedisBackend(Backend):
 
         return {
             "pending": pending,
-            "in_progress": -1,
+            # "in_progress": -1,
             "completed": completed,
             "scheduled": await self.client.zcard(scheduled_tasks_key),
         }
