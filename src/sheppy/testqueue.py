@@ -113,3 +113,34 @@ class TestQueue:
             return Task.model_validate(stored_task_data)
 
         return task
+
+
+def assert_is_new(task: Task | None) -> None:
+    assert task is not None
+    assert isinstance(task, Task)
+
+    assert task.completed is False
+    assert task.error is None
+    assert task.result is None
+    assert task.finished_at is None
+
+
+def assert_is_completed(task: Task | None) -> None:
+    assert task is not None
+    assert isinstance(task, Task)
+
+    assert task.completed is True
+    assert task.error is None
+    assert task.finished_at is not None
+
+
+def assert_is_failed(task: Task | None) -> None:
+    assert task is not None
+    assert isinstance(task, Task)
+
+    assert not task.completed
+    assert task.error is not None
+    assert task.result is None
+
+    if not task.should_retry:
+        assert task.finished_at is not None
