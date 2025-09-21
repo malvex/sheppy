@@ -70,13 +70,15 @@ class Worker:
         self._cron_manager_task: asyncio.Task[None] | None = None
 
         self._tasks_to_process: int | None = None
+        self._empty_queues: list[str] = []
 
-    async def work(self, max_tasks: int | None = None) -> None:
+    async def work(self, max_tasks: int | None = None, oneshot: bool = False) -> None:
         # register signals
         loop = asyncio.get_event_loop()
         self.__register_signal_handlers(loop)
 
         self._tasks_to_process = max_tasks
+        self._empty_queues.clear()
 
         # reset state (likely relevant only for tests)
         self._shutdown_event.clear()
@@ -96,7 +98,7 @@ class Worker:
         # start job processing
         if self.enable_job_processing:
             for queue in self.queues:
-                self._work_queue_tasks.append(asyncio.create_task(self._run_worker_loop(queue)))
+                self._work_queue_tasks.append(asyncio.create_task(self._run_worker_loop(queue, oneshot)))
 
         # blocking wait for created asyncio tasks
         _futures = self._work_queue_tasks
@@ -195,7 +197,7 @@ class Worker:
         logger.info(CRON_MANAGER_PREFIX + "stopped")
 
 
-    async def _run_worker_loop(self, queue: Queue) -> None:
+    async def _run_worker_loop(self, queue: Queue, oneshot: bool = False) -> None:
         while not self._shutdown_event.is_set():
 
             if self._tasks_to_process is not None and self._tasks_to_process <= 0:
@@ -218,9 +220,15 @@ class Worker:
                 capacity = min(capacity, self._tasks_to_process)
 
             try:
-
                 available_tasks = await queue._pop(timeout=self._blocking_timeout,
                                                 limit=capacity)
+
+                if oneshot and not available_tasks:
+                    logger.info(WORKER_PREFIX + f"Queue '{queue.name}' emptied")
+                    self._empty_queues.append(queue.name)
+                    if len(self._empty_queues) == len(self.queues):
+                        self._shutdown_event.set()
+                    break
 
                 for task in available_tasks:
                     logger.info(WORKER_PREFIX + f"Processing task {task.id} ({task.spec.func})")
