@@ -77,6 +77,12 @@ async def simple_async_task(x: int, y: int) -> int:
     return x + y
 
 
+@task(retry=1, retry_delay=1)
+async def add_retriable(x: int, y: int) -> int:
+    await asyncio.sleep(0.001)
+    return x + y
+
+
 @task
 def failing_task(message: str = "Task failed") -> None:
     raise ValueError(message)

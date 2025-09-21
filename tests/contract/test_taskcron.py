@@ -1,8 +1,7 @@
 import pytest
-
 from pydantic import ValidationError
 
-from sheppy.models import TaskCron, Spec, Config
+from sheppy.models import Config, Spec, TaskCron
 
 
 @pytest.mark.parametrize("cron_expression", [
@@ -11,11 +10,13 @@ from sheppy.models import TaskCron, Spec, Config
     "*/5 * * * *",
     "0 0 * * *",
     "0 0 * * 0",
+    "0 0 * * 7",
     "0 0 1 * *",
     "0 0 1 1 *",
     "15 2 * * *",
     "0 */4 * * *",
     "0 9-17 * * 1-5",
+    "0 9-17 * * mon",
     "@hourly",
     "@daily",
     "@weekly",
@@ -38,6 +39,7 @@ def test_valid_cron_expressions(cron_expression):
     "* * 32 * *",
     "* * * 13 *",
     "* * * * 8",
+    "* * * * bob",
     "@invalid",
     "*/0 * * * *",
     None,
@@ -75,20 +77,20 @@ def test_deterministic_id(expression, spec: dict, config: dict):
     tc_diff_spec = TaskCron(expression=expression, spec=different_spec, config=config)
     tc_diff_config = TaskCron(expression=expression, spec=spec, config=different_config)
 
-    ids = set([
+    ids = {
         tc1.id,
         tc2.id,
         tc_diff_expression.id,
         tc_diff_spec.id,
         tc_diff_config.id
-    ])
+    }
     assert len(ids) == 5
 
-    deterministic_ids = set([
+    deterministic_ids = {
         tc1.deterministic_id,
         tc2.deterministic_id,
         tc_diff_expression.deterministic_id,
         tc_diff_spec.deterministic_id,
         tc_diff_config.deterministic_id
-    ])
+    }
     assert len(deterministic_ids) == 4

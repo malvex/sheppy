@@ -1,12 +1,18 @@
-from collections.abc import AsyncGenerator
-
 import pytest
 import pytest_asyncio
+
+from collections.abc import AsyncGenerator
+from datetime import datetime, timedelta, timezone
 
 from sheppy import Queue, Worker
 from sheppy.backend import Backend, MemoryBackend, RedisBackend
 
 TEST_QUEUE_NAME = "pytest"
+
+
+@pytest.fixture
+def datetime_now():
+    return datetime.now(timezone.utc)
 
 
 @pytest_asyncio.fixture(params=["memory", "redis"])
@@ -47,7 +53,12 @@ async def worker_backend(backend: Backend) -> AsyncGenerator[Backend, None]:
 
 @pytest_asyncio.fixture
 async def worker(worker_backend: Backend) -> Worker:
-    return Worker(TEST_QUEUE_NAME, worker_backend)
+    worker = Worker(TEST_QUEUE_NAME, worker_backend)
+    worker._blocking_timeout = 0.01
+    worker._scheduler_polling_interval = 0.01
+    worker._cron_polling_interval = 0.01
+
+    return worker
 
 
 @pytest_asyncio.fixture
