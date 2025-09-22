@@ -1,8 +1,8 @@
+from collections.abc import AsyncGenerator
+from datetime import datetime, timezone
+
 import pytest
 import pytest_asyncio
-
-from collections.abc import AsyncGenerator
-from datetime import datetime, timedelta, timezone
 
 from sheppy import Queue, Worker
 from sheppy.backend import Backend, MemoryBackend, RedisBackend
