@@ -50,15 +50,7 @@ def retry(
             console.print("Use --force to retry anyway")
             raise typer.Exit(1)
 
-        retried_task = task.model_copy(deep=True)
-
-        retried_task.__dict__["completed"] = False
-        retried_task.__dict__["error"] = None
-        retried_task.__dict__["result"] = None
-        retried_task.__dict__["finished_at"] = None
-        #retried_task.config.__dict__["worker"] = None
-
-        success = await q.add(retried_task)
+        success = await q.retry_task(task, force=True)
 
         if success:
             console.print(f"[green]✓ Task {task_id} has been re-queued for retry[/green]")

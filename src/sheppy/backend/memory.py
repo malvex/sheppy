@@ -1,27 +1,28 @@
 import asyncio
 import heapq
-from collections import defaultdict, deque
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from .base import Backend
+from .base import Backend, BackendError
 
 
 @dataclass(order=True)
 class ScheduledTask:
     scheduled_time: datetime
-    task_data: dict[str, Any] = field(compare=False)
+    task_id: str = field(compare=False)
 
 
 class MemoryBackend(Backend):
 
     def __init__(self) -> None:
-        self._queues: dict[str, deque[dict[str, Any]]] = defaultdict(deque)
-        self._scheduled: dict[str, list[ScheduledTask]] = defaultdict(list)
-        self._in_progress: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+        self._task_metadata: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)  # {QUEUE_NAME: {TASK_ID: task_data}}
+        self._pending: dict[str, list[str]] = defaultdict(list)
         self._results: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
-        self._cron_tasks: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+        self._scheduled: dict[str, list[ScheduledTask]] = defaultdict(list)
+        self._crons: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)  # for thread-safety
         self._connected = False
 
@@ -35,30 +36,45 @@ class MemoryBackend(Backend):
     def is_connected(self) -> bool:
         return self._connected
 
-    async def append(self, queue_name: str, task_data: dict[str, Any] | list[dict[str, Any]]) -> bool:
-        async with self._locks[queue_name]:
-            if isinstance(task_data, list):
-                # batch operation
-                self._queues[queue_name].extend(task_data)
-            else:
-                self._queues[queue_name].append(task_data)
+    async def create_tasks(self, queue_name: str, tasks: list[dict[str, Any]]) -> list[bool]:
+        self._check_connected()
 
-            return True
+        async with self._locks[queue_name]:
+            success = []
+            for task in tasks:
+                if task["id"] not in self._task_metadata[queue_name]:
+                    self._task_metadata[queue_name][task["id"]] = task
+                    success.append(True)
+                else:
+                    success.append(False)
+
+            return success
+
+    async def append(self, queue_name: str, tasks: list[dict[str, Any]]) -> bool:
+        self._check_connected()
+
+        async with self._locks[queue_name]:
+            self._pending[queue_name].extend([task["id"] for task in tasks])
+
+        return True
 
     async def pop(self, queue_name: str, limit: int = 1, timeout: float | None = None) -> list[dict[str, Any]]:
+        self._check_connected()
+
         start_time = asyncio.get_event_loop().time()
 
         while True:
             async with self._locks[queue_name]:
-                if self._queues[queue_name]:
+                if self._pending[queue_name]:
                     tasks = []
-                    queue = self._queues[queue_name]
+                    q = self._pending[queue_name]
 
-                    # Pop up to 'limit' tasks from the queue
-                    for _ in range(min(limit, len(queue))):
-                        task_data = queue.popleft()
-                        self._in_progress[queue_name][task_data['id']] = task_data
-                        tasks.append(task_data)
+                    for _ in range(min(limit, len(q))):
+                        task_id = q.pop(0)
+                        task_data = self._results[queue_name].get(task_id) \
+                                 or self._task_metadata[queue_name].get(task_id)
+                        if task_data:
+                            tasks.append(task_data)
 
                     return tasks
 
@@ -72,82 +88,87 @@ class MemoryBackend(Backend):
             await asyncio.sleep(min(0.05, timeout - elapsed))
 
     async def list_pending(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
+        self._check_connected()
+
         async with self._locks[queue_name]:
-            return list(self._queues[queue_name])[:count]
+            task_ids = list(self._pending[queue_name])[:count]
+
+            tasks = []
+            for t in task_ids:
+                if task_data := self._task_metadata[queue_name].get(t):
+                    tasks.append(task_data)
+
+            return tasks
+
 
     async def size(self, queue_name: str) -> int:
+        self._check_connected()
+
         async with self._locks[queue_name]:
-            return len(self._queues[queue_name])
+            return len(self._pending[queue_name])
 
     async def clear(self, queue_name: str) -> int:
-        async with self._locks[queue_name]:
-            queue_size = len(self._queues[queue_name])
-            scheduled_size = len(self._scheduled[queue_name])
-            in_progress_size = len(self._in_progress[queue_name])
-            results_size = len(self._results[queue_name])
+        self._check_connected()
 
-            self._queues[queue_name].clear()
-            self._scheduled[queue_name].clear()
-            self._in_progress[queue_name].clear()
+        async with self._locks[queue_name]:
+            queue_size = len(self._task_metadata[queue_name])
+            queue_cron_size = len(self._crons[queue_name])
+
+            self._task_metadata[queue_name].clear()
+            self._pending[queue_name].clear()
             self._results[queue_name].clear()
+            self._scheduled[queue_name].clear()
+            self._crons[queue_name].clear()
 
-            return queue_size + scheduled_size + in_progress_size + results_size
+            return queue_size + queue_cron_size
 
-    async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:  # ! FIXME
+    async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
+        self._check_connected()
+
         async with self._locks[queue_name]:
-            # Check in results first (completed tasks)
-            if task_id in self._results[queue_name]:
-                return self._results[queue_name][task_id]
+            if result := self._results[queue_name].get(task_id):
+                return result
 
-            # Check in-progress tasks
-            if task_id in self._in_progress[queue_name]:
-                return self._in_progress[queue_name][task_id]
-
-            # Check in regular queue
-            for task_data in self._queues[queue_name]:
-                if task_data['id'] == task_id:
-                    return task_data
-
-            # Check scheduled tasks
-            for scheduled_task in self._scheduled[queue_name]:
-                if scheduled_task.task_data['id'] == task_id:
-                    return scheduled_task.task_data
-
-            return None
+            return self._task_metadata[queue_name].get(task_id)
 
     async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime) -> bool:
+        self._check_connected()
+
         async with self._locks[queue_name]:
-            scheduled_task = ScheduledTask(at, task_data)
+            scheduled_task = ScheduledTask(at, task_data["id"])
             heapq.heappush(self._scheduled[queue_name], scheduled_task)
             return True
 
     async def get_scheduled(self, queue_name: str, now: datetime | None = None) -> list[dict[str, Any]]:
+        self._check_connected()
+
         if now is None:
             now = datetime.now(timezone.utc)
 
         async with self._locks[queue_name]:
-            ready_tasks = []
+            tasks = []
             scheduled_tasks = self._scheduled[queue_name]
 
-            # Remove ready tasks from the scheduled queue and return them
-            # Do NOT add them to the regular queue - let the caller decide what to do
             while scheduled_tasks and scheduled_tasks[0].scheduled_time <= now:
                 scheduled_task = heapq.heappop(scheduled_tasks)
-                ready_tasks.append(scheduled_task.task_data)
+                task_data = self._results[queue_name].get(scheduled_task.task_id) \
+                         or self._task_metadata[queue_name].get(scheduled_task.task_id)
+                if task_data:
+                    tasks.append(task_data)
 
-            return ready_tasks
+            return tasks
 
     async def store_result(self, queue_name: str, task_data: dict[str, Any]) -> bool:
-        async with self._locks[queue_name]:
-            task_id = task_data['id']
-            self._results[queue_name][task_id] = task_data
+        self._check_connected()
 
-            if task_id in self._in_progress[queue_name]:
-                del self._in_progress[queue_name][task_id]
+        async with self._locks[queue_name]:
+            self._results[queue_name][task_data['id']] = task_data
 
             return True
 
     async def get_result(self, queue_name: str, task_id: str, timeout: float | None = None) -> dict[str, Any] | None:
+        self._check_connected()
+
         start_time = asyncio.get_event_loop().time()
 
         while True:
@@ -173,62 +194,68 @@ class MemoryBackend(Backend):
             await asyncio.sleep(min(0.05, timeout - elapsed))
 
     async def stats(self, queue_name: str) -> dict[str, int]:
+        self._check_connected()
+
         async with self._locks[queue_name]:
             return {
-                "pending": len(self._queues[queue_name]) + len(self._in_progress[queue_name]),
-                # "in_progress":
+                "pending": len(self._pending[queue_name]),
                 "completed": len(self._results[queue_name]),
                 "scheduled": len(self._scheduled[queue_name]),
             }
 
     async def get_all_tasks(self, queue_name: str) -> list[dict[str, Any]]:
-        async with self._locks[queue_name]:
-            all_tasks = []
-            all_tasks.extend(list(self._queues[queue_name]))
-            all_tasks.extend(self._in_progress[queue_name].values())
-            all_tasks.extend(self._results[queue_name].values())
-            for scheduled_task in self._scheduled[queue_name]:
-                all_tasks.append(scheduled_task.task_data)
+        self._check_connected()
 
-            return all_tasks
+        async with self._locks[queue_name]:
+            tasks = self._task_metadata[queue_name] | self._results[queue_name]
+            return list(tasks.values())
 
     async def list_queues(self) -> dict[str, int]:
-        queue_names: set[str] = set()
-        queue_names.update(self._queues.keys())
-        queue_names.update(self._scheduled.keys())
-        queue_names.update(self._in_progress.keys())
-        queue_names.update(self._results.keys())
+        self._check_connected()
 
         queues = {}
-        for queue_name in sorted(queue_names):
+        for queue_name in self._task_metadata:
             async with self._locks[queue_name]:
-                queues[queue_name] = len(self._queues[queue_name])
+                queues[queue_name] = len(self._pending[queue_name])
 
         return queues
 
     async def list_scheduled(self, queue_name: str) -> list[dict[str, Any]]:
+        self._check_connected()
+
         async with self._locks[queue_name]:
             tasks = []
             for scheduled_task in self._scheduled[queue_name]:
-                task_data = scheduled_task.task_data.copy()
-                tasks.append(task_data)
+                task_data = self._task_metadata[queue_name].get(scheduled_task.task_id)
+                if task_data:
+                    tasks.append(task_data)
 
             return tasks
 
     async def add_cron(self, queue_name: str, deterministic_id: str, task_cron: dict[str, Any]) -> bool:
+        self._check_connected()
+
         async with self._locks[queue_name]:
-            if deterministic_id not in self._cron_tasks[queue_name]:
-                self._cron_tasks[queue_name][deterministic_id] = task_cron
+            if deterministic_id not in self._crons[queue_name]:
+                self._crons[queue_name][deterministic_id] = task_cron
                 return True
             return False
 
     async def delete_cron(self, queue_name: str, deterministic_id: str) -> bool:
+        self._check_connected()
+
         async with self._locks[queue_name]:
-            if deterministic_id in self._cron_tasks[queue_name]:
-                del self._cron_tasks[queue_name][deterministic_id]
+            if deterministic_id in self._crons[queue_name]:
+                del self._crons[queue_name][deterministic_id]
                 return True
             return False
 
     async def list_crons(self, queue_name: str) -> list[dict[str, Any]]:
+        self._check_connected()
+
         async with self._locks[queue_name]:
-            return list(self._cron_tasks[queue_name].values())
+            return list(self._crons[queue_name].values())
+
+    def _check_connected(self) -> None:
+        if not self.is_connected:
+            raise BackendError("Not connected")

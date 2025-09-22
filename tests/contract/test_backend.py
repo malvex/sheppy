@@ -5,7 +5,7 @@ from uuid import UUID
 import pytest
 from pydantic.type_adapter import TypeAdapter
 
-from sheppy import Backend, BackendError, MemoryBackend
+from sheppy import Backend, BackendError
 from sheppy.task_factory import TaskFactory
 from sheppy.utils.task_execution import TaskInternal
 from tests.dependencies import add_retriable, simple_async_task
@@ -130,7 +130,7 @@ def tasks(datetime_now: datetime) -> dict[str, dict]:
     _set_completed(task_retriable_cron_retried_completed)
 
     task_retriable_cron_retried_failed = task_retriable_cron_failed_should_retry.model_copy(deep=True)
-    _set_failed(task_retriable_scheduled_retried_failed)
+    _set_failed(task_retriable_cron_retried_failed)
 
     tasks = {
         "new": task_new,
@@ -162,14 +162,11 @@ def tasks(datetime_now: datetime) -> dict[str, dict]:
     return {k: v.create_task().model_dump(mode="json") for k, v in tasks.items()}
 
 
-async def test_require_manual_connect(backend: Backend):
-    if isinstance(backend, MemoryBackend):
-        pytest.xfail("MemoryBackend is broken for this test")
-
+async def test_require_manual_connect(task_dict: dict, backend: Backend):
     assert backend.is_connected is False
 
     with pytest.raises(BackendError):
-        await backend.append(Q, {})
+        await backend.create_tasks(Q, [task_dict])
 
 
 async def test_connect_and_disconnect(backend: Backend):
@@ -180,13 +177,33 @@ async def test_connect_and_disconnect(backend: Backend):
     assert backend.is_connected is False
 
 
+async def test_create_tasks(backend: Backend):
+    t1 = simple_async_task(1, 2).model_dump(mode="json")
+    t2 = simple_async_task(3, 4).model_dump(mode="json")
+    t3 = simple_async_task(5, 6).model_dump(mode="json")
+
+    await backend.connect()
+
+    assert await backend.size(Q) == 0
+
+    assert await backend.create_tasks(Q, [t1]) == [True]
+    assert await backend.create_tasks(Q, [t1]) == [False]
+    assert await backend.create_tasks(Q, [t1, t2]) == [False, True]
+    assert await backend.create_tasks(Q, [t3, t3]) == [True, False]
+    assert await backend.create_tasks(Q, []) == []
+
+    # size is for pending tasks - create_tasks does NOT add the task to pending yet!
+    assert await backend.size(Q) == 0
+    assert await backend.size("different_queue") == 0
+
+
 async def test_append(task_dict: dict, backend: Backend):
     await backend.connect()
 
     assert await backend.size(Q) == 0
 
-    success = await backend.append(Q, task_dict)
-    assert success
+    assert await backend.create_tasks(Q, [task_dict]) == [True]
+    assert await backend.append(Q, [task_dict]) is True
 
     assert await backend.size(Q) == 1
     assert await backend.size("different_queue") == 0
@@ -197,26 +214,11 @@ async def test_append_bulk(backend: Backend):
     t2 = simple_async_task(1, 2).model_dump(mode="json")
 
     await backend.connect()
-    success = await backend.append(Q, [t1, t2])
-    assert success
+    assert await backend.create_tasks(Q, [t1, t2]) == [True, True]
+    assert await backend.append(Q, [t1, t2]) is True
 
     assert await backend.size(Q) == 2
     assert await backend.size("different_queue") == 0
-
-
-@pytest.mark.skip("BUG")
-async def test_append_prevents_same_task(task_dict: dict, backend: Backend):
-    await backend.connect()
-
-    assert await backend.size(Q) == 0
-
-    success = await backend.append(Q, task_dict)
-    assert success
-
-    success = await backend.append(Q, task_dict)
-    assert not success
-
-    assert await backend.size(Q) == 1
 
 
 async def test_pop(backend: Backend):
@@ -226,8 +228,8 @@ async def test_pop(backend: Backend):
     t4 = simple_async_task(7, 8).model_dump(mode="json")
 
     await backend.connect()
-    success = await backend.append(Q, [t1, t2, t3, t4])
-    assert success
+    assert await backend.create_tasks(Q, [t1, t2, t3, t4]) == [True, True, True, True]
+    assert await backend.append(Q, [t1, t2, t3, t4]) is True
 
     assert await backend.size(Q) == 4
     assert await backend.size("different_queue") == 0
@@ -248,8 +250,8 @@ async def test_list_pending(backend: Backend):
     t4 = simple_async_task(7, 8).model_dump(mode="json")
 
     await backend.connect()
-    success = await backend.append(Q, [t1, t2, t3, t4])
-    assert success
+    assert await backend.create_tasks(Q, [t1, t2, t3, t4]) == [True, True, True, True]
+    assert await backend.append(Q, [t1, t2, t3, t4]) is True
 
     assert await backend.list_pending(Q) == [t1]
     assert await backend.list_pending(Q, count=2) == [t1, t2]
@@ -267,8 +269,8 @@ async def test_clear(backend: Backend):
     t4 = simple_async_task(7, 8).model_dump(mode="json")
 
     await backend.connect()
-    success = await backend.append(Q, [t1, t2, t3, t4])
-    assert success
+    assert await backend.create_tasks(Q, [t1, t2, t3, t4]) == [True, True, True, True]
+    assert await backend.append(Q, [t1, t2, t3, t4]) is True
 
     assert await backend.size(Q) == 4
     assert await backend.size("different-queue") == 0
@@ -293,13 +295,17 @@ async def test_get_task(datetime_now: datetime, tasks: dict[str, dict], backend:
     t4 = simple_async_task(7, 8).model_dump(mode="json")
 
     await backend.connect()
-    assert await backend.append(Q, tasks["new"])
+    assert await backend.create_tasks(Q, [tasks["new"]]) == [True]
+    assert await backend.append(Q, [tasks["new"]])
     assert await backend.pop(Q) == [tasks["new"]]
     assert await backend.store_result(Q, tasks["completed"])
 
+    assert await backend.create_tasks(Q, [t1, t2]) == [True, True]
     assert await backend.append(Q, [t1, t2])
+    assert await backend.create_tasks("different-queue", [t4]) == [True]
     assert await backend.append("different-queue", [t4])
 
+    assert await backend.create_tasks(Q, [t3]) == [True]
     assert await backend.schedule(Q, t3, at=datetime_now)
 
     assert await backend.size(Q) == 2
@@ -331,13 +337,17 @@ async def test_get_all_tasks(datetime_now: datetime, tasks: dict[str, dict], bac
     t4 = simple_async_task(7, 8).model_dump(mode="json")
 
     await backend.connect()
-    assert await backend.append(Q, tasks["new"])
+    assert await backend.create_tasks(Q, [tasks["new"]]) == [True]
+    assert await backend.append(Q, [tasks["new"]])
     assert await backend.pop(Q) == [tasks["new"]]
     assert await backend.store_result(Q, tasks["completed"])
 
+    assert await backend.create_tasks(Q, [t3]) == [True]
     assert await backend.schedule(Q, t3, at=datetime_now)
 
+    assert await backend.create_tasks(Q, [t1, t2]) == [True, True]
     assert await backend.append(Q, [t1, t2])
+    assert await backend.create_tasks("different-queue", [t4]) == [True]
     assert await backend.append("different-queue", [t4])
 
     assert await backend.size(Q) == 2
@@ -361,13 +371,17 @@ async def test_list_queues(datetime_now: datetime, tasks: dict[str, dict], backe
     t4 = simple_async_task(7, 8).model_dump(mode="json")
 
     await backend.connect()
-    assert await backend.append(Q, tasks["new"])
+    assert await backend.create_tasks(Q, [tasks["new"]]) == [True]
+    assert await backend.append(Q, [tasks["new"]])
     assert await backend.pop(Q) == [tasks["new"]]
     assert await backend.store_result(Q, tasks["completed"])
 
+    assert await backend.create_tasks(Q, [t3]) == [True]
     assert await backend.schedule(Q, t3, at=datetime_now)
 
+    assert await backend.create_tasks(Q, [t1, t2]) == [True, True]
     assert await backend.append(Q, [t1, t2])
+    assert await backend.create_tasks("different-queue", [t4]) == [True]
     assert await backend.append("different-queue", [t4])
 
     assert await backend.size(Q) == 2
@@ -381,6 +395,8 @@ async def test_list_scheduled(datetime_now: datetime, backend: Backend):
     t2 = simple_async_task(3, 4).model_dump(mode="json")
 
     await backend.connect()
+    assert await backend.create_tasks(Q, [t1]) == [True]
+    assert await backend.create_tasks(Q, [t2]) == [True]
     assert await backend.schedule(Q, t1, at=datetime_now)
     assert await backend.schedule(Q, t2, at=datetime_now)
 
@@ -395,20 +411,22 @@ class TestGetResult:
     async def _setup_append(self, task_data: dict, backend: Backend):
         await backend.connect()
         assert await backend.size(Q) == 0
-        success = await backend.append(Q, task_data)
-        assert success
+        assert await backend.create_tasks(Q, [task_data]) == [True]
+        assert await backend.append(Q, [task_data]) is True
         assert await backend.size(Q) == 1
 
-    async def _setup_schedule(self, task_data: dict, backend: Backend):
+    async def _setup_schedule(self, task_data: dict, backend: Backend, create_task: bool = True):
         await backend.connect()
         assert await backend.size(Q) == 0
-        success = await backend.schedule(Q, task_data, at=TypeAdapter(datetime).validate_python(task_data["scheduled_at"]))
-        assert success
+
+        if create_task:
+            assert await backend.create_tasks(Q, [task_data]) == [True]
+
+        assert await backend.schedule(Q, task_data, at=TypeAdapter(datetime).validate_python(task_data["scheduled_at"]))
         assert await backend.size(Q) == 0
         ret = await backend.get_scheduled(Q, datetime.now(timezone.utc))
         assert await backend.size(Q) == 0
-        success = await backend.append(Q, ret[0])
-        assert success
+        assert await backend.append(Q, [ret[0]])
         assert await backend.size(Q) == 1
 
     async def _setup_processing(self, task_data: dict, backend: Backend):
@@ -419,8 +437,8 @@ class TestGetResult:
         # assert await backend.size(Q) == 0  # ! FIXME (redis)
         return _tasks[0]
 
-    async def _setup_schedule_processing(self, task_data: dict, backend: Backend):
-        await self._setup_schedule(task_data, backend)
+    async def _setup_schedule_processing(self, task_data: dict, backend: Backend, create_task: bool = True):
+        await self._setup_schedule(task_data, backend, create_task=create_task)
         assert await backend.size(Q) == 1
         _tasks = await backend.pop(Q)
         assert _tasks and _tasks[0]
@@ -620,7 +638,7 @@ class TestGetResult:
     async def test_retriable_failed_should_retry(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_processing(tasks["retriable_new"], backend)
         await backend.store_result(Q, tasks["retriable_failed_should_retry"])
-        await self._setup_schedule(tasks["retriable_failed_should_retry"], backend)
+        await self._setup_schedule(tasks["retriable_failed_should_retry"], backend, create_task=False)
 
         task = await backend.get_result(Q, str(tasks["retriable_new"]["id"]))
         assert task is None
@@ -628,7 +646,7 @@ class TestGetResult:
     async def test_retriable_failed_should_retry_w_timeout(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_processing(tasks["retriable_new"], backend)
         await backend.store_result(Q, tasks["retriable_failed_should_retry"])
-        await self._setup_schedule(tasks["retriable_failed_should_retry"], backend)
+        await self._setup_schedule(tasks["retriable_failed_should_retry"], backend, create_task=False)
 
         with pytest.raises(TimeoutError):
             await backend.get_result(Q, str(tasks["retriable_new"]["id"]), timeout=.01)
@@ -636,7 +654,7 @@ class TestGetResult:
     async def test_retriable_retried_completed(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_processing(tasks["retriable_new"], backend)
         await backend.store_result(Q, tasks["retriable_failed_should_retry"])
-        await self._setup_schedule_processing(tasks["retriable_failed_should_retry"], backend)
+        await self._setup_schedule_processing(tasks["retriable_failed_should_retry"], backend, create_task=False)
         await backend.store_result(Q, tasks["retriable_retried_completed"])
 
         task = await backend.get_result(Q, str(tasks["retriable_new"]["id"]))
@@ -646,7 +664,7 @@ class TestGetResult:
     async def test_retriable_retried_completed_w_timeout(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_processing(tasks["retriable_new"], backend)
         await backend.store_result(Q, tasks["retriable_failed_should_retry"])
-        await self._setup_schedule_processing(tasks["retriable_failed_should_retry"], backend)
+        await self._setup_schedule_processing(tasks["retriable_failed_should_retry"], backend, create_task=False)
         self._simulate_processing(tasks["retriable_retried_completed"], backend)
 
         with pytest.raises(TimeoutError):
@@ -659,7 +677,7 @@ class TestGetResult:
     async def test_retriable_retried_failed(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_processing(tasks["retriable_new"], backend)
         await backend.store_result(Q, tasks["retriable_failed_should_retry"])
-        await self._setup_schedule_processing(tasks["retriable_failed_should_retry"], backend)
+        await self._setup_schedule_processing(tasks["retriable_failed_should_retry"], backend, create_task=False)
         await backend.store_result(Q, tasks["retriable_retried_failed"])
 
         task = await backend.get_result(Q, str(tasks["retriable_new"]["id"]))
@@ -669,7 +687,7 @@ class TestGetResult:
     async def test_retriable_retried_failed_w_timeout(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_processing(tasks["retriable_new"], backend)
         await backend.store_result(Q, tasks["retriable_failed_should_retry"])
-        await self._setup_schedule_processing(tasks["retriable_failed_should_retry"], backend)
+        await self._setup_schedule_processing(tasks["retriable_failed_should_retry"], backend, create_task=False)
         self._simulate_processing(tasks["retriable_retried_failed"], backend)
 
         with pytest.raises(TimeoutError):
@@ -713,7 +731,7 @@ class TestGetResult:
     async def test_retriable_scheduled_failed_should_retry(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_schedule_processing(tasks["retriable_scheduled"], backend)
         await backend.store_result(Q, tasks["retriable_scheduled_failed_should_retry"])
-        await self._setup_schedule(tasks["retriable_scheduled_failed_should_retry"], backend)
+        await self._setup_schedule(tasks["retriable_scheduled_failed_should_retry"], backend, create_task=False)
 
         task = await backend.get_result(Q, str(tasks["retriable_scheduled"]["id"]))
         assert task is None
@@ -721,7 +739,7 @@ class TestGetResult:
     async def test_retriable_scheduled_failed_should_retry_w_timeout(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_schedule_processing(tasks["retriable_scheduled"], backend)
         await backend.store_result(Q, tasks["retriable_scheduled_failed_should_retry"])
-        await self._setup_schedule(tasks["retriable_scheduled_failed_should_retry"], backend)
+        await self._setup_schedule(tasks["retriable_scheduled_failed_should_retry"], backend, create_task=False)
 
         with pytest.raises(TimeoutError):
             await backend.get_result(Q, str(tasks["retriable_scheduled"]["id"]), timeout=.01)
@@ -729,7 +747,7 @@ class TestGetResult:
     async def test_retriable_scheduled_retried_completed(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_schedule_processing(tasks["retriable_scheduled"], backend)
         await backend.store_result(Q, tasks["retriable_scheduled_failed_should_retry"])
-        await self._setup_schedule_processing(tasks["retriable_scheduled_failed_should_retry"], backend)
+        await self._setup_schedule_processing(tasks["retriable_scheduled_failed_should_retry"], backend, create_task=False)
         await backend.store_result(Q, tasks["retriable_scheduled_retried_completed"])
 
         task = await backend.get_result(Q, str(tasks["retriable_scheduled"]["id"]))
@@ -739,7 +757,7 @@ class TestGetResult:
     async def test_retriable_scheduled_retried_completed_w_timeout(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_schedule_processing(tasks["retriable_scheduled"], backend)
         await backend.store_result(Q, tasks["retriable_scheduled_failed_should_retry"])
-        await self._setup_schedule_processing(tasks["retriable_scheduled_failed_should_retry"], backend)
+        await self._setup_schedule_processing(tasks["retriable_scheduled_failed_should_retry"], backend, create_task=False)
         self._simulate_processing(tasks["retriable_scheduled_retried_completed"], backend)
 
         with pytest.raises(TimeoutError):
@@ -752,7 +770,7 @@ class TestGetResult:
     async def test_retriable_scheduled_retried_failed(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_schedule_processing(tasks["retriable_scheduled"], backend)
         await backend.store_result(Q, tasks["retriable_scheduled_failed_should_retry"])
-        await self._setup_schedule_processing(tasks["retriable_scheduled_failed_should_retry"], backend)
+        await self._setup_schedule_processing(tasks["retriable_scheduled_failed_should_retry"], backend, create_task=False)
         await backend.store_result(Q, tasks["retriable_scheduled_retried_failed"])
 
         task = await backend.get_result(Q, str(tasks["retriable_scheduled"]["id"]))
@@ -762,7 +780,7 @@ class TestGetResult:
     async def test_retriable_scheduled_retried_failed_w_timeout(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_schedule_processing(tasks["retriable_scheduled"], backend)
         await backend.store_result(Q, tasks["retriable_scheduled_failed_should_retry"])
-        await self._setup_schedule_processing(tasks["retriable_scheduled_failed_should_retry"], backend)
+        await self._setup_schedule_processing(tasks["retriable_scheduled_failed_should_retry"], backend, create_task=False)
         self._simulate_processing(tasks["retriable_scheduled_retried_failed"], backend)
 
         with pytest.raises(TimeoutError):
@@ -806,7 +824,7 @@ class TestGetResult:
     async def test_retriable_cron_failed_should_retry(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_schedule_processing(tasks["retriable_cron_new"], backend)
         await backend.store_result(Q, tasks["retriable_cron_failed_should_retry"])
-        await self._setup_schedule(tasks["retriable_cron_failed_should_retry"], backend)
+        await self._setup_schedule(tasks["retriable_cron_failed_should_retry"], backend, create_task=False)
 
         task = await backend.get_result(Q, str(tasks["retriable_cron_new"]["id"]))
         assert task is None
@@ -814,7 +832,7 @@ class TestGetResult:
     async def test_retriable_cron_failed_should_retry_w_timeout(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_schedule_processing(tasks["retriable_cron_new"], backend)
         await backend.store_result(Q, tasks["retriable_cron_failed_should_retry"])
-        await self._setup_schedule(tasks["retriable_cron_failed_should_retry"], backend)
+        await self._setup_schedule(tasks["retriable_cron_failed_should_retry"], backend, create_task=False)
 
         with pytest.raises(TimeoutError):
             await backend.get_result(Q, str(tasks["retriable_cron_new"]["id"]), timeout=.01)
@@ -822,7 +840,7 @@ class TestGetResult:
     async def test_retriable_cron_retried_completed(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_schedule_processing(tasks["retriable_cron_new"], backend)
         await backend.store_result(Q, tasks["retriable_cron_failed_should_retry"])
-        await self._setup_schedule_processing(tasks["retriable_cron_failed_should_retry"], backend)
+        await self._setup_schedule_processing(tasks["retriable_cron_failed_should_retry"], backend, create_task=False)
         await backend.store_result(Q, tasks["retriable_cron_retried_completed"])
 
         task = await backend.get_result(Q, str(tasks["retriable_cron_new"]["id"]))
@@ -832,7 +850,7 @@ class TestGetResult:
     async def test_retriable_cron_retried_completed_w_timeout(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_schedule_processing(tasks["retriable_cron_new"], backend)
         await backend.store_result(Q, tasks["retriable_cron_failed_should_retry"])
-        await self._setup_schedule_processing(tasks["retriable_cron_failed_should_retry"], backend)
+        await self._setup_schedule_processing(tasks["retriable_cron_failed_should_retry"], backend, create_task=False)
         self._simulate_processing(tasks["retriable_cron_retried_completed"], backend)
 
         with pytest.raises(TimeoutError):
@@ -845,17 +863,17 @@ class TestGetResult:
     async def test_retriable_cron_retried_failed(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_schedule_processing(tasks["retriable_cron_new"], backend)
         await backend.store_result(Q, tasks["retriable_cron_failed_should_retry"])
-        await self._setup_schedule_processing(tasks["retriable_cron_failed_should_retry"], backend)
+        await self._setup_schedule_processing(tasks["retriable_cron_failed_should_retry"], backend, create_task=False)
         await backend.store_result(Q, tasks["retriable_cron_retried_failed"])
 
         task = await backend.get_result(Q, str(tasks["retriable_cron_new"]["id"]))
-        assert task is None
+        assert task is not None
+        assert task == tasks["retriable_cron_retried_failed"]
 
-    @pytest.mark.skip("BUG")
     async def test_retriable_cron_retried_failed_w_timeout(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_schedule_processing(tasks["retriable_cron_new"], backend)
         await backend.store_result(Q, tasks["retriable_cron_failed_should_retry"])
-        await self._setup_schedule_processing(tasks["retriable_cron_failed_should_retry"], backend)
+        await self._setup_schedule_processing(tasks["retriable_cron_failed_should_retry"], backend, create_task=False)
         self._simulate_processing(tasks["retriable_cron_retried_failed"], backend)
 
         with pytest.raises(TimeoutError):
@@ -865,22 +883,23 @@ class TestGetResult:
         assert task is not None
         assert task == tasks["retriable_cron_retried_failed"]
 
-    @pytest.mark.skip("BUG (redis)")
     async def test_retriable_cron_retried_failed_w_timeout_weird(self, tasks: dict[str, dict], backend: Backend):
         await self._setup_schedule_processing(tasks["retriable_cron_new"], backend)
         await backend.store_result(Q, tasks["retriable_cron_failed_should_retry"])
-        await self._setup_schedule_processing(tasks["retriable_cron_failed_should_retry"], backend)
+        await self._setup_schedule_processing(tasks["retriable_cron_failed_should_retry"], backend, create_task=False)
         self._simulate_processing(tasks["retriable_cron_retried_failed"], backend)
 
-        with pytest.raises(TimeoutError):
-            await backend.get_result(Q, str(tasks["retriable_cron_new"]["id"]), timeout=0.2)
+        task = await backend.get_result(Q, str(tasks["retriable_cron_new"]["id"]), timeout=0.2)
+        assert task is not None
+        assert task == tasks["retriable_cron_retried_failed"]
 
 
 async def test_get_result(task_dict: dict, backend: Backend):
     await backend.connect()
 
     assert await backend.size(Q) == 0
-    await backend.append(Q, task_dict)
+    assert await backend.create_tasks(Q, [task_dict]) == [True]
+    assert await backend.append(Q, [task_dict])
     assert await backend.size(Q) == 1
 
     popped_tasks = await backend.pop(Q)

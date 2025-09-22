@@ -19,6 +19,7 @@ class TestQueue:
         self.name = name
 
         self._backend = MemoryBackend()
+        self._backend._connected = True
         self._queue = Queue(self._backend, self.name)
         #self._dependency_resolver = DependencyResolver(dependency_overrides)
         self._worker_id = "TestQueue"
@@ -27,7 +28,7 @@ class TestQueue:
         self.processed_tasks: list[Task] = []
         self.failed_tasks: list[Task] = []
 
-    def add(self, task: Task | list[Task]) -> bool:
+    def add(self, task: Task | list[Task]) -> list[bool]:
         return asyncio.run(self._queue.add(task))
 
     def get_task(self, task_id: UUID) -> Task | None:

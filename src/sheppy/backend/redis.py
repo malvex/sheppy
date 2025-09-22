@@ -96,30 +96,37 @@ class RedisBackend(Backend):
             raise BackendError("Not connected to Redis")
         return self._client
 
-    async def append(self, queue_name: str, task_data: dict[str, Any] | list[dict[str, Any]]) -> bool:
-        """Add new tasks to be processed."""
+    async def create_tasks(self, queue_name: str, tasks: list[dict[str, Any]]) -> list[bool]:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
+
+        try:
+            async with self.client.pipeline() as pipe:
+                for task in tasks:
+                    pipe.hsetnx(tasks_metadata_key, task["id"], json.dumps(task))
+                    # pipe.expire()  #! FIXME - todo
+                res = await pipe.execute()
+        except Exception as e:
+            raise BackendError(f"Failed to create tasks: {e}") from e
+
+        return [bool(r) for r in res]
+
+    async def append(self, queue_name: str, tasks: list[dict[str, Any]]) -> bool:
+        """Add new tasks to be processed."""
         pending_tasks_key = self._pending_tasks_key(queue_name)
 
         await self._ensure_consumer_group(pending_tasks_key)
 
-        # batch operation if list of tasks is provided
-        _tasks = task_data if isinstance(task_data, list) else [task_data]
-        transaction = False if len(_tasks) > 1 else True  # disable atomic calls for batch to prevent freezes  # noqa
-
         try:
-            async with self.client.pipeline(transaction=transaction) as pipe:
-                for _task_data in _tasks:
-                    # create task metadata
-                    pipe.hset(tasks_metadata_key, _task_data["id"], json.dumps(_task_data))
+            async with self.client.pipeline(transaction=False) as pipe:
+                for _task_data in tasks:
                     # add to pending stream
                     pipe.xadd(pending_tasks_key, {"data": json.dumps(_task_data)})
 
-                await (pipe.execute())
-
-            return True
+                await pipe.execute()
         except Exception as e:
             raise BackendError(f"Failed to enqueue task: {e}") from e
+
+        return True
 
     async def pop(self, queue_name: str, limit: int = 1, timeout: float | None = None) -> list[dict[str, Any]]:
         """Get next tasks to process. Used primarily by workers."""
@@ -196,17 +203,9 @@ class RedisBackend(Backend):
         return json.loads(task_json) if task_json else None
 
     async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime) -> bool:
-        tasks_metadata_key = self._tasks_metadata_key(queue_name)
         scheduled_key = self._scheduled_tasks_key(queue_name)
 
         try:
-            # create task metadata
-            success = await self.client.hsetnx(tasks_metadata_key, task_data["id"], json.dumps(task_data))  # type: ignore[misc]
-
-            # task already exists, don't add it to zset
-            if not success and not task_data["error"] and not task_data["scheduled_at"]:  # ! FIXME - temporary hack
-                return False
-
             # add to sorted set with timestamp as score
             score = at.timestamp()
             await self.client.zadd(scheduled_key, {json.dumps(task_data): score})
@@ -268,18 +267,15 @@ class RedisBackend(Backend):
             raise BackendError(f"Failed to store task result: {e}") from e
 
     async def stats(self, queue_name: str) -> dict[str, int]:
-        # tasks_metadata_key = self._tasks_metadata_key(queue_name)
         scheduled_tasks_key = self._scheduled_tasks_key(queue_name)
         pending_tasks_key = self._pending_tasks_key(queue_name)
         finished_tasks_key = self._finished_tasks_key(queue_name)
 
-        # total = await self.client.hlen(tasks_metadata_key)  # type: ignore[misc]
         pending = await self.client.xlen(pending_tasks_key)
         completed = await self.client.xlen(finished_tasks_key)
 
         return {
             "pending": pending,
-            # "in_progress": -1,
             "completed": completed,
             "scheduled": await self.client.zcard(scheduled_tasks_key),
         }
@@ -374,11 +370,7 @@ class RedisBackend(Backend):
 
         tasks = []
         for task_json, _score in task_jsons:
-            task_data = json.loads(task_json)
-
-            # we don't store scheduled time so get it from score
-            #task_data["_scheduled_at"] = datetime.fromtimestamp(score).isoformat()
-            tasks.append(task_data)
+            tasks.append(json.loads(task_json))
 
         return tasks
 

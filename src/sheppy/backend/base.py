@@ -23,7 +23,11 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def append(self, queue_name: str, task_data: dict[str, Any] | list[dict[str, Any]]) -> bool:
+    async def create_tasks(self, queue_name: str, tasks: list[dict[str, Any]]) -> list[bool]:
+        pass
+
+    @abstractmethod
+    async def append(self, queue_name: str, tasks: list[dict[str, Any]]) -> bool:
         pass
 
     @abstractmethod

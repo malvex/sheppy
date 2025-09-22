@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any
 from uuid import UUID
 
 from .backend.base import Backend
@@ -13,16 +12,25 @@ class Queue:
         self.name = name
         self.backend = backend
 
-    async def add(self, task: Task | list[Task]) -> bool:
+    async def add(self, task: Task | list[Task]) -> list[bool]:
         """Add task into the queue. Accept list of tasks for batch add."""
         await self.__ensure_backend_is_connected()
 
         if isinstance(task, list):
-            data: list[dict[str, Any]] | dict[str, Any] = [t.model_dump(mode='json') for t in task]
+            tasks = [t.model_dump(mode='json') for t in task]
         else:
-            data = task.model_dump(mode='json')
+            tasks = [task.model_dump(mode='json')]
 
-        return await self.backend.append(self.name, data)
+        success = await self.backend.create_tasks(self.name, tasks)
+
+        to_queue = []
+        for i, t in enumerate(tasks):
+            if success[i]:
+                to_queue.append(t)
+
+        await self.backend.append(self.name, to_queue)
+
+        return success
 
     async def get_task(self, task: Task | UUID) -> Task | None:
         task_id = task.id if isinstance(task, Task) else task
@@ -43,8 +51,13 @@ class Queue:
             raise TypeError("provided datetime must be offset-aware")
 
         task.__dict__["scheduled_at"] = at
+        task_data = task.model_dump(mode="json")
 
-        return await self.backend.schedule(self.name, task.model_dump(mode='json'), at)
+        success = await self.backend.create_tasks(self.name, [task_data])
+        if not success[0]:
+            return False
+
+        return await self.backend.schedule(self.name, task_data, at)
 
     async def list_pending(self, count: int = 1) -> list[Task]:
         """List pending tasks."""
@@ -104,6 +117,27 @@ class Queue:
         await self.__ensure_backend_is_connected()
         return [TaskCron.model_validate(tc) for tc in await self.backend.list_crons(self.name)]
 
+    async def retry_task(self, task: Task | UUID, at: datetime | timedelta | None = None, force: bool = False) -> bool:
+        _task = await self.get_task(task)  # ensure_backend_is_connected is called in get_task already
+        if not _task:
+            return False
+
+        if not force and not _task.should_retry:
+            raise Exception("task is not retriable, use force")
+
+        if at:
+            if isinstance(at, timedelta):
+                at = datetime.now(timezone.utc) + at
+
+            if not at.tzinfo:
+                raise TypeError("provided datetime must be offset-aware")
+
+            _task.__dict__["scheduled_at"] = at
+
+            return await self.backend.schedule(self.name, _task.model_dump(mode="json"), at)
+
+        return await self.backend.append(self.name, [_task.model_dump(mode="json")])
+
     async def pop_pending(self, limit: int = 1, timeout: float | None = None) -> list[Task]:
         """Get next task to process. Used internally by workers."""
         await self.__ensure_backend_is_connected()
@@ -118,9 +152,8 @@ class Queue:
         """Enqueue scheduled tasks that are ready to be processed. Used internally by workers."""
         await self.__ensure_backend_is_connected()
 
-        tasks = [Task.model_validate(t) for t in await self.backend.get_scheduled(self.name, now)]
-
-        for task in tasks:
-            await self.add(task)
+        tasks_data = await self.backend.get_scheduled(self.name, now)
+        tasks = [Task.model_validate(t) for t in tasks_data]
+        await self.backend.append(self.name, tasks_data)
 
         return tasks

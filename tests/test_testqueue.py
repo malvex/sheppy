@@ -154,10 +154,8 @@ class TestQueueBehavior:
         sync_task = simple_sync_task(1, 2)
         async_task = simple_async_task(3, 4)
 
-        success = queue.add(sync_task)
-        assert success
-        success = queue.add(async_task)
-        assert success
+        assert queue.add(sync_task) == [True]
+        assert queue.add(async_task) == [True]
 
         # process both
         processed = queue.process_all()
@@ -186,8 +184,7 @@ class TestScheduledTasks:
         task = test_case.create_task()
 
         delay = timedelta(hours=1)
-        success = queue.schedule(task, at=delay)
-        assert success is True
+        assert queue.schedule(task, at=delay) is True
 
         immediate = queue.process_next()
         assert immediate is None
@@ -210,8 +207,7 @@ class TestScheduledTasks:
         task = test_case.create_task()
 
         scheduled_time = datetime.now(timezone.utc) + timedelta(hours=1)
-        success = queue.schedule(task, at=scheduled_time)
-        assert success is True
+        assert queue.schedule(task, at=scheduled_time) is True
 
         processed = queue.process_scheduled(at=scheduled_time)
 
@@ -228,12 +224,9 @@ class TestScheduledTasks:
 
         now = datetime.now(timezone.utc)
 
-        success1 = queue.schedule(task1, at=now + timedelta(hours=1))
-        success2 = queue.schedule(task2, at=now + timedelta(hours=2))
-        success3 = queue.schedule(task3, at=now + timedelta(hours=3))
-        assert success1
-        assert success2
-        assert success3
+        assert queue.schedule(task1, at=now + timedelta(hours=1)) is True
+        assert queue.schedule(task2, at=now + timedelta(hours=2)) is True
+        assert queue.schedule(task3, at=now + timedelta(hours=3)) is True
 
         processed = queue.process_scheduled(at=now + timedelta(hours=1))
 
@@ -260,10 +253,10 @@ class TestScheduledTasks:
 
         scheduled_task = simple_sync_task(1, 2)
         future_time = datetime.now(timezone.utc) + timedelta(hours=1)
-        queue.schedule(scheduled_task, at=future_time)
+        assert queue.schedule(scheduled_task, at=future_time) is True
 
         immediate_task = simple_sync_task(3, 4)
-        queue.add(immediate_task)
+        assert queue.add(immediate_task) == [True]
 
         processed_immediate = queue.process_next()
         assert_is_completed(processed_immediate)
@@ -284,8 +277,7 @@ class TestScheduledTasks:
         task = test_case.create_task()
 
         future_time = datetime.now(timezone.utc) + timedelta(hours=1)
-        success = queue.schedule(task, at=future_time)
-        assert success
+        assert queue.schedule(task, at=future_time) is True
 
         processed = queue.process_scheduled(at=future_time)
 
@@ -300,8 +292,7 @@ class TestScheduledTasks:
 
         past_time = datetime.now(timezone.utc) - timedelta(hours=10)
 
-        success = queue.schedule(task, at=past_time)
-        assert success
+        assert queue.schedule(task, at=past_time) is True
 
         processed = queue.process_scheduled()
 
@@ -325,10 +316,9 @@ class TestScheduledTasks:
         task1 = simple_sync_task(1, 2)
         task2 = simple_sync_task(3, 4)
 
-        success1 = queue.schedule(task3, at=now + timedelta(hours=3))
-        success2 = queue.schedule(task1, at=now + timedelta(hours=1))
-        success3 = queue.schedule(task2, at=now + timedelta(hours=2))
-        assert all([success1, success2, success3])
+        assert queue.schedule(task3, at=now + timedelta(hours=3)) is True
+        assert queue.schedule(task1, at=now + timedelta(hours=1)) is True
+        assert queue.schedule(task2, at=now + timedelta(hours=2)) is True
 
         assert queue.process_next() is None
         assert queue.process_all() == []
@@ -416,7 +406,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_noop(1, 2)
 
-        queue.add(task)
+        assert queue.add(task) == [True]
         task = queue.process_next()
 
         assert task.result == 3
@@ -426,7 +416,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_change_arg(1, 2)
 
-        queue.add(task)
+        assert queue.add(task) == [True]
         task = queue.process_next()
 
         assert task.result == 7
@@ -436,7 +426,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_change_return_value(1, 2)
 
-        queue.add(task)
+        assert queue.add(task) == [True]
         task = queue.process_next()
 
         assert task.result == 100003
@@ -446,7 +436,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_multiple(1, 2)
 
-        queue.add(task)
+        assert queue.add(task) == [True]
         task = queue.process_next()
 
         assert task.result == 100007
@@ -456,7 +446,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_change_return_type(1, 2)
 
-        queue.add(task)
+        assert queue.add(task) == [True]
         task = queue.process_next()
 
         assert task.result == WrappedNumber(result=100003, extra="hi from middleware")
