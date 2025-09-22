@@ -32,8 +32,8 @@ class TestQueue:
         """Add task into the queue. Accept list of tasks for batch add."""
         return asyncio.run(self._queue.add(task))
 
-    def get_task(self, task_id: UUID) -> Task | None:
-        return asyncio.run(self._queue.get_task(task_id))
+    def get_task(self, task: Task | UUID) -> Task | None:
+        return asyncio.run(self._queue.get_task(task))
 
     def get_all_tasks(self) -> list[Task]:
         """Get all tasks, including completed/failed ones."""
@@ -83,10 +83,7 @@ class TestQueue:
     def process_all(self) -> list[Task]:
         processed = []
 
-        for _ in range(self.size()):
-            task = self.process_next()
-            if not task:
-                break
+        while task := self.process_next():
             processed.append(task)
 
         return processed
@@ -113,7 +110,7 @@ class TestQueue:
 
             if task.should_retry:
                 # retry immediately
-                await self._queue.add(task)
+                await self._queue.retry(task)
 
         await self._backend.store_result(self.name, task.model_dump(mode='json'))
 
