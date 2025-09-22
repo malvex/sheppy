@@ -20,7 +20,7 @@ def list_crons(
         backend_instance = get_backend(backend, redis_url)
         q = Queue(backend_instance, queue)
 
-        crons = await q.list_crons()
+        crons = await q.get_crons()
 
         if not crons:
             console.print(f"[yellow]No crons found in queue '{queue}'[/yellow]")

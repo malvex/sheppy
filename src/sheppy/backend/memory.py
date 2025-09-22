@@ -87,7 +87,7 @@ class MemoryBackend(Backend):
 
             await asyncio.sleep(min(0.05, timeout - elapsed))
 
-    async def list_pending(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
+    async def get_pending(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
         self._check_connected()
 
         async with self._locks[queue_name]:
@@ -139,7 +139,7 @@ class MemoryBackend(Backend):
             heapq.heappush(self._scheduled[queue_name], scheduled_task)
             return True
 
-    async def get_scheduled(self, queue_name: str, now: datetime | None = None) -> list[dict[str, Any]]:
+    async def pop_scheduled(self, queue_name: str, now: datetime | None = None) -> list[dict[str, Any]]:
         self._check_connected()
 
         if now is None:
@@ -193,7 +193,7 @@ class MemoryBackend(Backend):
 
             await asyncio.sleep(min(0.05, timeout - elapsed))
 
-    async def stats(self, queue_name: str) -> dict[str, int]:
+    async def get_stats(self, queue_name: str) -> dict[str, int]:
         self._check_connected()
 
         async with self._locks[queue_name]:
@@ -220,7 +220,7 @@ class MemoryBackend(Backend):
 
         return queues
 
-    async def list_scheduled(self, queue_name: str) -> list[dict[str, Any]]:
+    async def get_scheduled(self, queue_name: str) -> list[dict[str, Any]]:
         self._check_connected()
 
         async with self._locks[queue_name]:
@@ -250,7 +250,7 @@ class MemoryBackend(Backend):
                 return True
             return False
 
-    async def list_crons(self, queue_name: str) -> list[dict[str, Any]]:
+    async def get_crons(self, queue_name: str) -> list[dict[str, Any]]:
         self._check_connected()
 
         async with self._locks[queue_name]:

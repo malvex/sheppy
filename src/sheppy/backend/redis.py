@@ -164,7 +164,7 @@ class RedisBackend(Backend):
         except Exception as e:
             raise BackendError(f"Failed to dequeue task: {e}") from e
 
-    async def list_pending(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
+    async def get_pending(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
         pending_tasks_key = self._pending_tasks_key(queue_name)
 
         await self._ensure_consumer_group(pending_tasks_key)
@@ -214,7 +214,7 @@ class RedisBackend(Backend):
         except Exception as e:
             raise BackendError(f"Failed to schedule task: {e}") from e
 
-    async def get_scheduled(self, queue_name: str, now: datetime | None = None) -> list[dict[str, Any]]:
+    async def pop_scheduled(self, queue_name: str, now: datetime | None = None) -> list[dict[str, Any]]:
         scheduled_key = self._scheduled_tasks_key(queue_name)
 
         score = now.timestamp() if now else time()
@@ -266,7 +266,7 @@ class RedisBackend(Backend):
         except Exception as e:
             raise BackendError(f"Failed to store task result: {e}") from e
 
-    async def stats(self, queue_name: str) -> dict[str, int]:
+    async def get_stats(self, queue_name: str) -> dict[str, int]:
         scheduled_tasks_key = self._scheduled_tasks_key(queue_name)
         pending_tasks_key = self._pending_tasks_key(queue_name)
         finished_tasks_key = self._finished_tasks_key(queue_name)
@@ -363,7 +363,7 @@ class RedisBackend(Backend):
 
         return queues
 
-    async def list_scheduled(self, queue_name: str) -> list[dict[str, Any]]:
+    async def get_scheduled(self, queue_name: str) -> list[dict[str, Any]]:
         scheduled_key = self._scheduled_tasks_key(queue_name)
 
         task_jsons = await self.client.zrange(scheduled_key, 0, -1, withscores=True)
@@ -382,6 +382,6 @@ class RedisBackend(Backend):
         cron_tasks_key = self._cron_tasks_key(queue_name)
         return bool(await self.client.hdel(cron_tasks_key, deterministic_id))  # type: ignore[misc]
 
-    async def list_crons(self, queue_name: str) -> list[dict[str, Any]]:
+    async def get_crons(self, queue_name: str) -> list[dict[str, Any]]:
         cron_tasks_key = self._cron_tasks_key(queue_name)
         return [json.loads(d) for _, d in (await self.client.hgetall(cron_tasks_key)).items()]  # type: ignore[misc]

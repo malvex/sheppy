@@ -29,30 +29,39 @@ class TestQueue:
         self.failed_tasks: list[Task] = []
 
     def add(self, task: Task | list[Task]) -> list[bool]:
+        """Add task into the queue. Accept list of tasks for batch add."""
         return asyncio.run(self._queue.add(task))
 
     def get_task(self, task_id: UUID) -> Task | None:
         return asyncio.run(self._queue.get_task(task_id))
 
-    def list_pending(self, count: int = 1) -> list[Task]:
-        return asyncio.run(self._queue.list_pending(count))
-
-    def schedule(self, task: Task, at: datetime | timedelta) -> bool:
-        return asyncio.run(self._queue.schedule(task, at))
-
-    def list_scheduled(self) -> list[Task]:
-        """List scheduled tasks."""
-        return asyncio.run(self._queue.list_scheduled())
-
-    def size(self) -> int:
-        return asyncio.run(self._queue.size())
-
-    def clear(self) -> int:
-        return asyncio.run(self._queue.clear())
-
     def get_all_tasks(self) -> list[Task]:
         """Get all tasks, including completed/failed ones."""
         return asyncio.run(self._queue.get_all_tasks())
+
+    def get_pending(self, count: int = 1) -> list[Task]:
+        """List pending tasks."""
+        return asyncio.run(self._queue.get_pending(count))
+
+    def schedule(self, task: Task, at: datetime | timedelta) -> bool:
+        """Schedule task to be processed after certain time."""
+        return asyncio.run(self._queue.schedule(task, at))
+
+    def get_scheduled(self) -> list[Task]:
+        """List scheduled tasks."""
+        return asyncio.run(self._queue.get_scheduled())
+
+    def retry(self, task: Task | UUID, at: datetime | timedelta | None = None, force: bool = False) -> bool:
+        """Retry failed task."""
+        return asyncio.run(self._queue.retry(task, at, force))
+
+    def size(self) -> int:
+        """Get number of pending tasks in the queue."""
+        return asyncio.run(self._queue.size())
+
+    def clear(self) -> int:
+        """Clear all tasks, including completed ones."""
+        return asyncio.run(self._queue.clear())
 
     def add_cron(self, task: Task, cron: str) -> bool:
         return asyncio.run(self._queue.add_cron(task, cron))
@@ -60,8 +69,8 @@ class TestQueue:
     def delete_cron(self, task: Task, cron: str) -> bool:
         return asyncio.run(self._queue.delete_cron(task, cron))
 
-    def list_crons(self) -> list[TaskCron]:
-        return asyncio.run(self._queue.list_crons())
+    def get_crons(self) -> list[TaskCron]:
+        return asyncio.run(self._queue.get_crons())
 
     def process_next(self) -> Task | None:
 
@@ -89,7 +98,7 @@ class TestQueue:
             at = datetime.now(timezone.utc)
 
         async def _process_scheduled_async(at: datetime) -> list[Task]:
-            tasks = [Task.model_validate(t) for t in await self._backend.get_scheduled(self.name, at)]
+            tasks = [Task.model_validate(t) for t in await self._backend.pop_scheduled(self.name, at)]
             return [await self._execute_task(task) for task in tasks]
 
         return asyncio.run(_process_scheduled_async(at))

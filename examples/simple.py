@@ -39,7 +39,7 @@ async def main():
     await queue.add(task)
 
     # wait for results to verify welcome email was sent
-    task = await queue.wait_for_result(task)
+    task = await queue.wait_for(task)
 
     assert task.result == {"status": "sent"}
     assert task.completed

@@ -243,7 +243,7 @@ async def test_pop(backend: Backend):
     assert await backend.pop(Q, limit=3, timeout=0.01) == [t4]
 
 
-async def test_list_pending(backend: Backend):
+async def test_get_pending(backend: Backend):
     t1 = simple_async_task(1, 2).model_dump(mode="json")
     t2 = simple_async_task(3, 4).model_dump(mode="json")
     t3 = simple_async_task(5, 6).model_dump(mode="json")
@@ -253,13 +253,13 @@ async def test_list_pending(backend: Backend):
     assert await backend.create_tasks(Q, [t1, t2, t3, t4]) == [True, True, True, True]
     assert await backend.append(Q, [t1, t2, t3, t4]) is True
 
-    assert await backend.list_pending(Q) == [t1]
-    assert await backend.list_pending(Q, count=2) == [t1, t2]
-    assert await backend.list_pending(Q, count=50) == [t1, t2, t3, t4]
+    assert await backend.get_pending(Q) == [t1]
+    assert await backend.get_pending(Q, count=2) == [t1, t2]
+    assert await backend.get_pending(Q, count=50) == [t1, t2, t3, t4]
 
-    assert await backend.list_pending("different-queue") == []
-    assert await backend.list_pending("different-queue", count=2) == []
-    assert await backend.list_pending("different-queue", count=50) == []
+    assert await backend.get_pending("different-queue") == []
+    assert await backend.get_pending("different-queue", count=2) == []
+    assert await backend.get_pending("different-queue", count=50) == []
 
 
 async def test_clear(backend: Backend):
@@ -361,7 +361,7 @@ async def test_get_all_tasks(datetime_now: datetime, tasks: dict[str, dict], bac
 
     assert await backend.get_all_tasks("different-queue") == [t4]
 
-    assert await backend.stats(Q) == {"completed": 1, "pending": 2, "scheduled": 1}
+    assert await backend.get_stats(Q) == {"completed": 1, "pending": 2, "scheduled": 1}
 
 
 async def test_list_queues(datetime_now: datetime, tasks: dict[str, dict], backend: Backend):
@@ -390,7 +390,7 @@ async def test_list_queues(datetime_now: datetime, tasks: dict[str, dict], backe
     assert await backend.list_queues() == {Q: 2, "different-queue": 1}
 
 
-async def test_list_scheduled(datetime_now: datetime, backend: Backend):
+async def test_get_scheduled(datetime_now: datetime, backend: Backend):
     t1 = simple_async_task(1, 2).model_dump(mode="json")
     t2 = simple_async_task(3, 4).model_dump(mode="json")
 
@@ -400,11 +400,11 @@ async def test_list_scheduled(datetime_now: datetime, backend: Backend):
     assert await backend.schedule(Q, t1, at=datetime_now)
     assert await backend.schedule(Q, t2, at=datetime_now)
 
-    tasks = await backend.list_scheduled(Q)
+    tasks = await backend.get_scheduled(Q)
     assert len(tasks) == 2
     assert t1 in tasks
     assert t2 in tasks
-    assert await backend.list_scheduled("different-queue") == []
+    assert await backend.get_scheduled("different-queue") == []
 
 
 class TestGetResult:
@@ -424,7 +424,7 @@ class TestGetResult:
 
         assert await backend.schedule(Q, task_data, at=TypeAdapter(datetime).validate_python(task_data["scheduled_at"]))
         assert await backend.size(Q) == 0
-        ret = await backend.get_scheduled(Q, datetime.now(timezone.utc))
+        ret = await backend.pop_scheduled(Q, datetime.now(timezone.utc))
         assert await backend.size(Q) == 0
         assert await backend.append(Q, [ret[0]])
         assert await backend.size(Q) == 1
@@ -941,12 +941,12 @@ async def test_cron(backend: Backend):
     assert await backend.add_cron(Q, deterministic_id, cron_data) is True
     assert await backend.add_cron(Q, deterministic_id, cron_data) is False
 
-    assert await backend.list_crons(Q) == [cron_data]
-    assert await backend.list_crons("different-queue") == []
+    assert await backend.get_crons(Q) == [cron_data]
+    assert await backend.get_crons("different-queue") == []
 
     assert await backend.delete_cron("different-queue", deterministic_id) is False
     assert await backend.delete_cron(Q, deterministic_id) is True
     assert await backend.delete_cron(Q, deterministic_id) is False
 
-    assert await backend.list_crons(Q) == []
-    assert await backend.list_crons("different-queue") == []
+    assert await backend.get_crons(Q) == []
+    assert await backend.get_crons("different-queue") == []

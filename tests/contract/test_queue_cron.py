@@ -23,7 +23,7 @@ async def test_cron(queue: Queue):
             success = await queue.add_cron(task, schedule)
             assert success is should_succeed
 
-    all_crons = await queue.list_crons()
+    all_crons = await queue.get_crons()
     assert len(all_crons) == 4
 
     for task, schedule in crons:
@@ -34,7 +34,7 @@ async def test_cron(queue: Queue):
             success = await queue.delete_cron(task, schedule)
             assert success is should_succeed
 
-    all_crons = await queue.list_crons()
+    all_crons = await queue.get_crons()
     assert len(all_crons) == 0
 
 
@@ -53,7 +53,7 @@ async def test_process_cron(datetime_now: datetime, queue: Queue, worker: Worker
     success = await queue.add_cron(t, expression)
     assert not success
 
-    all_crons = await queue.list_crons()
+    all_crons = await queue.get_crons()
     assert len(all_crons) == 1
 
     next_run = all_crons[0].next_run(datetime_now - timedelta(minutes=2))
@@ -83,7 +83,7 @@ async def test_cron_generates_different_tasks(datetime_now: datetime, queue: Que
     success = await queue.add_cron(t, expression)
     assert success
 
-    all_crons = await queue.list_crons()
+    all_crons = await queue.get_crons()
     assert len(all_crons) == 1
 
     normalized_dt = datetime_now - timedelta(seconds=datetime_now.second, microseconds=datetime_now.microsecond)

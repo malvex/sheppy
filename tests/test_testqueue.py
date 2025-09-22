@@ -361,7 +361,7 @@ class TestCronOperations:
                 success = queue.add_cron(task, schedule)
                 assert success is should_succeed
 
-        all_crons = queue.list_crons()
+        all_crons = queue.get_crons()
         assert len(all_crons) == 4
 
         for task, schedule in crons:
@@ -372,7 +372,7 @@ class TestCronOperations:
                 success = queue.delete_cron(task, schedule)
                 assert success is should_succeed
 
-        all_crons = queue.list_crons()
+        all_crons = queue.get_crons()
         assert len(all_crons) == 0
 
     def test_delete_nonexistent_cron(self):

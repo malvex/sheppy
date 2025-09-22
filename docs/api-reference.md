@@ -177,13 +177,13 @@ task = await queue.get_task(task_instance)
 
 **Returns:** Task with current state or None if not found
 
-#### `wait_for_result(task: Task, timeout: float = 0) -> Task`
+#### `wait_for(task: Task, timeout: float = 0) -> Task`
 
 Blocking wait for a task to complete. Waits forever if timeout is zero, or throws exception when timeout is exceeded.
 
 ```python
 try:
-    completed = await queue.wait_for_result(task, timeout=60.0)
+    completed = await queue.wait_for(task, timeout=60.0)
     print(completed.result)
 except TimeoutError:
     print("Task didn't complete in time")
@@ -354,7 +354,7 @@ Standard Python TimeoutError raised when waiting for results.
 
 ```python
 try:
-    result = await queue.wait_for_result(task, timeout=5.0)
+    result = await queue.wait_for(task, timeout=5.0)
 except TimeoutError:
     print("Task didn't complete in 5 seconds")
 ```

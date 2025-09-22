@@ -172,7 +172,7 @@ class Worker:
         while not self._shutdown_event.is_set():
             try:
                 for queue in self.queues:
-                    for cron_data in await queue.list_crons():
+                    for cron_data in await queue.get_crons():
                         cron = TaskCron.model_validate(cron_data)
 
                         _next_run = None
@@ -254,7 +254,7 @@ class Worker:
 
             # schedule the task for retry
             if task.error and task.should_retry and task.next_retry_at is not None:
-                await queue.retry_task(task, task.next_retry_at)
+                await queue.retry(task, task.next_retry_at)
 
             return task
 

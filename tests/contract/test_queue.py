@@ -87,12 +87,12 @@ async def test_get_task_nonexistent(queue: Queue):
         assert await queue.get_task('00000000-0000-0000-0000-000000000000') is None
 
 
-async def test_list_pending(task_fn, queue: Queue, worker: Worker):
+async def test_get_pending(task_fn, queue: Queue, worker: Worker):
         worker.enable_scheduler = False
         worker.enable_cron_manager = False
 
         assert await queue.size() == 0
-        res = await queue.list_pending()
+        res = await queue.get_pending()
         assert len(res) == 0
 
         await queue.add(t1 := task_fn(1, 2))
@@ -100,26 +100,26 @@ async def test_list_pending(task_fn, queue: Queue, worker: Worker):
         assert await queue.size() == 2
 
         # count < queue size + implicit
-        res = await queue.list_pending()
+        res = await queue.get_pending()
         assert len(res) == 1
         assert res[0] == t1
         assert await queue.size() == 2
 
         # count < queue size + explicit
-        res = await queue.list_pending(count=1)
+        res = await queue.get_pending(count=1)
         assert len(res) == 1
         assert res[0] == t1
         assert await queue.size() == 2
 
         # count == queue size
-        res = await queue.list_pending(count=2)
+        res = await queue.get_pending(count=2)
         assert len(res) == 2
         assert res[0] == t1
         assert res[1] == t2
         assert await queue.size() == 2
 
         # count > queue size
-        res = await queue.list_pending(count=9999)
+        res = await queue.get_pending(count=9999)
         assert len(res) == 2
         assert res[0] == t1
         assert res[1] == t2
@@ -127,26 +127,26 @@ async def test_list_pending(task_fn, queue: Queue, worker: Worker):
 
         await worker.work(1)
 
-        res = await queue.list_pending(count=2)
+        res = await queue.get_pending(count=2)
         assert len(res) == 1
         assert res[0] == t2
         assert await queue.size() == 1
 
         await worker.work(1)
 
-        res = await queue.list_pending(count=2)
+        res = await queue.get_pending(count=2)
         assert len(res) == 0
         assert await queue.size() == 0
 
 
-async def test_list_pending_after_pop(task_fn, queue: Queue, worker: Worker):
+async def test_get_pending_after_pop(task_fn, queue: Queue, worker: Worker):
         worker.enable_scheduler = False
         worker.enable_cron_manager = False
 
         await queue.add(t := task_fn(1, 2))
         assert await queue.size() == 1
 
-        res = await queue.list_pending()
+        res = await queue.get_pending()
         assert len(res) == 1
         assert res[0] == t
         assert await queue.size() == 1
@@ -154,20 +154,20 @@ async def test_list_pending_after_pop(task_fn, queue: Queue, worker: Worker):
         await queue.pop_pending()
 
         if queue.backend.__class__.__name__ == "RedisBackend":
-            pytest.xfail("bug(RedisBackend): popped tasks still visible in list_pending()")
+            pytest.xfail("bug(RedisBackend): popped tasks still visible in get_pending()")
 
-        res = await queue.list_pending()
+        res = await queue.get_pending()
         assert len(res) == 0
         # assert res[0] == t
         assert await queue.size() == 0
 
 
-async def test_list_pending_invalid(queue: Queue):
+async def test_get_pending_invalid(queue: Queue):
     with pytest.raises(ValueError):
-        await queue.list_pending(count=0)
+        await queue.get_pending(count=0)
 
     with pytest.raises(ValueError):
-        await queue.list_pending(count=-1)
+        await queue.get_pending(count=-1)
 
 
 async def test_clear(task_fn, queue: Queue, worker: Worker):
@@ -192,7 +192,7 @@ async def test_clear(task_fn, queue: Queue, worker: Worker):
         assert ret == 3
 
         assert await queue.size() == 0
-        assert await queue.list_pending() == []
+        assert await queue.get_pending() == []
 
         ret = await queue.get_all_tasks()
         assert await queue.get_all_tasks() == []
@@ -283,7 +283,7 @@ async def test_wait_for(task_fn, queue: Queue, worker: Worker):
 
     asyncio.create_task(worker.work(1))
 
-    processed = await queue.wait_for_result(t, timeout=1)
+    processed = await queue.wait_for(t, timeout=1)
 
     assert processed.completed
     assert not processed.error
@@ -294,9 +294,9 @@ async def test_wait_for_nonexistent(queue: Queue):
     assert await queue.size() == 0
 
     with pytest.raises(TimeoutError):
-        await queue.wait_for_result('00000000-0000-0000-0000-000000000000', timeout=0.01)
+        await queue.wait_for('00000000-0000-0000-0000-000000000000', timeout=0.01)
 
-    ret = await queue.wait_for_result('00000000-0000-0000-0000-000000000000', timeout=None)
+    ret = await queue.wait_for('00000000-0000-0000-0000-000000000000', timeout=None)
     assert ret is None
 
 
@@ -358,7 +358,7 @@ class TestBatchOperations:
 
         processed = []
         for t in tasks:
-            processed.append(await queue.wait_for_result(t, timeout=10))
+            processed.append(await queue.wait_for(t, timeout=10))
 
         for i, t in enumerate(processed):
             assert t.completed
@@ -430,5 +430,5 @@ class TestEdgeCases:
         assert await queue.schedule(t1, at=timedelta(hours=2)) is False, "3"
         assert await queue.add(t1) == [False], "4"
 
-        assert len(await queue.list_scheduled()) == 1, "5"
+        assert len(await queue.get_scheduled()) == 1, "5"
         assert await queue.size() == 0, "6"

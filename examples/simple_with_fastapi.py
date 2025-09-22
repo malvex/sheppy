@@ -108,7 +108,7 @@ async def register(user_data: UserCreate,
     await queue.add(task)
 
     # optional - for demo purposes we will wait for results
-    task = await task.wait_for_result(task)
+    task = await task.wait_for(task)
 
     assert task.completed
     assert isinstance(task.result, Status)

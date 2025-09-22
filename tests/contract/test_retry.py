@@ -51,7 +51,7 @@ async def test_retry(fail_once_fn, queue: Queue, worker: Worker):
     assert t.retry_count == 1
 
 
-async def test_wait_for_result(fail_once_fn, queue: Queue, worker: Worker):
+async def test_wait_for(fail_once_fn, queue: Queue, worker: Worker):
 
     if isinstance(queue.backend, MemoryBackend):
         pytest.xfail("MemoryBackend is broken for this test")  # or maybe redis is...
@@ -64,11 +64,11 @@ async def test_wait_for_result(fail_once_fn, queue: Queue, worker: Worker):
 
     asyncio.create_task(worker.work(2))
 
-    t = await queue.wait_for_result(t, timeout=10)
+    t = await queue.wait_for(t, timeout=10)
     assert_is_failed(t)
     assert t.error == "transient error"
     assert t.retry_count == 1
 
-    t = await queue.wait_for_result(t, timeout=3)
+    t = await queue.wait_for(t, timeout=3)
     assert_is_completed(t)
     assert t.retry_count == 1

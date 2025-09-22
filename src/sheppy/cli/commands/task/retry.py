@@ -50,7 +50,7 @@ def retry(
             console.print("Use --force to retry anyway")
             raise typer.Exit(1)
 
-        success = await q.retry_task(task, force=True)
+        success = await q.retry(task, force=True)
 
         if success:
             console.print(f"[green]✓ Task {task_id} has been re-queued for retry[/green]")

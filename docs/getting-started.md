@@ -112,7 +112,7 @@ task = my_task(arg1, arg2)
 await queue.add(task)
 
 # blocking wait for task completion
-task = await queue.wait_for_result(task)
+task = await queue.wait_for(task)
 assert task.completed
 
 # or retrieve the task anytime even if it's still pending
@@ -140,7 +140,7 @@ async def risky_task(value: int) -> int:
 task = risky_task(-5)
 await queue.add(task)
 
-task = await queue.wait_for_result(task)
+task = await queue.wait_for(task)
 
 if task.error:
     print(f"Task failed: {task.error}")  # prints "Task failed: Value must be positive"

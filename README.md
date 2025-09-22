@@ -44,7 +44,7 @@ async def main():
     await queue.schedule(say_hello("New Year"), at=datetime.fromisoformat("2026-01-01 00:00:00 +00:00"))
 
     # await the task completion
-    updated_task = await queue.wait_for_result(t1)
+    updated_task = await queue.wait_for(t1)
 
     if updated_task.error:
         print(f"Task failed with error: {updated_task.error}")
@@ -52,7 +52,7 @@ async def main():
         print(f"Task succeed with result: {updated_task.result}")
         assert updated_task.result == "Hello, World!"
     else:
-        # note: this won't happen though because wait_for_result doesn't return pending tasks
+        # note: this won't happen though because wait_for doesn't return pending tasks
         print("Task is still pending!")
 
 if __name__ == "__main__":

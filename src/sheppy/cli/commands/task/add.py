@@ -77,7 +77,7 @@ def add(
         console.print(f"\n[cyan]Waiting for result{s_timeout}...[/cyan]")
 
         try:
-            result_task = await q.wait_for_result(task, timeout=timeout)
+            result_task = await q.wait_for(task, timeout=timeout)
         except TimeoutError:
             console.print(f"\n[yellow]Timeout: Task did not complete within {timeout} seconds[/yellow]")
             console.print(f"[yellow]Task is still running in the background. Use 'sheppy task info {task.id}' to check status.[/yellow]")

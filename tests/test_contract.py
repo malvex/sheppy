@@ -36,7 +36,7 @@ class TestSuccessfulTasks:
 
 
     @pytest.mark.parametrize("test_case", TaskTestCases.subset_successful_tasks(), ids=lambda tc: tc.name)
-    async def test_wait_for_result(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
+    async def test_wait_for(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
         task = test_case.create_task()
 
         assert await queue.add(task) == [True]
@@ -45,7 +45,7 @@ class TestSuccessfulTasks:
         process_task = asyncio.create_task(worker.work(max_tasks=1))
 
         # wait for result
-        task = await queue.wait_for_result(task, timeout=3.0)
+        task = await queue.wait_for(task, timeout=3.0)
         assert_is_completed(task)
         assert task.result == test_case.expected_result
 
@@ -53,14 +53,14 @@ class TestSuccessfulTasks:
         await process_task
 
     @pytest.mark.parametrize("test_case", TaskTestCases.subset_successful_tasks()[1:2], ids=lambda tc: tc.name)
-    async def test_wait_for_result_timeout(self, test_case: TaskTestCase, queue: Queue):
+    async def test_wait_for_timeout(self, test_case: TaskTestCase, queue: Queue):
 
         task = test_case.create_task()
         assert await queue.add(task) == [True]
 
         # we aren't processing the task => should raise exception
         with pytest.raises(TimeoutError):
-            await queue.wait_for_result(task, timeout=0.2)
+            await queue.wait_for(task, timeout=0.2)
 
 
 class TestFailingTasks:
@@ -266,7 +266,7 @@ class TestCronOperations:
                 success = await queue.add_cron(task, schedule)
                 assert success is should_succeed
 
-        all_crons = await queue.list_crons()
+        all_crons = await queue.get_crons()
         assert len(all_crons) == 4
 
         for task, schedule in crons:
@@ -277,7 +277,7 @@ class TestCronOperations:
                 success = await queue.delete_cron(task, schedule)
                 assert success is should_succeed
 
-        all_crons = await queue.list_crons()
+        all_crons = await queue.get_crons()
         assert len(all_crons) == 0
 
     async def test_delete_nonexistent_cron(self, queue: Queue):

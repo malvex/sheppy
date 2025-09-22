@@ -35,19 +35,15 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def list_pending(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
-        pass
-
-    @abstractmethod
-    async def size(self, queue_name: str) -> int:
-        pass
-
-    @abstractmethod
-    async def clear(self, queue_name: str) -> int:
-        pass
-
-    @abstractmethod
     async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
+        pass
+
+    @abstractmethod
+    async def get_all_tasks(self, queue_name: str) -> list[dict[str, Any]]:
+        pass
+
+    @abstractmethod
+    async def get_pending(self, queue_name: str, count: int = 1) -> list[dict[str, Any]]:
         pass
 
     @abstractmethod
@@ -55,7 +51,11 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def get_scheduled(self, queue_name: str, now: datetime | None = None) -> list[dict[str, Any]]:
+    async def get_scheduled(self, queue_name: str) -> list[dict[str, Any]]:
+        pass
+
+    @abstractmethod
+    async def pop_scheduled(self, queue_name: str, now: datetime | None = None) -> list[dict[str, Any]]:
         pass
 
     @abstractmethod
@@ -67,19 +67,19 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def stats(self, queue_name: str) -> dict[str, int]:
+    async def size(self, queue_name: str) -> int:
         pass
 
     @abstractmethod
-    async def get_all_tasks(self, queue_name: str) -> list[dict[str, Any]]:
+    async def clear(self, queue_name: str) -> int:
+        pass
+
+    @abstractmethod
+    async def get_stats(self, queue_name: str) -> dict[str, int]:
         pass
 
     @abstractmethod
     async def list_queues(self) -> dict[str, int]:
-        pass
-
-    @abstractmethod
-    async def list_scheduled(self, queue_name: str) -> list[dict[str, Any]]:
         pass
 
     @abstractmethod
@@ -91,5 +91,5 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def list_crons(self, queue_name: str) -> list[dict[str, Any]]:
+    async def get_crons(self, queue_name: str) -> list[dict[str, Any]]:
         pass
