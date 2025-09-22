@@ -255,7 +255,8 @@ class RedisBackend(Backend):
                 # update task metadata with the results
                 pipe.hsetex(tasks_metadata_key, task_data["id"], json.dumps(task_data), ex=self.ttl)
                 # add to finished stream for get_result notifications
-                pipe.xadd(finished_tasks_key, {"task_id": task_data["id"]}, minid=min_id)
+                if task_data["finished_at"] is not None:  # only send notification on finished task (for retriable tasks we continue to wait)
+                    pipe.xadd(finished_tasks_key, {"task_id": task_data["id"]}, minid=min_id)
                 # ack and delete the task from the stream (cleanup)
                 if message_id:
                     pipe.xackdel(pending_tasks_key, self.consumer_group, message_id)
