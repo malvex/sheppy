@@ -6,7 +6,7 @@ from sheppy import MemoryBackend, Queue, Task, Worker, task
 from sheppy.testqueue import assert_is_completed, assert_is_failed
 
 
-@task(retry=2, retry_delay=2)
+@task(retry=2, retry_delay=0.1)
 async def async_fail_once(self: Task) -> str:
     if self.retry_count == 0:
         raise Exception("transient error")
