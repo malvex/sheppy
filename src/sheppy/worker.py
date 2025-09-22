@@ -296,7 +296,9 @@ class Worker:
                     logger.warning("Forcing shutdown...")
                     # cancel all tasks on shutdown
                     _futures = self._work_queue_tasks
-                    _futures += [k for inner_dict in self._active_tasks.values() for k, v in inner_dict.items()]
+                    _futures += [
+                        k for inner_dict in self._active_tasks.values()  # type: ignore[misc]
+                          for k, v in inner_dict.items()]
                     _futures += [self._scheduler_task] if self._scheduler_task else []
                     _futures += [self._cron_manager_task] if self._cron_manager_task else []
                     for future in _futures:

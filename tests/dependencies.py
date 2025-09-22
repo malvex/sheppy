@@ -548,7 +548,7 @@ def middleware_noop(task: Task):
 #     task = yield task
 #     return task
 
-def middleware_noop_no_val(task: Task):
+def middleware_noop_no_val(task: Task):  # noqa: ARG001
     yield
     return
 
@@ -560,21 +560,21 @@ def middleware_noop_yield_no_val(task: Task):
     task = yield
     return task
 
-def middleware_noop_pass(task: Task):
+def middleware_noop_pass(task: Task):  # noqa: ARG001
     pass
 
-def middleware_noop_yield_only_no_val(task: Task):
+def middleware_noop_yield_only_no_val(task: Task):  # noqa: ARG001
     yield
 
 # should fail (tbd: more wrong formats)
-def middleware_noop_return_only_no_val(task: Task):
+def middleware_noop_return_only_no_val(task: Task):  # noqa: ARG001
     return
 
 def middleware_no_args():
     yield
     return
 
-def middleware_too_many_args(task: Task, another_task: Task):
+def middleware_too_many_args(task: Task, another_task: Task):  # noqa: ARG001
     yield
     return
 
