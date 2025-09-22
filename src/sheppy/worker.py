@@ -273,7 +273,7 @@ class Worker:
             logger.error(WORKER_PREFIX + f"Task {task.id} failed: {exception}", exc_info=True)
 
         # retriable task - final failure
-        if task.error and not task.should_retry:
+        if task.error and task.is_retriable and not task.should_retry:
             logger.error(WORKER_PREFIX + f"Task {task.id} failed after {task.retry_count} retries: {exception}", exc_info=True)
 
         # retriable task - reschedule

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pytest
 import pytest_asyncio
 
-from sheppy import Queue, Worker
+from sheppy import Queue, Task, Worker, task
 from sheppy.backend import Backend, MemoryBackend, RedisBackend
 
 TEST_QUEUE_NAME = "pytest"
@@ -64,3 +64,28 @@ async def worker(worker_backend: Backend) -> Worker:
 @pytest_asyncio.fixture
 async def queue(backend: Backend) -> Queue:
     return Queue(backend, TEST_QUEUE_NAME)
+
+
+@task(retry=2, retry_delay=0.1)
+async def async_fail_once(self: Task) -> str:
+    if self.retry_count == 0:
+        raise Exception("transient error")
+    return "ok"
+
+
+@task(retry=2, retry_delay=0)
+def sync_fail_once(self: Task) -> str:
+    if self.retry_count == 0:
+        raise Exception("transient error")
+    return "ok"
+
+
+@pytest.fixture(params=["async_task", "sync_task"])
+def task_fail_once_fn(request):
+    if request.param == "async_task":
+        return async_fail_once
+
+    if request.param == "sync_task":
+        return sync_fail_once
+
+    raise NotImplementedError

@@ -5,8 +5,8 @@ from uuid import UUID
 import pytest
 
 from sheppy import Backend, Queue, Worker
-from sheppy.testqueue import assert_is_completed, assert_is_new
-from tests.dependencies import simple_async_task, simple_sync_task
+from sheppy.testqueue import assert_is_completed, assert_is_failed, assert_is_new
+from tests.dependencies import failing_task, simple_async_task, simple_sync_task
 
 
 @pytest.fixture(params=["async_task", "sync_task"])
@@ -298,6 +298,112 @@ async def test_wait_for_nonexistent(queue: Queue):
 
     ret = await queue.wait_for('00000000-0000-0000-0000-000000000000', timeout=None)
     assert ret is None
+
+
+async def test_retry(queue: Queue, worker: Worker):
+    worker.enable_scheduler = False
+    worker.enable_cron_manager = False
+
+    task = failing_task()
+
+    assert await queue.add(task) == [True]
+
+    await worker.work(oneshot=True)
+
+    recv_task = await queue.get_task(task)
+    assert_is_failed(recv_task)
+
+    scheduled = await queue.get_scheduled()
+    assert len(scheduled) == 0
+
+    assert await queue.retry(task) is True
+    assert await queue.size() == 1
+
+    await worker.work(oneshot=True)
+    assert await queue.size() == 0
+
+    recv_task2 = await queue.get_task(task)
+    assert_is_failed(recv_task2)
+    assert recv_task.id == recv_task2.id
+    assert recv_task != recv_task2  # differs because finished_at is different
+
+
+async def test_retry_automatic_by_worker(task_fail_once_fn, queue: Queue, worker: Worker):
+    task = task_fail_once_fn()
+
+    assert await queue.add(task) == [True]
+
+    await worker.work(max_tasks=2)
+
+    recv_task = await queue.get_task(task)
+    assert_is_completed(recv_task)
+    assert recv_task.retry_count == 1
+    assert await queue.size() == 0
+
+    scheduled = await queue.get_scheduled()
+    assert len(scheduled) == 0
+
+
+async def test_retry_force(task_fail_once_fn, queue: Queue, worker: Worker):
+    task = task_fail_once_fn()
+
+    assert await queue.add(task) == [True]
+    await worker.work(max_tasks=2)
+    processed = await queue.get_task(task)
+
+    assert_is_new(task)
+    assert_is_completed(processed)
+    assert processed.retry_count == 1
+    assert await queue.size() == 0
+
+    with pytest.raises(ValueError, match="Task has already completed successfully, use force to retry anyways"):
+        await queue.retry(task)
+    with pytest.raises(ValueError, match="Task has already completed successfully, use force to retry anyways"):
+        await queue.retry(task.id)
+    with pytest.raises(ValueError, match="Task has already completed successfully, use force to retry anyways"):
+        await queue.retry(task.id, at=timedelta(hours=10))
+
+    assert await queue.size() == 0
+    assert await queue.retry(task.id, force=True) is True
+    assert await queue.size() == 1
+
+    await worker.work(max_tasks=1)
+    processed2 = await queue.get_task(task)
+    assert_is_completed(processed2)  # completes because this specific task succeeds if retry_count > 0
+    assert await queue.size() == 0
+    assert processed2.retry_count == 1
+
+
+async def test_retry_at(datetime_now, queue: Queue, worker: Worker):
+    task = failing_task()
+
+    assert await queue.add(task) == [True]
+    await worker.work(max_tasks=1)
+    processed = await queue.get_task(task)
+
+    assert_is_new(task)
+    assert_is_failed(processed)
+    assert await queue.size() == 0
+    assert await queue.get_scheduled() == []
+
+    assert await queue.retry(task, at=timedelta(hours=10)) is True
+    assert await queue.size() == 0  # task should be scheduled, so it should not be in pending yet
+
+    scheduled = await queue.get_scheduled()
+    assert len(scheduled) == 1
+    assert scheduled[0].id == task.id
+
+    enqueued = await queue.enqueue_scheduled(datetime_now + timedelta(hours=11))
+    assert len(enqueued) == 1
+    assert enqueued[0].id == task.id
+
+    await worker.work(max_tasks=1)
+    processed2 = await queue.get_task(task)
+    assert_is_failed(processed2)
+    assert await queue.size() == 0
+
+    pytest.xfail("BUG: task is not retriable and retry() does not increment this!")
+    assert processed2.retry_count == 0
 
 
 class TestBatchOperations:

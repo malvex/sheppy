@@ -1,40 +1,14 @@
 import asyncio
+from collections.abc import Callable
 
 import pytest
 
-from sheppy import MemoryBackend, Queue, Task, Worker, task
+from sheppy import MemoryBackend, Queue, Task, Worker
 from sheppy.testqueue import assert_is_completed, assert_is_failed
 
 
-@task(retry=2, retry_delay=0.1)
-async def async_fail_once(self: Task) -> str:
-    if self.retry_count == 0:
-        raise Exception("transient error")
-
-    return "ok"
-
-
-@task(retry=2, retry_delay=0)
-def sync_fail_once(self: Task) -> str:
-    if self.retry_count == 0:
-        raise Exception("transient error")
-
-    return "ok"
-
-
-@pytest.fixture(params=["async_task", "sync_task"])
-def fail_once_fn(request):
-    if request.param == "async_task":
-        return async_fail_once
-
-    if request.param == "sync_task":
-        return sync_fail_once
-
-    raise NotImplementedError
-
-
-async def test_retry(fail_once_fn, queue: Queue, worker: Worker):
-    t = fail_once_fn()
+async def test_retry(task_fail_once_fn: Callable[[], Task], queue: Queue, worker: Worker) -> None:
+    t = task_fail_once_fn()
     await queue.add(t)
 
     await worker.work(1)
@@ -51,12 +25,12 @@ async def test_retry(fail_once_fn, queue: Queue, worker: Worker):
     assert t.retry_count == 1
 
 
-async def test_wait_for(fail_once_fn, queue: Queue, worker: Worker):
+async def test_wait_for(task_fail_once_fn: Callable[[], Task], queue: Queue, worker: Worker):
 
     if isinstance(queue.backend, MemoryBackend):
         pytest.xfail("MemoryBackend is broken for this test")  # or maybe redis is...
 
-    t = fail_once_fn()
+    t = task_fail_once_fn()
     await queue.add(t)
 
     worker._blocking_timeout = 0.01

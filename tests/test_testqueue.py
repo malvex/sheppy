@@ -1,13 +1,15 @@
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from sheppy import TestQueue
+from sheppy import Task, TestQueue
 from sheppy.testqueue import assert_is_completed, assert_is_failed, assert_is_new
 from tests.dependencies import (
     TaskTestCase,
     TaskTestCases,
     WrappedNumber,
+    failing_task,
     simple_async_task,
     simple_sync_task,
     task_add_with_middleware_change_arg,
@@ -176,6 +178,35 @@ class TestQueueBehavior:
         # both tasks should be in processed list
         assert len(queue.processed_tasks) == 2
 
+    def test_process_next_vs_process_all_with_retry(self, task_fail_once_fn: Callable[[], Task]):
+        queue = TestQueue()
+
+        assert queue.add(task_fail_once_fn()) == [True]
+
+        assert queue.size() == 1
+        processed = queue.process_next()
+        assert_is_failed(processed)
+
+        # task got immediately requeued because it's retriable task
+        assert queue.size() == 1
+        processed = queue.process_next()
+        assert_is_completed(processed)
+
+        task = task_fail_once_fn()
+        assert queue.add(task) == [True]
+        assert queue.size() == 1
+
+        processed = queue.process_all()
+        assert queue.size() == 0
+        assert len(processed) == 2
+        assert task.id == processed[0].id == processed[1].id
+
+        assert_is_failed(processed[0])
+        assert_is_completed(processed[1])
+
+        recv_task = queue.get_task(task)
+        assert task.id == recv_task.id
+        assert_is_completed(recv_task)
 
 class TestScheduledTasks:
     @pytest.mark.parametrize("test_case", TaskTestCases.subset_successful_tasks(), ids=lambda tc: tc.name)
@@ -450,3 +481,91 @@ class TestMiddleware:
         task = queue.process_next()
 
         assert task.result == WrappedNumber(result=100003, extra="hi from middleware")
+
+
+class TestRetry:
+    def test_retry(self):
+        queue = TestQueue()
+        task = failing_task()
+
+        queue.add(task)
+        processed = queue.process_next()
+
+        assert_is_new(task)
+        assert_is_failed(processed)
+
+        assert queue.size() == 0
+        assert len(queue.processed_tasks) == 1
+        assert len(queue.failed_tasks) == 1
+
+        assert queue.retry(task) is True
+
+        assert queue.size() == 1
+        assert len(queue.processed_tasks) == 1
+        assert len(queue.failed_tasks) == 1
+
+        processed2 = queue.process_next()
+        assert_is_failed(processed2)
+        assert processed.id == processed2.id
+        assert processed != processed2
+
+        assert queue.size() == 0
+        assert len(queue.processed_tasks) == 2
+        assert len(queue.failed_tasks) == 2
+
+    def test_retry_force(self, task_fail_once_fn: Callable[[], Task]):
+        queue = TestQueue()
+        task = task_fail_once_fn()
+
+        queue.add(task)
+        processed = queue.process_all()
+        assert len(processed) == 2
+
+        assert_is_new(task)
+        assert_is_failed(processed[0])
+        assert_is_completed(processed[1])
+        assert queue.size() == 0
+
+        with pytest.raises(ValueError, match="Task has already completed successfully, use force to retry anyways"):
+            queue.retry(task)
+        with pytest.raises(ValueError, match="Task has already completed successfully, use force to retry anyways"):
+            queue.retry(task.id)
+        with pytest.raises(ValueError, match="Task has already completed successfully, use force to retry anyways"):
+            queue.retry(task.id, at=timedelta(hours=10))
+
+        assert queue.size() == 0
+        assert queue.retry(task.id, force=True) is True
+        assert queue.size() == 1
+
+        processed = queue.process_all()
+        assert len(processed) == 1
+        assert_is_completed(processed[0])  # completes because this specific task succeeds if retry_count > 0
+        assert queue.size() == 0
+        assert processed[0].retry_count == 1
+
+    def test_retry_at(self):
+        queue = TestQueue()
+        task = failing_task()
+
+        queue.add(task)
+        processed = queue.process_all()
+        assert len(processed) == 1
+
+        assert_is_new(task)
+        assert_is_failed(processed[0])
+        assert queue.size() == 0
+
+        assert queue.retry(task, at=timedelta(hours=10)) is True
+        assert queue.size() == 0  # task should be scheduled, so it should not be in pending yet
+
+        assert queue.process_next() is None  # nothing to process
+        scheduled = queue.get_scheduled()
+        assert len(scheduled) == 1
+        assert scheduled[0].id == task.id
+
+        assert queue.process_scheduled() == []
+        assert queue.process_scheduled(timedelta(hours=5)) == []
+        processed2 = queue.process_scheduled(timedelta(hours=10))
+        assert len(processed2) == 1
+        assert_is_failed(processed2[0])
+        assert queue.get_scheduled() == []
