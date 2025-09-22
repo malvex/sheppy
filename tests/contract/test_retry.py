@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from sheppy import MemoryBackend, Queue, Task, Worker, task
+from sheppy.testqueue import assert_is_completed, assert_is_failed
 
 
 @task(retry=2, retry_delay=2)
@@ -39,21 +40,21 @@ async def test_retry(fail_once_fn, queue: Queue, worker: Worker):
     await worker.work(1)
 
     t = await queue.get_task(t)
-    assert not t.completed
+    assert_is_failed(t)
     assert t.error == "transient error"
     assert t.retry_count == 1
 
     await worker.work(1)
 
     t = await queue.get_task(t)
-    assert t.completed
+    assert_is_completed(t)
     assert t.retry_count == 1
 
 
 async def test_wait_for_result(fail_once_fn, queue: Queue, worker: Worker):
 
     if isinstance(queue.backend, MemoryBackend):
-        pytest.xfail("MemoryBackend is broken for this test")
+        pytest.xfail("MemoryBackend is broken for this test")  # or maybe redis is...
 
     t = fail_once_fn()
     await queue.add(t)
@@ -64,14 +65,10 @@ async def test_wait_for_result(fail_once_fn, queue: Queue, worker: Worker):
     asyncio.create_task(worker.work(2))
 
     t = await queue.wait_for_result(t, timeout=10)
-
-    assert not t.completed
-    assert t.finished_at is None
+    assert_is_failed(t)
     assert t.error == "transient error"
     assert t.retry_count == 1
 
     t = await queue.wait_for_result(t, timeout=3)
-    assert t.completed
-    assert t.finished_at is not None
-    assert not t.error
+    assert_is_completed(t)
     assert t.retry_count == 1

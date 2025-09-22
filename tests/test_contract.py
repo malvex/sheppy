@@ -18,8 +18,7 @@ class TestSuccessfulTasks:
     async def test_task_execution(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
         task = test_case.create_task()
 
-        success = await queue.add(task)
-        assert success
+        assert await queue.add(task) == [True]
 
         # verify initial state
         assert_is_new(task)
@@ -40,14 +39,14 @@ class TestSuccessfulTasks:
     async def test_wait_for_result(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
         task = test_case.create_task()
 
-        success = await queue.add(task)
-        assert success
+        assert await queue.add(task) == [True]
 
         # process in background
         process_task = asyncio.create_task(worker.work(max_tasks=1))
 
         # wait for result
         task = await queue.wait_for_result(task, timeout=3.0)
+        assert_is_completed(task)
         assert task.result == test_case.expected_result
 
         await asyncio.sleep(0.01)
@@ -57,7 +56,7 @@ class TestSuccessfulTasks:
     async def test_wait_for_result_timeout(self, test_case: TaskTestCase, queue: Queue):
 
         task = test_case.create_task()
-        await queue.add(task)
+        assert await queue.add(task) == [True]
 
         # we aren't processing the task => should raise exception
         with pytest.raises(TimeoutError):
@@ -69,7 +68,7 @@ class TestFailingTasks:
     async def test_task_failure(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
 
         task = test_case.create_task()
-        await queue.add(task)
+        assert await queue.add(task) == [True]
         assert_is_new(task)
 
         # process the task
@@ -91,7 +90,7 @@ class TestTaskSelfReference:
         task = test_case.create_task()
         task_id = task.id
 
-        await queue.add(task)
+        assert await queue.add(task) == [True]
         await worker.work(max_tasks=1)
 
         task = await queue.get_task(task)
@@ -107,8 +106,7 @@ class TestScheduledTasks:
         task = test_case.create_task()
         delay = timedelta(seconds=0.1)
 
-        success = await queue.schedule(task, at=delay)
-        assert success is True
+        assert await queue.schedule(task, at=delay) is True
 
         popped = await queue.pop_pending(timeout=0.01)
         assert not popped
@@ -127,8 +125,7 @@ class TestScheduledTasks:
         task = test_case.create_task()
         scheduled_time = datetime.now(timezone.utc) + timedelta(seconds=0.1)
 
-        success = await queue.schedule(task, at=scheduled_time)
-        assert success is True
+        assert await queue.schedule(task, at=scheduled_time) is True
 
         popped = await queue.pop_pending(timeout=0.01)
         assert not popped
@@ -146,9 +143,9 @@ class TestScheduledTasks:
         task2 = simple_sync_task(3, 4)
         task3 = simple_sync_task(5, 6)
 
-        await queue.schedule(task1, at=timedelta(seconds=0.2))
-        await queue.schedule(task2, at=timedelta(seconds=0.4))
-        await queue.schedule(task3, at=timedelta(seconds=0.6))
+        assert await queue.schedule(task1, at=timedelta(seconds=0.2)) is True
+        assert await queue.schedule(task2, at=timedelta(seconds=0.4)) is True
+        assert await queue.schedule(task3, at=timedelta(seconds=0.6)) is True
 
         popped = await queue.pop_pending(timeout=0.01)
         assert not popped
@@ -178,10 +175,10 @@ class TestScheduledTasks:
 
     async def test_scheduled_task_with_immediate_task(self, queue: Queue, worker: Worker):
         scheduled_task = simple_sync_task(1, 2)
-        await queue.schedule(scheduled_task, at=timedelta(seconds=0.2))
+        assert await queue.schedule(scheduled_task, at=timedelta(seconds=0.2)) is True
 
         immediate_task = simple_sync_task(3, 4)
-        await queue.add(immediate_task)
+        assert await queue.add(immediate_task) == [True]
 
         await worker.work(max_tasks=1)
 
@@ -203,7 +200,7 @@ class TestScheduledTasks:
     async def test_scheduled_failing_task(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
         task = test_case.create_task()
 
-        await queue.schedule(task, at=timedelta(seconds=0.1))
+        assert await queue.schedule(task, at=timedelta(seconds=0.1)) is True
 
         await worker.work(max_tasks=1)
 
@@ -215,7 +212,7 @@ class TestScheduledTasks:
         task = simple_sync_task(1, 2)
         past_time = datetime.now(timezone.utc) - timedelta(seconds=10)
 
-        await queue.schedule(task, at=past_time)
+        assert await queue.schedule(task, at=past_time) is True
 
         await worker.work(max_tasks=1)
 
@@ -229,7 +226,7 @@ class TestBatchOperations:
         t1 = simple_async_task(1, 2)
         t2 = simple_async_task(5, 20)
 
-        await queue.add([t1, t2])
+        assert await queue.add([t1, t2]) == [True, True]
 
         assert await queue.size() == 2
 

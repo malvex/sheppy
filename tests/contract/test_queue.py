@@ -326,12 +326,10 @@ class TestBatchOperations:
         tasks = [task_fn(1, 1)]
 
         assert await queue.size() == 0
-        success = await queue.add([])
-        assert success
+        assert await queue.add([]) == []
         assert await queue.size() == 0
 
-        success = await queue.add(tasks)
-        assert success
+        assert await queue.add(tasks) == [True]
 
         assert await queue.size() == 1
 
@@ -407,32 +405,30 @@ class TestMultipleQueues:
 
 
 class TestEdgeCases:
-    @pytest.mark.skip("BUG")
     async def test_adding_task_twice(self, task_fn, queue: Queue):
 
         t1 = task_fn(1, 2)
         t2 = task_fn(3, 4)
         t3 = task_fn(5, 6)
 
-        await queue.add(t1)
-        await queue.add(t1)  # should fail
-        await queue.add([t1])  # should fail
-        await queue.schedule(t1, at=timedelta(seconds=10))  # should also fail
+        assert await queue.add(t1) == [True], "1"
+        assert await queue.add(t1) == [False], "2"
+        assert await queue.add([t1]) == [False], "3"
+        assert await queue.schedule(t1, at=timedelta(seconds=10)) is False, "4"
 
-        await queue.add([t2, t2])  # should fail
-        await queue.add([t3, t1])  # should fail
+        assert await queue.add([t2, t2]) == [True, False], "5"
+        assert await queue.add([t3, t1]) == [True, False], "6"
 
-        assert await queue.size() == 3
+        assert await queue.size() == 3, "7"
 
-    @pytest.mark.skip("BUG")
     async def test_schedule_task_twice(self, task_fn, queue: Queue):
 
         t1 = task_fn(1, 2)
 
-        await queue.schedule(t1, at=timedelta(seconds=10))
-        await queue.schedule(t1, at=timedelta(seconds=10))  # should fail
-        await queue.schedule(t1, at=timedelta(hours=2))  # different schedule time should also fail
-        await queue.add(t1)  # should also fail
+        assert await queue.schedule(t1, at=timedelta(seconds=10)) is True, "1"
+        assert await queue.schedule(t1, at=timedelta(seconds=10)) is False, "2"
+        assert await queue.schedule(t1, at=timedelta(hours=2)) is False, "3"
+        assert await queue.add(t1) == [False], "4"
 
-        assert len(await queue.list_scheduled()) == 1
-        assert await queue.size() == 0
+        assert len(await queue.list_scheduled()) == 1, "5"
+        assert await queue.size() == 0, "6"

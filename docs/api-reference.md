@@ -139,7 +139,7 @@ queue = Queue(backend=backend, name="my-queue")
 
 **Methods:**
 
-#### `add(task: Task | list[Task]) -> bool`
+#### `add(task: Task | list[Task]) -> list[bool]`
 
 Add a task to the queue.
 

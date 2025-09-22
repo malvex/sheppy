@@ -249,12 +249,16 @@ class Worker:
 
     async def process_task_semaphore_wrap(self, queue: Queue, task: Task) -> Task:
         async with self._task_semaphore:
-            task = await self.process_task(queue, task)
+            task = await self.process_task(task)
             await self._store_result(queue, task)
+
+            # schedule the task for retry
+            if task.error and task.should_retry and task.next_retry_at is not None:
+                await queue.retry_task(task, task.next_retry_at)
 
             return task
 
-    async def process_task(self, queue: Queue, task: Task) -> Task:
+    async def process_task(self, task: Task) -> Task:
 
         exception, task = await self._task_processor.execute_task(task, self.worker_id)
 
@@ -275,10 +279,6 @@ class Worker:
         # retriable task - reschedule
         if task.error and task.should_retry:
             logger.warning(WORKER_PREFIX + f"Task {task.id} failed (attempt {task.retry_count}/{task.config.retry}), scheduling retry at {task.next_retry_at}")
-
-            # schedule the task for retry
-            if task.next_retry_at is not None:
-                await queue.schedule(task, task.next_retry_at)
 
         return task
 
