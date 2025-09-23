@@ -193,7 +193,7 @@ class RedisBackend(Backend):
         if not keys:
             return 0
 
-        count = await self.client.delete(*keys)  # type: ignore[misc]
+        count = await self.client.delete(*keys)
 
         await self.client.xtrim(pending_tasks_key, maxlen=0)
         await self.client.delete(scheduled_key)
@@ -207,7 +207,7 @@ class RedisBackend(Backend):
         if not task_ids:
             return {}
 
-        task_json = await self.client.mget([f"{tasks_metadata_key}:{t}" for t in task_ids])  # type: ignore[misc]
+        task_json = await self.client.mget([f"{tasks_metadata_key}:{t}" for t in task_ids])
         tasks = [json.loads(d) for d in task_json if d]
 
         return {t['id']: t for t in tasks}
@@ -302,7 +302,7 @@ class RedisBackend(Backend):
         if not keys:
             return []
 
-        all_tasks_data = await self.client.mget(keys)  # type: ignore[misc]
+        all_tasks_data = await self.client.mget(keys)
 
         return [json.loads(task_json) for task_json in all_tasks_data]
 
@@ -321,7 +321,7 @@ class RedisBackend(Backend):
             with contextlib.suppress(redis.ResponseError):
                 last_id = (await self.client.xinfo_stream(finished_tasks_key))["last-generated-id"]
 
-        tasks = await self.client.mget([f"{tasks_metadata_key}:{t}" for t in task_ids])  # type: ignore[misc]
+        tasks = await self.client.mget([f"{tasks_metadata_key}:{t}" for t in task_ids])
         for task_json in tasks:
             if not task_json:
                 continue
@@ -363,7 +363,7 @@ class RedisBackend(Backend):
                     task_id = data.get(b"task_id").decode()
 
                     if task_id in remaining_ids:
-                        task_json = await self.client.get(f"{tasks_metadata_key}:{task_id}")  # type: ignore[misc]
+                        task_json = await self.client.get(f"{tasks_metadata_key}:{task_id}")
                         if not task_json:
                             continue
                         t = json.loads(task_json)
@@ -418,11 +418,11 @@ class RedisBackend(Backend):
 
     async def add_cron(self, queue_name: str, deterministic_id: str, task_cron: dict[str, Any]) -> bool:
         cron_tasks_key = self._cron_tasks_key(queue_name)
-        return bool(await self.client.set(f"{cron_tasks_key}:{deterministic_id}", json.dumps(task_cron), nx=True))  # type: ignore[misc]
+        return bool(await self.client.set(f"{cron_tasks_key}:{deterministic_id}", json.dumps(task_cron), nx=True))
 
     async def delete_cron(self, queue_name: str, deterministic_id: str) -> bool:
         cron_tasks_key = self._cron_tasks_key(queue_name)
-        return bool(await self.client.delete(f"{cron_tasks_key}:{deterministic_id}"))  # type: ignore[misc]
+        return bool(await self.client.delete(f"{cron_tasks_key}:{deterministic_id}"))
 
     async def get_crons(self, queue_name: str) -> list[dict[str, Any]]:
         cron_tasks_key = self._cron_tasks_key(queue_name)
@@ -431,4 +431,4 @@ class RedisBackend(Backend):
         if not cron_tasks:
             return []
 
-        return [json.loads(d) for d in await self.client.mget(cron_tasks) if d is not None]  # type: ignore[misc]
+        return [json.loads(d) for d in await self.client.mget(cron_tasks) if d is not None]

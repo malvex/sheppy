@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import overload
 from uuid import UUID
 
 from .backend.base import Backend
@@ -31,6 +32,12 @@ class Queue:
         await self.backend.append(self.name, to_queue)
 
         return success
+
+    @overload
+    async def get_task(self, task: Task | UUID) -> Task | None: ...
+
+    @overload
+    async def get_task(self, task: list[Task | UUID]) -> dict[UUID, Task]: ...
 
     async def get_task(self, task: Task | UUID | list[Task | UUID]) -> Task | None | dict[UUID, Task]:
         await self.__ensure_backend_is_connected()
@@ -84,6 +91,12 @@ class Queue:
         """List scheduled tasks."""
         await self.__ensure_backend_is_connected()
         return [Task.model_validate(t) for t in await self.backend.get_scheduled(self.name)]
+
+    @overload
+    async def wait_for(self, task: Task | UUID, timeout: float = 0) -> Task | None: ...
+
+    @overload
+    async def wait_for(self, task: list[Task | UUID], timeout: float = 0) -> dict[UUID, Task]: ...
 
     async def wait_for(self, task: Task | UUID | list[Task | UUID], timeout: float = 0) -> Task | None | dict[UUID, Task]:
         await self.__ensure_backend_is_connected()
