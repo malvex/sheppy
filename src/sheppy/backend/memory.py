@@ -126,14 +126,17 @@ class MemoryBackend(Backend):
 
             return queue_size + queue_cron_size
 
-    async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
+    async def get_task(self, queue_name: str, task_ids: list[str]) -> dict[str,dict[str, Any]]:
         self._check_connected()
 
         async with self._locks[queue_name]:
-            if result := self._results[queue_name].get(task_id):
-                return result
+            results = {}
+            for task_id in task_ids:
+                result = self._results[queue_name].get(task_id) or self._task_metadata[queue_name].get(task_id)
+                if result:
+                    results[task_id] = result
 
-            return self._task_metadata[queue_name].get(task_id)
+            return results
 
     async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime) -> bool:
         self._check_connected()
@@ -172,21 +175,31 @@ class MemoryBackend(Backend):
 
             return True
 
-    async def get_result(self, queue_name: str, task_id: str, timeout: float | None = None) -> dict[str, Any] | None:
+    async def get_result(self, queue_name: str, task_ids: list[str], timeout: float | None = None) -> dict[str,dict[str, Any]]:
         self._check_connected()
 
         start_time = asyncio.get_event_loop().time()
 
+        if not task_ids:
+            return {}
+
+        results = {}
+        remaining_ids = task_ids[:]
+
         while True:
             async with self._locks[queue_name]:
-                if task_id in self._results[queue_name]:
-                    task_data = self._results[queue_name][task_id]
+                for task_id in task_ids:
+                    task_data = self._results[queue_name].get(task_id, {})
 
                     if task_data.get("finished_at"):
-                        return task_data
+                        results[task_id] = task_data
+                        remaining_ids.remove(task_id)
+
+            if not remaining_ids:
+                return results
 
             if timeout is None or timeout < 0:
-                return None
+                return results
 
             # endless wait if timeout == 0
             if timeout == 0:
@@ -195,7 +208,7 @@ class MemoryBackend(Backend):
 
             elapsed = asyncio.get_event_loop().time() - start_time
             if elapsed >= timeout:
-                raise TimeoutError(f"Task {task_id} did not complete within {timeout} seconds")
+                raise TimeoutError(f"Did not complete within {timeout} seconds")
 
             await asyncio.sleep(min(0.05, timeout - elapsed))
 

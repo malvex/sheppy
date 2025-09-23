@@ -33,12 +33,13 @@ class Queue:
         return success
 
     async def get_task(self, task: Task | UUID) -> Task | None:
-        task_id = task.id if isinstance(task, Task) else task
+        task_id = str(task.id if isinstance(task, Task) else task)
 
         await self.__ensure_backend_is_connected()
-        task_data = await self.backend.get_task(self.name, str(task_id))
+        task_data = await self.backend.get_task(self.name, [task_id])
+        td = task_data.get(task_id)
 
-        return Task.model_validate(task_data) if task_data else None
+        return Task.model_validate(td) if td else None
 
     async def get_all_tasks(self) -> list[Task]:
         """Get all tasks, including completed/failed ones."""
@@ -83,10 +84,11 @@ class Queue:
     async def wait_for(self, task: Task | UUID, timeout: float = 0) -> Task | None:
         await self.__ensure_backend_is_connected()
 
-        task_id = task.id if isinstance(task, Task) else task
-        task_data = await self.backend.get_result(self.name, str(task_id), timeout)
+        task_id = str(task.id if isinstance(task, Task) else task)
+        task_data = await self.backend.get_result(self.name, [task_id], timeout)
+        td = task_data.get(task_id)
 
-        return Task.model_validate(task_data) if task_data else None
+        return Task.model_validate(td) if td else None
 
     async def retry(self, task: Task | UUID, at: datetime | timedelta | None = None, force: bool = False) -> bool:
         """Retry failed task."""
