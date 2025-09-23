@@ -21,21 +21,21 @@ def task_fn(request):
 
 
 async def test_add(task_fn, queue: Queue, worker: Worker):
-        worker.enable_scheduler = False
-        worker.enable_cron_manager = False
+    worker.enable_scheduler = False
+    worker.enable_cron_manager = False
 
-        t = task_fn(1, 2)
-        assert_is_new(t)
+    t = task_fn(1, 2)
+    assert_is_new(t)
 
-        await queue.add(t)
+    await queue.add(t)
 
-        assert await queue.size() == 1
-        await worker.work(1)
-        assert await queue.size() == 0
+    assert await queue.size() == 1
+    await worker.work(1)
+    assert await queue.size() == 0
 
-        processed = await queue.get_task(t)
-        assert_is_completed(processed)
-        assert processed.result == 3
+    processed = await queue.get_task(t)
+    assert_is_completed(processed)
+    assert processed.result == 3
 
 
 @pytest.mark.parametrize("t", [
@@ -54,115 +54,153 @@ async def test_add_invalid(t, queue: Queue):
 
 
 async def test_get_task(task_fn, queue: Queue, worker: Worker):
-        worker.enable_scheduler = False
-        worker.enable_cron_manager = False
+    worker.enable_scheduler = False
+    worker.enable_cron_manager = False
 
-        t = task_fn(1, 2)
-        assert_is_new(t)
+    t1 = task_fn(1, 2)
+    t2 = task_fn(1, 2)
+    assert_is_new(t1)
 
-        assert await queue.get_task(t) is None
-        assert await queue.get_task(t.id) is None
-        assert await queue.get_task(str(t.id)) is None
+    assert await queue.get_task(t1) is None
+    assert await queue.get_task(t1.id) is None
+    assert await queue.get_task(str(t1.id)) is None
 
-        await queue.add(t)
+    assert await queue.get_task([t1]) == {}
+    assert await queue.get_task([t1.id]) == {}
+    assert await queue.get_task([str(t1.id)]) == {}
 
-        assert await queue.get_task(t) == t
-        assert await queue.get_task(t.id) == t
-        assert await queue.get_task(str(t.id)) == t
+    await queue.add(t1)
 
-        assert await queue.size() == 1
-        await worker.work(1)
-        assert await queue.size() == 0
+    assert await queue.get_task(t1) == t1
+    assert await queue.get_task(t1.id) == t1
+    assert await queue.get_task(str(t1.id)) == t1
 
-        processed = await queue.get_task(t)
-        assert_is_completed(processed)
-        assert processed.result == 3
-        assert await queue.get_task(t.id) == processed
-        assert await queue.get_task(str(t.id)) == processed
+    await queue.add(t2)
+
+    # test batch op
+    assert await queue.get_task([t1, t2]) == {t1.id: t1, t2.id: t2}
+    assert await queue.get_task([t1.id, t2.id]) == {t1.id: t1, t2.id: t2}
+    assert await queue.get_task([str(t1.id), str(t2.id)]) == {t1.id: t1, t2.id: t2}
+
+    # test batch op with mixed types
+    assert await queue.get_task([t1, t2.id]) == {t1.id: t1, t2.id: t2}
+    assert await queue.get_task([t1.id, str(t2.id)]) == {t1.id: t1, t2.id: t2}
+    assert await queue.get_task([t1.id, str(t2.id)]) == {t1.id: t1, t2.id: t2}
+
+    assert await queue.size() == 2
+    await worker.work(2)
+    assert await queue.size() == 0
+
+    processed = await queue.get_task(t1)
+    assert_is_completed(processed)
+    assert processed.result == 3
+    assert await queue.get_task(t1.id) == processed
+    assert await queue.get_task(str(t1.id)) == processed
+
+
+async def test_get_task_duplicate_task_ids(task_fn, queue: Queue, worker: Worker):
+    worker.enable_scheduler = False
+    worker.enable_cron_manager = False
+
+    t1 = task_fn(1, 2)
+    t2 = task_fn(1, 2)
+    assert_is_new(t1)
+
+    assert await queue.add([t1, t2]) == [True, True]
+
+    assert await queue.get_task([t1, t1]) == {t1.id: t1}
 
 
 async def test_get_task_nonexistent(queue: Queue):
-        assert await queue.get_task(None) is None
-        assert await queue.get_task(UUID('00000000-0000-0000-0000-000000000000')) is None
-        assert await queue.get_task('00000000-0000-0000-0000-000000000000') is None
+    assert await queue.get_task(None) is None
+    assert await queue.get_task(UUID('00000000-0000-0000-0000-000000000000')) is None
+    assert await queue.get_task('00000000-0000-0000-0000-000000000000') is None
+
+    assert await queue.get_task([None]) == {}
+    assert await queue.get_task([UUID('00000000-0000-0000-0000-000000000000')]) == {}
+    assert await queue.get_task(['00000000-0000-0000-0000-000000000000']) == {}
+
+
+async def test_get_task_empty(queue: Queue):
+     assert await queue.get_task([]) == {}
 
 
 async def test_get_pending(task_fn, queue: Queue, worker: Worker):
-        worker.enable_scheduler = False
-        worker.enable_cron_manager = False
+    worker.enable_scheduler = False
+    worker.enable_cron_manager = False
 
-        assert await queue.size() == 0
-        res = await queue.get_pending()
-        assert len(res) == 0
+    assert await queue.size() == 0
+    res = await queue.get_pending()
+    assert len(res) == 0
 
-        await queue.add(t1 := task_fn(1, 2))
-        await queue.add(t2 := task_fn(3, 4))
-        assert await queue.size() == 2
+    await queue.add(t1 := task_fn(1, 2))
+    await queue.add(t2 := task_fn(3, 4))
+    assert await queue.size() == 2
 
-        # count < queue size + implicit
-        res = await queue.get_pending()
-        assert len(res) == 1
-        assert res[0] == t1
-        assert await queue.size() == 2
+    # count < queue size + implicit
+    res = await queue.get_pending()
+    assert len(res) == 1
+    assert res[0] == t1
+    assert await queue.size() == 2
 
-        # count < queue size + explicit
-        res = await queue.get_pending(count=1)
-        assert len(res) == 1
-        assert res[0] == t1
-        assert await queue.size() == 2
+    # count < queue size + explicit
+    res = await queue.get_pending(count=1)
+    assert len(res) == 1
+    assert res[0] == t1
+    assert await queue.size() == 2
 
-        # count == queue size
-        res = await queue.get_pending(count=2)
-        assert len(res) == 2
-        assert res[0] == t1
-        assert res[1] == t2
-        assert await queue.size() == 2
+    # count == queue size
+    res = await queue.get_pending(count=2)
+    assert len(res) == 2
+    assert res[0] == t1
+    assert res[1] == t2
+    assert await queue.size() == 2
 
-        # count > queue size
-        res = await queue.get_pending(count=9999)
-        assert len(res) == 2
-        assert res[0] == t1
-        assert res[1] == t2
-        assert await queue.size() == 2
+    # count > queue size
+    res = await queue.get_pending(count=9999)
+    assert len(res) == 2
+    assert res[0] == t1
+    assert res[1] == t2
+    assert await queue.size() == 2
 
-        await worker.work(1)
+    await worker.work(1)
 
-        res = await queue.get_pending(count=2)
-        assert len(res) == 1
-        assert res[0] == t2
-        assert await queue.size() == 1
+    res = await queue.get_pending(count=2)
+    assert len(res) == 1
+    assert res[0] == t2
+    assert await queue.size() == 1
 
-        await worker.work(1)
+    await worker.work(1)
 
-        res = await queue.get_pending(count=2)
-        assert len(res) == 0
-        assert await queue.size() == 0
+    res = await queue.get_pending(count=2)
+    assert len(res) == 0
+    assert await queue.size() == 0
 
 
 async def test_get_pending_after_pop(task_fn, queue: Queue, worker: Worker):
-        worker.enable_scheduler = False
-        worker.enable_cron_manager = False
+    worker.enable_scheduler = False
+    worker.enable_cron_manager = False
 
-        await queue.add(t := task_fn(1, 2))
-        assert await queue.size() == 1
+    await queue.add(t := task_fn(1, 2))
+    assert await queue.size() == 1
 
-        res = await queue.get_pending()
-        assert len(res) == 1
-        assert res[0] == t
-        assert await queue.size() == 1
+    res = await queue.get_pending()
+    assert len(res) == 1
+    assert res[0] == t
+    assert await queue.size() == 1
 
-        await queue.pop_pending()
+    await queue.pop_pending()
 
-        if queue.backend.__class__.__name__ == "RedisBackend":
-            if len(await queue.get_pending()) == 1:
-                pytest.xfail("bug(RedisBackend): popped tasks still visible in get_pending()")
-            else:
-                pytest.xfail("this is now fixed, remove xfail")
+    if queue.backend.__class__.__name__ == "RedisBackend":
+        if len(await queue.get_pending()) == 1:
+            pytest.xfail("bug(RedisBackend): popped tasks still visible in get_pending()")
+        else:
+            pytest.xfail("this is now fixed, remove xfail")
 
-        res = await queue.get_pending()
-        assert len(res) == 0
-        # assert res[0] == t
-        assert await queue.size() == 0
+    res = await queue.get_pending()
+    assert len(res) == 0
+    # assert res[0] == t
+    assert await queue.size() == 0
 
 
 async def test_get_pending_invalid(queue: Queue):
@@ -174,56 +212,56 @@ async def test_get_pending_invalid(queue: Queue):
 
 
 async def test_clear(task_fn, queue: Queue, worker: Worker):
-        assert await queue.size() == 0
+    assert await queue.size() == 0
 
-        t1 = task_fn(1, 2)
-        t2 = task_fn(3, 4)
-        t3 = task_fn(5, 6)
+    t1 = task_fn(1, 2)
+    t2 = task_fn(3, 4)
+    t3 = task_fn(5, 6)
 
-        await queue.add(t1)
-        await queue.add(t2)
-        await queue.add(t3)
-        assert await queue.size() == 3
+    await queue.add(t1)
+    await queue.add(t2)
+    await queue.add(t3)
+    assert await queue.size() == 3
 
-        await worker.work(1)
+    await worker.work(1)
 
-        res = await queue.pop_pending()
-        assert len(res) == 1
-        assert res[0] == t2
+    res = await queue.pop_pending()
+    assert len(res) == 1
+    assert res[0] == t2
 
-        ret = await queue.clear()
-        assert ret == 3
+    ret = await queue.clear()
+    assert ret == 3
 
-        assert await queue.size() == 0
-        assert await queue.get_pending() == []
+    assert await queue.size() == 0
+    assert await queue.get_pending() == []
 
-        ret = await queue.get_all_tasks()
-        assert await queue.get_all_tasks() == []
+    ret = await queue.get_all_tasks()
+    assert await queue.get_all_tasks() == []
 
 
 async def test_pop_pending(task_fn, queue: Queue):
-        assert await queue.size() == 0
-        await queue.add(t1 := task_fn(1, 2))
-        await queue.add(t2 := task_fn(3, 4))
-        await queue.add(t3 := task_fn(5, 6))
-        await queue.add(t4 := task_fn(7, 8))
-        await queue.add(t5 := task_fn(9, 10))
-        await queue.add(t6 := task_fn(11, 12))
-        await queue.add(t7 := task_fn(13, 14))
-        await queue.add(t8 := task_fn(15, 16))
-        assert await queue.size() == 8
+    assert await queue.size() == 0
+    await queue.add(t1 := task_fn(1, 2))
+    await queue.add(t2 := task_fn(3, 4))
+    await queue.add(t3 := task_fn(5, 6))
+    await queue.add(t4 := task_fn(7, 8))
+    await queue.add(t5 := task_fn(9, 10))
+    await queue.add(t6 := task_fn(11, 12))
+    await queue.add(t7 := task_fn(13, 14))
+    await queue.add(t8 := task_fn(15, 16))
+    assert await queue.size() == 8
 
-        assert await queue.pop_pending() == [t1]
-        assert await queue.pop_pending(timeout=0.01) == [t2]
-        assert await queue.pop_pending(limit=2, timeout=0.01) == [t3, t4]
-        assert await queue.pop_pending(limit=1) == [t5]
-        assert await queue.pop_pending(limit=2) == [t6, t7]
-        assert await queue.pop_pending(limit=2) == [t8]
+    assert await queue.pop_pending() == [t1]
+    assert await queue.pop_pending(timeout=0.01) == [t2]
+    assert await queue.pop_pending(limit=2, timeout=0.01) == [t3, t4]
+    assert await queue.pop_pending(limit=1) == [t5]
+    assert await queue.pop_pending(limit=2) == [t6, t7]
+    assert await queue.pop_pending(limit=2) == [t8]
 
-        assert await queue.pop_pending() == []
-        assert await queue.pop_pending(limit=2) == []
-        assert await queue.pop_pending(timeout=0.01) == []
-        assert await queue.pop_pending(limit=2, timeout=0.01) == []
+    assert await queue.pop_pending() == []
+    assert await queue.pop_pending(limit=2) == []
+    assert await queue.pop_pending(timeout=0.01) == []
+    assert await queue.pop_pending(limit=2, timeout=0.01) == []
 
 
 async def test_pop_invalid(queue: Queue):
@@ -238,45 +276,45 @@ async def test_pop_invalid(queue: Queue):
 
 
 async def test_get_all_tasks(task_fn, queue: Queue, worker: Worker):
-        assert await queue.get_all_tasks() == []
+    assert await queue.get_all_tasks() == []
 
-        tasks = [
-            task_fn(1, 2),
-            task_fn(3, 4),
-            task_fn(5, 6),
-            task_fn(7, 8),
-            task_fn(9, 10),
-            task_fn(11, 12),
-            task_fn(13, 14),
-            task_fn(15, 16),
-        ]
-        tasks_order = {t.id: i for i, t in enumerate(tasks)}
+    tasks = [
+        task_fn(1, 2),
+        task_fn(3, 4),
+        task_fn(5, 6),
+        task_fn(7, 8),
+        task_fn(9, 10),
+        task_fn(11, 12),
+        task_fn(13, 14),
+        task_fn(15, 16),
+    ]
+    tasks_order = {t.id: i for i, t in enumerate(tasks)}
 
-        assert await queue.size() == 0
-        await queue.add(tasks)
-        assert await queue.size() == 8
+    assert await queue.size() == 0
+    await queue.add(tasks)
+    assert await queue.size() == 8
 
-        all_tasks = await queue.get_all_tasks()
-        assert len(all_tasks) == 8
+    all_tasks = await queue.get_all_tasks()
+    assert len(all_tasks) == 8
 
-        all_tasks.sort(key=lambda t: tasks_order[t.id])
-        assert all_tasks == tasks
+    all_tasks.sort(key=lambda t: tasks_order[t.id])
+    assert all_tasks == tasks
 
-        await worker.work(4)
-        res = await queue.pop_pending(limit=2)
-        assert res == [tasks[4], tasks[5]]
+    await worker.work(4)
+    res = await queue.pop_pending(limit=2)
+    assert res == [tasks[4], tasks[5]]
 
-        all_tasks = await queue.get_all_tasks()
-        assert len(all_tasks) == 8
+    all_tasks = await queue.get_all_tasks()
+    assert len(all_tasks) == 8
 
-        all_tasks.sort(key=lambda t: tasks_order[t.id])
-        assert all_tasks[0].id == tasks[0].id
-        assert all_tasks[0].completed is True
-        assert all_tasks[0] != tasks[0]
-        assert all_tasks[1].id == tasks[1].id
-        assert all_tasks[2].id == tasks[2].id
-        assert all_tasks[3].id == tasks[3].id
-        assert all_tasks[4:] == tasks[4:]
+    all_tasks.sort(key=lambda t: tasks_order[t.id])
+    assert all_tasks[0].id == tasks[0].id
+    assert all_tasks[0].completed is True
+    assert all_tasks[0] != tasks[0]
+    assert all_tasks[1].id == tasks[1].id
+    assert all_tasks[2].id == tasks[2].id
+    assert all_tasks[3].id == tasks[3].id
+    assert all_tasks[4:] == tasks[4:]
 
 
 async def test_wait_for(task_fn, queue: Queue, worker: Worker):
@@ -287,10 +325,45 @@ async def test_wait_for(task_fn, queue: Queue, worker: Worker):
     asyncio.create_task(worker.work(1))
 
     processed = await queue.wait_for(t, timeout=1)
-
-    assert processed.completed
-    assert not processed.error
+    assert_is_completed(processed)
     assert processed.result == 3
+
+    processed = await queue.wait_for([t], timeout=1)
+    assert len(processed) == 1
+    assert_is_completed(processed[t.id])
+    assert processed[t.id].result == 3
+
+
+async def test_wait_for_batch(task_fn, queue: Queue, worker: Worker):
+    await queue.add(t1 := task_fn(1, 2))
+    await queue.add(t2 := task_fn(3, 4))
+
+    assert await queue.size() == 2
+
+    asyncio.create_task(worker.work(2))
+
+    processed = await queue.wait_for([t1, t2], timeout=1)
+    assert len(processed) == 2
+    assert_is_completed(processed[t1.id])
+    assert_is_completed(processed[t2.id])
+
+    assert processed[t1.id].result == 3
+    assert processed[t2.id].result == 7
+
+
+async def test_wait_for_batch_duplicate_task_ids(task_fn, queue: Queue, worker: Worker):
+    await queue.add(t1 := task_fn(1, 2))
+    await queue.add(t2 := task_fn(3, 4))
+
+    assert await queue.size() == 2
+
+    asyncio.create_task(worker.work(2))
+
+    processed = await queue.wait_for([t1, t1], timeout=1)
+    assert len(processed) == 1
+    assert_is_completed(processed[t1.id])
+
+    assert processed[t1.id].result == 3
 
 
 async def test_wait_for_nonexistent(queue: Queue):

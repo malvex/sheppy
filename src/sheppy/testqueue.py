@@ -32,7 +32,7 @@ class TestQueue:
         """Add task into the queue. Accept list of tasks for batch add."""
         return asyncio.run(self._queue.add(task))
 
-    def get_task(self, task: Task | UUID) -> Task | None:
+    def get_task(self, task: Task | UUID | list[Task | UUID]) -> Task | None | dict[UUID, Task]:
         return asyncio.run(self._queue.get_task(task))
 
     def get_all_tasks(self) -> list[Task]:
