@@ -54,6 +54,10 @@ class MemoryBackend(Backend):
         self._check_connected()
 
         async with self._locks[queue_name]:
+            # self._task_metadata[queue_name] |= {str(task["id"]): task for task in tasks}
+            for task in tasks:
+                self._task_metadata[queue_name][task["id"]] = task
+                self._results[queue_name].pop(task["id"], None)
             self._pending[queue_name].extend([task["id"] for task in tasks])
 
         return True
@@ -135,6 +139,8 @@ class MemoryBackend(Backend):
         self._check_connected()
 
         async with self._locks[queue_name]:
+            self._task_metadata[queue_name][task_data["id"]] = task_data
+            self._results[queue_name].pop(task_data["id"], None)
             scheduled_task = ScheduledTask(at, task_data["id"])
             heapq.heappush(self._scheduled[queue_name], scheduled_task)
             return True
