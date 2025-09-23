@@ -32,12 +32,16 @@ class Queue:
 
         return success
 
-    async def get_task(self, task: Task | UUID) -> Task | None:
-        task_id = str(task.id if isinstance(task, Task) else task)
-
+    async def get_task(self, task: Task | UUID | list[Task | UUID]) -> Task | None | dict[UUID, Task]:
         await self.__ensure_backend_is_connected()
-        task_data = await self.backend.get_task(self.name, [task_id])
-        td = task_data.get(task_id)
+
+        task_ids, batch_mode = self._get_task_ids(task)
+        task_results = await self.backend.get_task(self.name, task_ids)
+
+        if batch_mode:
+            return {UUID(t_id): Task.model_validate(t) for t_id, t in task_results.items()}
+
+        td = task_results.get(task_ids[0])
 
         return Task.model_validate(td) if td else None
 
@@ -81,12 +85,16 @@ class Queue:
         await self.__ensure_backend_is_connected()
         return [Task.model_validate(t) for t in await self.backend.get_scheduled(self.name)]
 
-    async def wait_for(self, task: Task | UUID, timeout: float = 0) -> Task | None:
+    async def wait_for(self, task: Task | UUID | list[Task | UUID], timeout: float = 0) -> Task | None | dict[UUID, Task]:
         await self.__ensure_backend_is_connected()
 
-        task_id = str(task.id if isinstance(task, Task) else task)
-        task_data = await self.backend.get_result(self.name, [task_id], timeout)
-        td = task_data.get(task_id)
+        task_ids, batch_mode = self._get_task_ids(task)
+        task_results = await self.backend.get_result(self.name, task_ids, timeout)
+
+        if batch_mode:
+            return {UUID(t_id): Task.model_validate(t) for t_id, t in task_results.items()}
+
+        td = task_results.get(task_ids[0])
 
         return Task.model_validate(td) if td else None
 
@@ -169,3 +177,14 @@ class Queue:
         """Automatically connects backend on first async call."""
         if not self.backend.is_connected:
             await self.backend.connect()
+
+    def _get_task_ids(self, task: list[Task | UUID] | Task | UUID) -> tuple[list[str], bool]:
+        batch_mode = True
+        if not isinstance(task, list):
+            task = [task]
+            batch_mode = False
+
+        # set to deduplicate task ids
+        task_ids = list({str(t.id if isinstance(t, Task) else t) for t in task})
+
+        return task_ids, batch_mode

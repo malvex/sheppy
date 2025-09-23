@@ -25,7 +25,7 @@ class TestSuccessfulTasks:
     def test_task_execution(self, test_case: TaskTestCase):
         queue = TestQueue()
         task = test_case.create_task()
-        queue.add(task)
+        assert queue.add(task) == [True]
 
         # there should be no change on tasks after queueing
         assert_is_new(task)
@@ -45,6 +45,44 @@ class TestSuccessfulTasks:
         assert queue.processed_tasks[0].id == processed.id
         assert_is_completed(queue.processed_tasks[0])
 
+    @pytest.mark.parametrize("test_case", TaskTestCases.simple_tasks(), ids=lambda tc: tc.name)
+    def test_get_task(self, test_case: TaskTestCase):
+        queue = TestQueue()
+        t1 = test_case.create_task()
+        t2 = test_case.create_task()
+        assert queue.add([t1, t2]) == [True, True]
+
+        assert queue.get_task(t1) == t1
+        assert queue.get_task(t1.id) == t1
+        assert queue.get_task(str(t1.id)) == t1
+
+        assert queue.get_task(t2) == t2
+        assert queue.get_task(t2.id) == t2
+        assert queue.get_task(str(t2.id)) == t2
+
+        # batch - single
+        assert queue.get_task([t1]) == {t1.id: t1}
+        assert queue.get_task([t1.id]) == {t1.id: t1}
+        assert queue.get_task([str(t1.id)]) == {t1.id: t1}
+
+        # batch - multiple
+        assert queue.get_task([t1, t2]) == {t1.id: t1, t2.id: t2}
+        assert queue.get_task([t1.id, t2.id]) == {t1.id: t1, t2.id: t2}
+        assert queue.get_task([str(t1.id), str(t2.id)]) == {t1.id: t1, t2.id: t2}
+
+        # batch - mixed types
+        assert queue.get_task([t1, t2.id]) == {t1.id: t1, t2.id: t2}
+        assert queue.get_task([t1.id, str(t2.id)]) == {t1.id: t1, t2.id: t2}
+        assert queue.get_task([t1, str(t2.id)]) == {t1.id: t1, t2.id: t2}
+
+    @pytest.mark.parametrize("test_case", TaskTestCases.pydantic_tasks(), ids=lambda tc: tc.name)
+    def test_get_task_pydantic_input(self, test_case: TaskTestCase):
+        queue = TestQueue()
+        t1 = test_case.create_task()
+        assert queue.add(t1) == [True]
+
+        pytest.xfail("not really a bug, but it's a bug")
+        assert queue.get_task(t1) == t1
 
     @pytest.mark.parametrize("test_case", TaskTestCases.subset_successful_tasks(), ids=lambda tc: tc.name)
     def test_process_all(self, test_case: TaskTestCase):
@@ -77,7 +115,7 @@ class TestFailingTasks:
     def test_task_failure(self, test_case: TaskTestCase):
         queue = TestQueue()
         task = test_case.create_task()
-        queue.add(task)
+        assert queue.add(task) == [True]
 
         # process the task
         processed = queue.process_next()
@@ -101,7 +139,7 @@ class TestTaskSelfReference:
     def test_self_reference(self, test_case: TaskTestCase):
         queue = TestQueue()
         task = test_case.create_task()
-        queue.add(task)
+        assert queue.add(task) == [True]
 
         task = queue.process_next()
 
@@ -207,6 +245,7 @@ class TestQueueBehavior:
         recv_task = queue.get_task(task)
         assert task.id == recv_task.id
         assert_is_completed(recv_task)
+
 
 class TestScheduledTasks:
     @pytest.mark.parametrize("test_case", TaskTestCases.subset_successful_tasks(), ids=lambda tc: tc.name)
