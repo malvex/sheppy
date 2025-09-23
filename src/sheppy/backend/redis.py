@@ -67,7 +67,7 @@ class RedisBackend(Backend):
         return self._client is not None and self._pool is not None
 
     def _tasks_metadata_key(self, queue_name: str) -> str:
-        """Task Metadata (hset)"""
+        """Task Metadata (key prefix)"""
         return f"sheppy:tasks:{queue_name}"
 
     def _scheduled_tasks_key(self, queue_name: str) -> str:
@@ -75,7 +75,7 @@ class RedisBackend(Backend):
         return f"sheppy:scheduled:{queue_name}"
 
     def _cron_tasks_key(self, queue_name: str) -> str:
-        """Cron tasks (hset)"""
+        """Cron tasks (key prefix)"""
         return f"sheppy:cron:{queue_name}"
 
     def _pending_tasks_key(self, queue_name: str) -> str:
@@ -87,7 +87,7 @@ class RedisBackend(Backend):
         return f"sheppy:finished:{queue_name}"
 
     def _worker_metadata_key(self, queue_name: str) -> str:
-        """Worker Metadata (hset)"""
+        """Worker Metadata (key prefix)"""
         return f"sheppy:workers:{queue_name}"
 
     @property
@@ -102,8 +102,7 @@ class RedisBackend(Backend):
         try:
             async with self.client.pipeline() as pipe:
                 for task in tasks:
-                    pipe.hsetnx(tasks_metadata_key, task["id"], json.dumps(task))
-                    # pipe.expire()  #! FIXME - todo
+                    pipe.set(f"{tasks_metadata_key}:{task['id']}", json.dumps(task), ex=self.ttl, nx=True)
                 res = await pipe.execute()
         except Exception as e:
             raise BackendError(f"Failed to create tasks: {e}") from e
@@ -187,18 +186,22 @@ class RedisBackend(Backend):
 
         await self._ensure_consumer_group(pending_tasks_key)
 
-        count = await self.client.hlen(tasks_metadata_key)  # type: ignore[misc]
+        keys = await self.client.keys(f"{tasks_metadata_key}:*")
+        if not keys:
+            return 0
+
+        count = await self.client.delete(*keys)  # type: ignore[misc]
 
         await self.client.xtrim(pending_tasks_key, maxlen=0)
         await self.client.delete(scheduled_key)
-        await self.client.delete(tasks_metadata_key)
+        # await self.client.delete(tasks_metadata_key)
 
         return int(count)
 
     async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
         task_metadata_key = self._tasks_metadata_key(queue_name)
 
-        task_json = await self.client.hget(task_metadata_key, task_id)  # type: ignore[misc]
+        task_json = await self.client.get(f"{task_metadata_key}:{task_id}")  # type: ignore[misc]
 
         return json.loads(task_json) if task_json else None
 
@@ -253,7 +256,7 @@ class RedisBackend(Backend):
 
             async with self.client.pipeline(transaction=True) as pipe:
                 # update task metadata with the results
-                pipe.hsetex(tasks_metadata_key, task_data["id"], json.dumps(task_data), ex=self.ttl)
+                pipe.set(f"{tasks_metadata_key}:{task_data['id']}", json.dumps(task_data), ex=self.ttl)
                 # add to finished stream for get_result notifications
                 if task_data["finished_at"] is not None:  # only send notification on finished task (for retriable tasks we continue to wait)
                     pipe.xadd(finished_tasks_key, {"task_id": task_data["id"]}, minid=min_id)
@@ -284,9 +287,13 @@ class RedisBackend(Backend):
     async def get_all_tasks(self, queue_name: str) -> list[dict[str, Any]]:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
 
-        all_tasks_data = await self.client.hgetall(tasks_metadata_key)  # type: ignore[misc]
+        keys = await self.client.keys(f"{tasks_metadata_key}:*")
+        if not keys:
+            return []
 
-        return [json.loads(task_json) for task_json in all_tasks_data.values()]
+        all_tasks_data = await self.client.mget(keys)  # type: ignore[misc]
+
+        return [json.loads(task_json) for task_json in all_tasks_data]
 
     async def get_result(self, queue_name: str, task_id: str, timeout: float | None = None) -> dict[str, Any] | None:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
@@ -297,7 +304,7 @@ class RedisBackend(Backend):
             with contextlib.suppress(redis.ResponseError):
                 last_id = (await self.client.xinfo_stream(finished_tasks_key))["last-generated-id"]
 
-        task_data_json = await self.client.hget(tasks_metadata_key, task_id)  # type: ignore[misc]
+        task_data_json = await self.client.get(f"{tasks_metadata_key}:{task_id}")  # type: ignore[misc]
         if task_data_json:
             task_data = json.loads(task_data_json)
             if task_data.get("finished_at"):
@@ -331,7 +338,7 @@ class RedisBackend(Backend):
                     last_id = msg_id
 
                     if data.get(b"task_id").decode() == task_id:
-                        task_data_json = await self.client.hget(tasks_metadata_key, task_id)  # type: ignore[misc]
+                        task_data_json = await self.client.get(f"{tasks_metadata_key}:{task_id}")  # type: ignore[misc]
                         return json.loads(task_data_json) if task_data_json else None
 
 
@@ -377,12 +384,17 @@ class RedisBackend(Backend):
 
     async def add_cron(self, queue_name: str, deterministic_id: str, task_cron: dict[str, Any]) -> bool:
         cron_tasks_key = self._cron_tasks_key(queue_name)
-        return bool(await self.client.hsetnx(cron_tasks_key, deterministic_id, json.dumps(task_cron)))  # type: ignore[misc]
+        return bool(await self.client.set(f"{cron_tasks_key}:{deterministic_id}", json.dumps(task_cron), nx=True))  # type: ignore[misc]
 
     async def delete_cron(self, queue_name: str, deterministic_id: str) -> bool:
         cron_tasks_key = self._cron_tasks_key(queue_name)
-        return bool(await self.client.hdel(cron_tasks_key, deterministic_id))  # type: ignore[misc]
+        return bool(await self.client.delete(f"{cron_tasks_key}:{deterministic_id}"))  # type: ignore[misc]
 
     async def get_crons(self, queue_name: str) -> list[dict[str, Any]]:
         cron_tasks_key = self._cron_tasks_key(queue_name)
-        return [json.loads(d) for _, d in (await self.client.hgetall(cron_tasks_key)).items()]  # type: ignore[misc]
+        cron_tasks = await self.client.keys(f"{cron_tasks_key}:*")
+
+        if not cron_tasks:
+            return []
+
+        return [json.loads(d) for d in await self.client.mget(cron_tasks) if d is not None]  # type: ignore[misc]
