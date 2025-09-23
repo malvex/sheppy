@@ -12,14 +12,25 @@ from sheppy.models import Task
 
 from .fastapi import Depends
 
+cache_signature: dict[Callable[..., Any], inspect.Signature] = {}
+cache_type_hints: dict[Callable[..., Any], dict[str, Any]] = {}
+
 
 def validate_input(
     func: Callable[..., Any],
     args: list[Any],
     kwargs: dict[str, Any]
 ) -> tuple[list[Any], dict[str, Any]]:
-    signature = inspect.signature(func)
-    type_hints = get_type_hints(func)
+
+    signature = cache_signature.get(func)
+    if not signature:
+        signature = inspect.signature(func)
+        cache_signature[func] = signature
+
+    type_hints = cache_type_hints.get(func)
+    if not type_hints:
+        type_hints = get_type_hints(func)
+        cache_type_hints[func] = type_hints
 
     final_args = []
     final_kwargs = {}

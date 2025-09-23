@@ -18,6 +18,9 @@ from pydantic import ConfigDict, PydanticSchemaGenerationError, TypeAdapter
 from ..models import Task
 from .fastapi import Depends
 
+cache_main_module: str | None = None
+cache_signature: dict[Callable[..., Any], inspect.Signature] = {}
+
 
 class TaskInternal(Task):
     model_config = ConfigDict(frozen=False)
@@ -175,10 +178,12 @@ class TaskProcessor:
 
         except (ValueError, ImportError, AttributeError) as e:
             # edge case where we are trying to resolve a function from __main__ and worker is running from main
-            _main_path = os.path.relpath(sys.argv[0])[:-3]  # this handles "python -m app.main" because with "-m" sys.argv[0] is absolute path
-            _module = _main_path.replace(os.sep, ".")  # replace handles situations when user runs "python app/main.py"
+            global cache_main_module
+            if not cache_main_module:
+                _main_path = os.path.relpath(sys.argv[0])[:-3]  # this handles "python -m app.main" because with "-m" sys.argv[0] is absolute path
+                cache_main_module = _main_path.replace(os.sep, ".")  # replace handles situations when user runs "python app/main.py"
 
-            if module_name and function_name and module_name == _module and "__main__" in sys.modules:  # noqa: SIM102
+            if module_name and function_name and module_name == cache_main_module and "__main__" in sys.modules:  # noqa: SIM102
                 if fn := getattr(sys.modules["__main__"], function_name, None):
                     result = fn.__wrapped__ if wrapped else fn
                     return cast(Callable[..., Any], result)
@@ -193,11 +198,16 @@ class TaskProcessor:
         task: TaskInternal | None = None,
     ) -> tuple[list[Any], dict[str, Any]]:
 
+        signature = cache_signature.get(func)
+        if not signature:
+            signature = inspect.signature(func)
+            cache_signature[func] = signature
+
         final_args = []
         final_kwargs = kwargs.copy()
         remaining_args = args.copy()
 
-        for param_name, param in list(inspect.signature(func).parameters.items()):
+        for param_name, param in list(signature.parameters.items()):
             # Task injection (self: Task)
             if task and TaskProcessor._is_task_injection(param):
                 final_args.append(task)

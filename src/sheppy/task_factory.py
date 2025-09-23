@@ -16,6 +16,9 @@ from .utils.validation import validate_input
 P = ParamSpec('P')
 R = TypeVar('R')
 
+cache_main_module: str | None = None
+cache_return_type: dict[Callable[..., Any], str | None] = {}
+
 
 class TaskFactory:
 
@@ -25,12 +28,17 @@ class TaskFactory:
     @staticmethod
     def _get_return_type(func: Callable[..., Any]) -> str | None:
         """Get function return type"""
+        if func in cache_return_type:
+            return cache_return_type.get(func)
+
         try:
             return_type = get_type_hints(func).get('return')
             if return_type and hasattr(return_type, '__module__') and hasattr(return_type, '__qualname__'):
                 return_type = f"{return_type.__module__}.{return_type.__qualname__}"
         except TypeError:
             return_type = None
+
+        cache_return_type[func] = return_type
 
         return return_type
 
@@ -39,10 +47,14 @@ class TaskFactory:
         _module = func.__module__
         # special case if the task is in the main python file that is executed
         if _module == "__main__":
-            # this handles "python -m app.main" because with "-m" sys.argv[0] is absolute path
-            _main_path = os.path.relpath(sys.argv[0])[:-3]
-            # replace handles situations when user runs "python app/main.py"
-            _module = _main_path.replace(os.sep, ".")
+            global cache_main_module
+            if not cache_main_module:
+                # this handles "python -m app.main" because with "-m" sys.argv[0] is absolute path
+                _main_path = os.path.relpath(sys.argv[0])[:-3]
+                # replace handles situations when user runs "python app/main.py"
+                cache_main_module = _main_path.replace(os.sep, ".")
+
+            _module = cache_main_module
 
         return f"{_module}:{func.__name__}"
 
