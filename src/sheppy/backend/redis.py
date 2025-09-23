@@ -111,15 +111,18 @@ class RedisBackend(Backend):
 
     async def append(self, queue_name: str, tasks: list[dict[str, Any]]) -> bool:
         """Add new tasks to be processed."""
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
         pending_tasks_key = self._pending_tasks_key(queue_name)
 
         await self._ensure_consumer_group(pending_tasks_key)
 
         try:
             async with self.client.pipeline(transaction=False) as pipe:
-                for _task_data in tasks:
+                for t in tasks:
+                    _task_data = json.dumps(t)
+                    pipe.set(f"{tasks_metadata_key}:{t['id']}", _task_data)
                     # add to pending stream
-                    pipe.xadd(pending_tasks_key, {"data": json.dumps(_task_data)})
+                    pipe.xadd(pending_tasks_key, {"data": _task_data})
 
                 await pipe.execute()
         except Exception as e:
@@ -206,12 +209,16 @@ class RedisBackend(Backend):
         return json.loads(task_json) if task_json else None
 
     async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime) -> bool:
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
         scheduled_key = self._scheduled_tasks_key(queue_name)
 
         try:
+
+            _task_data = json.dumps(task_data)
+            await self.client.set(f"{tasks_metadata_key}:{task_data['id']}", _task_data)
             # add to sorted set with timestamp as score
             score = at.timestamp()
-            await self.client.zadd(scheduled_key, {json.dumps(task_data): score})
+            await self.client.zadd(scheduled_key, {_task_data: score})
 
             return True
         except Exception as e:

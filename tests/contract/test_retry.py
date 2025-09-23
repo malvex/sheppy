@@ -49,20 +49,15 @@ async def test_wait_for_race(task_fail_once_fn: Callable[[], Task], queue: Queue
     assert recv_task.retry_count == 1
 
     assert await queue.retry(t.id, force=True) is True
-    asyncio.create_task(worker.work(2))
+ 
+    with pytest.raises(TimeoutError):
+        await queue.wait_for(t.id, timeout=0.01)
 
-    recv_task2 = await queue.wait_for(t.id, timeout=0.1)  # returns immediately (bug)
-    assert recv_task == recv_task2  # bug
-    assert recv_task.finished_at == recv_task2.finished_at  # bug
+    asyncio.create_task(worker.work(1))
 
-    await asyncio.sleep(0.1)
-
-    recv_task3 = await queue.wait_for(t.id, timeout=0.1)
-    # recv_task3 = await queue.get_task(t.id)
-    assert recv_task != recv_task3
-    assert recv_task.finished_at == recv_task2.finished_at  # expected
-
-    pytest.xfail("BUG: race in wait_for (retry should reset result/completion in backend)")
+    recv_task2 = await queue.wait_for(t.id, timeout=0.01)
+    assert recv_task != recv_task2
+    assert recv_task.id == recv_task2.id
 
 
 async def test_wait_for_race_w_at(task_fail_once_fn: Callable[[], Task], queue: Queue, worker: Worker):
@@ -79,16 +74,13 @@ async def test_wait_for_race_w_at(task_fail_once_fn: Callable[[], Task], queue: 
     assert await queue.size() == 0
     assert len(await queue.get_scheduled()) == 1
 
-    recv_task2 = await queue.wait_for(t.id, timeout=.1)  # bug - should timeouted
-    assert recv_task == recv_task2
+    with pytest.raises(TimeoutError):
+        await queue.wait_for(t.id, timeout=.01)
 
     await worker.work(1)
 
-    recv_task3 = await queue.wait_for(t.id, timeout=.1)
-    assert recv_task != recv_task3
-    assert recv_task2 != recv_task3
-
-    pytest.xfail("BUG: race in wait_for (retry should reset result/completion in backend)")
+    recv_task2 = await queue.wait_for(t.id, timeout=.1)
+    assert recv_task != recv_task2
 
 
 async def test_wait_for_race_no_retriable(queue: Queue, worker: Worker):
@@ -102,17 +94,11 @@ async def test_wait_for_race_no_retriable(queue: Queue, worker: Worker):
     assert recv_task.retry_count == 0  # non retriable task
 
     assert await queue.retry(t.id, force=True) is True
+
+    with pytest.raises(TimeoutError):
+        await queue.wait_for(t.id, timeout=0.01)
+
     asyncio.create_task(worker.work(1))
 
-    recv_task2 = await queue.wait_for(t.id, timeout=0.1)  # returns immediately (bug)
-    assert recv_task == recv_task2  # bug
-    assert recv_task.finished_at == recv_task2.finished_at  # bug
-
-    await asyncio.sleep(0.1)
-
-    recv_task3 = await queue.wait_for(t.id, timeout=0.1)
-    # recv_task3 = await queue.get_task(t.id)
-    assert recv_task != recv_task3
-    assert recv_task.finished_at == recv_task2.finished_at  # expected
-
-    pytest.xfail("BUG: race in wait_for (retry should reset result/completion in backend)")
+    recv_task2 = await queue.wait_for(t.id, timeout=1)
+    assert recv_task.finished_at != recv_task2.finished_at

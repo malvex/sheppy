@@ -97,6 +97,13 @@ class Queue:
         if not force and _task.completed:
             raise ValueError("Task has already completed successfully, use force to retry anyways")
 
+        needs_update = False  # temp hack
+        if _task.finished_at:
+            needs_update = True
+            _task.__dict__["last_retry_at"] = datetime.now(timezone.utc)
+            _task.__dict__["next_retry_at"] = datetime.now(timezone.utc)
+            _task.__dict__["finished_at"] = None
+
         if at:
             if isinstance(at, timedelta):
                 at = datetime.now(timezone.utc) + at
@@ -104,7 +111,9 @@ class Queue:
             if not at.tzinfo:
                 raise TypeError("provided datetime must be offset-aware")
 
-            _task.__dict__["scheduled_at"] = at
+            if needs_update:
+                _task.__dict__["next_retry_at"] = at
+                _task.__dict__["scheduled_at"] = at
 
             return await self.backend.schedule(self.name, _task.model_dump(mode="json"), at)
 
