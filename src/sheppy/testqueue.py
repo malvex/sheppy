@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
+from typing import overload
 from uuid import UUID
 
 from .backend.memory import MemoryBackend
@@ -31,6 +32,12 @@ class TestQueue:
     def add(self, task: Task | list[Task]) -> list[bool]:
         """Add task into the queue. Accept list of tasks for batch add."""
         return asyncio.run(self._queue.add(task))
+
+    @overload
+    def get_task(self, task: Task | UUID) -> Task | None: ...
+
+    @overload
+    def get_task(self, task: list[Task | UUID]) -> dict[UUID, Task]: ...
 
     def get_task(self, task: Task | UUID | list[Task | UUID]) -> Task | None | dict[UUID, Task]:
         return asyncio.run(self._queue.get_task(task))
