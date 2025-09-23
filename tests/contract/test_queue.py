@@ -299,7 +299,7 @@ async def test_wait_for_nonexistent(queue: Queue):
     with pytest.raises(TimeoutError):
         await queue.wait_for('00000000-0000-0000-0000-000000000000', timeout=0.01)
 
-    ret = await queue.wait_for('00000000-0000-0000-0000-000000000000', timeout=None)
+    ret = await queue.wait_for('00000000-0000-0000-0000-000000000000', timeout=None)  #! fixme
     assert ret is None
 
 

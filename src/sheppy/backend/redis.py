@@ -201,12 +201,16 @@ class RedisBackend(Backend):
 
         return int(count)
 
-    async def get_task(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
-        task_metadata_key = self._tasks_metadata_key(queue_name)
+    async def get_task(self, queue_name: str, task_ids: list[str]) -> dict[str,dict[str, Any]]:
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
 
-        task_json = await self.client.get(f"{task_metadata_key}:{task_id}")  # type: ignore[misc]
+        if not task_ids:
+            return {}
 
-        return json.loads(task_json) if task_json else None
+        task_json = await self.client.mget([f"{tasks_metadata_key}:{t}" for t in task_ids])  # type: ignore[misc]
+        tasks = [json.loads(d) for d in task_json if d]
+
+        return {t['id']: t for t in tasks}
 
     async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime) -> bool:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
@@ -302,23 +306,36 @@ class RedisBackend(Backend):
 
         return [json.loads(task_json) for task_json in all_tasks_data]
 
-    async def get_result(self, queue_name: str, task_id: str, timeout: float | None = None) -> dict[str, Any] | None:
+    async def get_result(self, queue_name: str, task_ids: list[str], timeout: float | None = None) -> dict[str,dict[str, Any]]:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
         finished_tasks_key = self._finished_tasks_key(queue_name)
+
+        if not task_ids:
+            return {}
+
+        results = {}
+        remaining_ids = task_ids[:]
 
         last_id = "0-0"
         if timeout is not None and timeout >= 0:
             with contextlib.suppress(redis.ResponseError):
                 last_id = (await self.client.xinfo_stream(finished_tasks_key))["last-generated-id"]
 
-        task_data_json = await self.client.get(f"{tasks_metadata_key}:{task_id}")  # type: ignore[misc]
-        if task_data_json:
-            task_data = json.loads(task_data_json)
-            if task_data.get("finished_at"):
-                return task_data  # type: ignore[no-any-return]
+        tasks = await self.client.mget([f"{tasks_metadata_key}:{t}" for t in task_ids])  # type: ignore[misc]
+        for task_json in tasks:
+            if not task_json:
+                continue
+            t = json.loads(task_json)
+
+            if t.get("finished_at"):
+                 results[t["id"]] = t
+                 remaining_ids.remove(t["id"])
+
+        if not remaining_ids:
+            return results
 
         if timeout is None or timeout < 0:
-            return None
+            return results
 
         # endless wait if timeout == 0
         deadline = None if timeout == 0 else asyncio.get_event_loop().time() + timeout
@@ -327,7 +344,7 @@ class RedisBackend(Backend):
             if deadline:
                 remaining = deadline - asyncio.get_event_loop().time()
                 if remaining <= 0:
-                    raise TimeoutError(f"Task {task_id} did not complete within {timeout} seconds")
+                    raise TimeoutError(f"Did not complete within {timeout} seconds")
             else:
                 remaining = 0
 
@@ -343,10 +360,20 @@ class RedisBackend(Backend):
             for _, stream_messages in messages:
                 for msg_id, data in stream_messages:
                     last_id = msg_id
+                    task_id = data.get(b"task_id").decode()
 
-                    if data.get(b"task_id").decode() == task_id:
-                        task_data_json = await self.client.get(f"{tasks_metadata_key}:{task_id}")  # type: ignore[misc]
-                        return json.loads(task_data_json) if task_data_json else None
+                    if task_id in remaining_ids:
+                        task_json = await self.client.get(f"{tasks_metadata_key}:{task_id}")  # type: ignore[misc]
+                        if not task_json:
+                            continue
+                        t = json.loads(task_json)
+
+                        if t.get("finished_at"):  # should be always true because we only get notifications for finished tasks
+                            results[t["id"]] = t
+                            remaining_ids.remove(t["id"])
+
+                        if not remaining_ids:
+                            return results
 
 
     async def _ensure_consumer_group(self, stream_key: str) -> None:
