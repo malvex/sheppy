@@ -6,7 +6,6 @@ import pytest
 
 from sheppy import Queue, Task, Worker
 from sheppy.testqueue import assert_is_completed, assert_is_failed
-
 from tests.dependencies import failing_task
 
 
