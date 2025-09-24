@@ -44,7 +44,7 @@ class Queue:
         await self.__ensure_backend_is_connected()
 
         task_ids, batch_mode = self._get_task_ids(task)
-        task_results = await self.backend.get_task(self.name, task_ids)
+        task_results = await self.backend.get_tasks(self.name, task_ids)
 
         if batch_mode:
             return {UUID(t_id): Task.model_validate(t) for t_id, t in task_results.items()}
@@ -98,7 +98,7 @@ class Queue:
         await self.__ensure_backend_is_connected()
 
         task_ids, batch_mode = self._get_task_ids(task)
-        task_results = await self.backend.get_result(self.name, task_ids, timeout)
+        task_results = await self.backend.get_results(self.name, task_ids, timeout)
 
         if batch_mode:
             return {UUID(t_id): Task.model_validate(t) for t_id, t in task_results.items()}

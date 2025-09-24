@@ -130,7 +130,7 @@ class MemoryBackend(Backend):
 
             return queue_size + queue_cron_size
 
-    async def get_task(self, queue_name: str, task_ids: list[str]) -> dict[str,dict[str, Any]]:
+    async def get_tasks(self, queue_name: str, task_ids: list[str]) -> dict[str,dict[str, Any]]:
         self._check_connected()
 
         async with self._locks[queue_name]:
@@ -185,7 +185,7 @@ class MemoryBackend(Backend):
 
             return True
 
-    async def get_result(self, queue_name: str, task_ids: list[str], timeout: float | None = None) -> dict[str,dict[str, Any]]:
+    async def get_results(self, queue_name: str, task_ids: list[str], timeout: float | None = None) -> dict[str,dict[str, Any]]:
         self._check_connected()
 
         start_time = asyncio.get_event_loop().time()
