@@ -29,9 +29,15 @@ class TestQueue:
         self.processed_tasks: list[Task] = []
         self.failed_tasks: list[Task] = []
 
-    def add(self, task: Task | list[Task]) -> list[bool]:
+    @overload
+    def add(self, task: Task) -> bool: ...
+
+    @overload
+    def add(self, task: list[Task]) -> list[bool]: ...
+
+    def add(self, task: Task | list[Task]) -> bool | list[bool]:
         """Add task into the queue. Accept list of tasks for batch add."""
-        return asyncio.run(self._queue.add(task))
+        return asyncio.run(self._queue.add(task))  # type: ignore[return-value]
 
     @overload
     def get_task(self, task: Task | UUID) -> Task | None: ...
