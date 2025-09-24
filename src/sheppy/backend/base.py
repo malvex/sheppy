@@ -23,11 +23,7 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def create_tasks(self, queue_name: str, tasks: list[dict[str, Any]]) -> list[bool]:
-        pass
-
-    @abstractmethod
-    async def append(self, queue_name: str, tasks: list[dict[str, Any]]) -> bool:
+    async def append(self, queue_name: str, tasks: list[dict[str, Any]], unique: bool = True) -> list[bool]:
         pass
 
     @abstractmethod
@@ -47,7 +43,7 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime) -> bool:
+    async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime, unique: bool = True) -> bool:
         pass
 
     @abstractmethod

@@ -166,7 +166,7 @@ async def test_require_manual_connect(task_dict: dict, backend: Backend):
     assert backend.is_connected is False
 
     with pytest.raises(BackendError):
-        await backend.create_tasks(Q, [task_dict])
+        await backend.append(Q, [task_dict])
 
 
 async def test_connect_and_disconnect(backend: Backend):
@@ -177,33 +177,12 @@ async def test_connect_and_disconnect(backend: Backend):
     assert backend.is_connected is False
 
 
-async def test_create_tasks(backend: Backend):
-    t1 = simple_async_task(1, 2).model_dump(mode="json")
-    t2 = simple_async_task(3, 4).model_dump(mode="json")
-    t3 = simple_async_task(5, 6).model_dump(mode="json")
-
-    await backend.connect()
-
-    assert await backend.size(Q) == 0
-
-    assert await backend.create_tasks(Q, [t1]) == [True]
-    assert await backend.create_tasks(Q, [t1]) == [False]
-    assert await backend.create_tasks(Q, [t1, t2]) == [False, True]
-    assert await backend.create_tasks(Q, [t3, t3]) == [True, False]
-    assert await backend.create_tasks(Q, []) == []
-
-    # size is for pending tasks - create_tasks does NOT add the task to pending yet!
-    assert await backend.size(Q) == 0
-    assert await backend.size("different_queue") == 0
-
-
 async def test_append(task_dict: dict, backend: Backend):
     await backend.connect()
 
     assert await backend.size(Q) == 0
 
-    assert await backend.create_tasks(Q, [task_dict]) == [True]
-    assert await backend.append(Q, [task_dict]) is True
+    assert await backend.append(Q, [task_dict]) == [True]
 
     assert await backend.size(Q) == 1
     assert await backend.size("different_queue") == 0
@@ -214,8 +193,7 @@ async def test_append_bulk(backend: Backend):
     t2 = simple_async_task(1, 2).model_dump(mode="json")
 
     await backend.connect()
-    assert await backend.create_tasks(Q, [t1, t2]) == [True, True]
-    assert await backend.append(Q, [t1, t2]) is True
+    assert await backend.append(Q, [t1, t2]) == [True, True]
 
     assert await backend.size(Q) == 2
     assert await backend.size("different_queue") == 0
@@ -228,8 +206,7 @@ async def test_pop(backend: Backend):
     t4 = simple_async_task(7, 8).model_dump(mode="json")
 
     await backend.connect()
-    assert await backend.create_tasks(Q, [t1, t2, t3, t4]) == [True, True, True, True]
-    assert await backend.append(Q, [t1, t2, t3, t4]) is True
+    assert await backend.append(Q, [t1, t2, t3, t4]) == [True, True, True, True]
 
     assert await backend.size(Q) == 4
     assert await backend.size("different_queue") == 0
@@ -250,8 +227,7 @@ async def test_get_pending(backend: Backend):
     t4 = simple_async_task(7, 8).model_dump(mode="json")
 
     await backend.connect()
-    assert await backend.create_tasks(Q, [t1, t2, t3, t4]) == [True, True, True, True]
-    assert await backend.append(Q, [t1, t2, t3, t4]) is True
+    assert await backend.append(Q, [t1, t2, t3, t4]) == [True, True, True, True]
 
     assert await backend.get_pending(Q) == [t1]
     assert await backend.get_pending(Q, count=2) == [t1, t2]
@@ -269,8 +245,7 @@ async def test_clear(backend: Backend):
     t4 = simple_async_task(7, 8).model_dump(mode="json")
 
     await backend.connect()
-    assert await backend.create_tasks(Q, [t1, t2, t3, t4]) == [True, True, True, True]
-    assert await backend.append(Q, [t1, t2, t3, t4]) is True
+    assert await backend.append(Q, [t1, t2, t3, t4]) == [True, True, True, True]
 
     assert await backend.size(Q) == 4
     assert await backend.size("different-queue") == 0
@@ -295,18 +270,14 @@ async def test_get_task(datetime_now: datetime, tasks: dict[str, dict], backend:
     t4 = simple_async_task(7, 8).model_dump(mode="json")
 
     await backend.connect()
-    assert await backend.create_tasks(Q, [tasks["new"]]) == [True]
-    assert await backend.append(Q, [tasks["new"]])
+    assert await backend.append(Q, [tasks["new"]]) == [True]
     assert await backend.pop(Q) == [tasks["new"]]
     assert await backend.store_result(Q, tasks["completed"])
 
-    assert await backend.create_tasks(Q, [t1, t2]) == [True, True]
-    assert await backend.append(Q, [t1, t2])
-    assert await backend.create_tasks("different-queue", [t4]) == [True]
-    assert await backend.append("different-queue", [t4])
+    assert await backend.append(Q, [t1, t2]) == [True, True]
+    assert await backend.append("different-queue", [t4]) == [True]
 
-    assert await backend.create_tasks(Q, [t3]) == [True]
-    assert await backend.schedule(Q, t3, at=datetime_now)
+    assert await backend.schedule(Q, t3, at=datetime_now, unique=False)
 
     assert await backend.size(Q) == 2
     assert await backend.size("different-queue") == 1
@@ -340,18 +311,14 @@ async def test_get_all_tasks(datetime_now: datetime, tasks: dict[str, dict], bac
     t4 = simple_async_task(7, 8).model_dump(mode="json")
 
     await backend.connect()
-    assert await backend.create_tasks(Q, [tasks["new"]]) == [True]
-    assert await backend.append(Q, [tasks["new"]])
+    assert await backend.append(Q, [tasks["new"]]) == [True]
     assert await backend.pop(Q) == [tasks["new"]]
     assert await backend.store_result(Q, tasks["completed"])
 
-    assert await backend.create_tasks(Q, [t3]) == [True]
     assert await backend.schedule(Q, t3, at=datetime_now)
 
-    assert await backend.create_tasks(Q, [t1, t2]) == [True, True]
-    assert await backend.append(Q, [t1, t2])
-    assert await backend.create_tasks("different-queue", [t4]) == [True]
-    assert await backend.append("different-queue", [t4])
+    assert await backend.append(Q, [t1, t2]) == [True, True]
+    assert await backend.append("different-queue", [t4]) == [True]
 
     assert await backend.size(Q) == 2
     assert await backend.size("different-queue") == 1
@@ -374,18 +341,14 @@ async def test_list_queues(datetime_now: datetime, tasks: dict[str, dict], backe
     t4 = simple_async_task(7, 8).model_dump(mode="json")
 
     await backend.connect()
-    assert await backend.create_tasks(Q, [tasks["new"]]) == [True]
-    assert await backend.append(Q, [tasks["new"]])
+    assert await backend.append(Q, [tasks["new"]]) == [True]
     assert await backend.pop(Q) == [tasks["new"]]
     assert await backend.store_result(Q, tasks["completed"])
 
-    assert await backend.create_tasks(Q, [t3]) == [True]
     assert await backend.schedule(Q, t3, at=datetime_now)
 
-    assert await backend.create_tasks(Q, [t1, t2]) == [True, True]
-    assert await backend.append(Q, [t1, t2])
-    assert await backend.create_tasks("different-queue", [t4]) == [True]
-    assert await backend.append("different-queue", [t4])
+    assert await backend.append(Q, [t1, t2]) == [True, True]
+    assert await backend.append("different-queue", [t4]) == [True]
 
     assert await backend.size(Q) == 2
     assert await backend.size("different-queue") == 1
@@ -398,8 +361,6 @@ async def test_get_scheduled(datetime_now: datetime, backend: Backend):
     t2 = simple_async_task(3, 4).model_dump(mode="json")
 
     await backend.connect()
-    assert await backend.create_tasks(Q, [t1]) == [True]
-    assert await backend.create_tasks(Q, [t2]) == [True]
     assert await backend.schedule(Q, t1, at=datetime_now)
     assert await backend.schedule(Q, t2, at=datetime_now)
 
@@ -414,22 +375,18 @@ class TestGetResult:
     async def _setup_append(self, task_data: dict, backend: Backend):
         await backend.connect()
         assert await backend.size(Q) == 0
-        assert await backend.create_tasks(Q, [task_data]) == [True]
-        assert await backend.append(Q, [task_data]) is True
+        assert await backend.append(Q, [task_data]) == [True]
         assert await backend.size(Q) == 1
 
     async def _setup_schedule(self, task_data: dict, backend: Backend, create_task: bool = True):
         await backend.connect()
         assert await backend.size(Q) == 0
 
-        if create_task:
-            assert await backend.create_tasks(Q, [task_data]) == [True]
-
-        assert await backend.schedule(Q, task_data, at=TypeAdapter(datetime).validate_python(task_data["scheduled_at"]))
+        assert await backend.schedule(Q, task_data, at=TypeAdapter(datetime).validate_python(task_data["scheduled_at"]), unique=create_task)
         assert await backend.size(Q) == 0
         ret = await backend.pop_scheduled(Q, datetime.now(timezone.utc))
         assert await backend.size(Q) == 0
-        assert await backend.append(Q, [ret[0]])
+        assert await backend.append(Q, [ret[0]], False)
         assert await backend.size(Q) == 1
 
     async def _setup_processing(self, task_data: dict, backend: Backend):
@@ -901,8 +858,7 @@ async def test_get_result(task_dict: dict, backend: Backend):
     await backend.connect()
 
     assert await backend.size(Q) == 0
-    assert await backend.create_tasks(Q, [task_dict]) == [True]
-    assert await backend.append(Q, [task_dict])
+    assert await backend.append(Q, [task_dict]) == [True]
     assert await backend.size(Q) == 1
 
     popped_tasks = await backend.pop(Q)
@@ -925,8 +881,7 @@ async def test_get_result_batch(task_dict: dict, backend: Backend):
     t2 = simple_async_task(3, 4).model_dump(mode="json")
 
     assert await backend.size(Q) == 0
-    assert await backend.create_tasks(Q, [t1, t2]) == [True, True]
-    assert await backend.append(Q, [t1, t2])
+    assert await backend.append(Q, [t1, t2]) == [True, True]
     assert await backend.size(Q) == 2
 
     popped_tasks = await backend.pop(Q, limit=2)
