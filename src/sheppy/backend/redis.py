@@ -96,7 +96,7 @@ class RedisBackend(Backend):
             raise BackendError("Not connected to Redis")
         return self._client
 
-    async def create_tasks(self, queue_name: str, tasks: list[dict[str, Any]]) -> list[bool]:
+    async def _create_tasks(self, queue_name: str, tasks: list[dict[str, Any]]) -> list[bool]:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
 
         try:
@@ -109,18 +109,28 @@ class RedisBackend(Backend):
 
         return [bool(r) for r in res]
 
-    async def append(self, queue_name: str, tasks: list[dict[str, Any]]) -> bool:
+    async def append(self, queue_name: str, tasks: list[dict[str, Any]], unique: bool = True) -> list[bool]:
         """Add new tasks to be processed."""
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
         pending_tasks_key = self._pending_tasks_key(queue_name)
 
         await self._ensure_consumer_group(pending_tasks_key)
 
+        if unique:
+            success = await self._create_tasks(queue_name, tasks)
+            to_queue = [t for i, t in enumerate(tasks) if success[i]]
+        else:
+            success = [True] * len(tasks)
+            to_queue = tasks
+
         try:
             async with self.client.pipeline(transaction=False) as pipe:
-                for t in tasks:
+                for t in to_queue:
                     _task_data = json.dumps(t)
-                    pipe.set(f"{tasks_metadata_key}:{t['id']}", _task_data)
+
+                    if not unique:
+                        pipe.set(f"{tasks_metadata_key}:{t['id']}", _task_data)
+
                     # add to pending stream
                     pipe.xadd(pending_tasks_key, {"data": _task_data})
 
@@ -128,7 +138,7 @@ class RedisBackend(Backend):
         except Exception as e:
             raise BackendError(f"Failed to enqueue task: {e}") from e
 
-        return True
+        return success
 
     async def pop(self, queue_name: str, limit: int = 1, timeout: float | None = None) -> list[dict[str, Any]]:
         """Get next tasks to process. Used primarily by workers."""
@@ -212,14 +222,21 @@ class RedisBackend(Backend):
 
         return {t['id']: t for t in tasks}
 
-    async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime) -> bool:
+    async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime, unique: bool = True) -> bool:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
         scheduled_key = self._scheduled_tasks_key(queue_name)
 
-        try:
+        if unique:
+            success = await self._create_tasks(queue_name, [task_data])
+            if not success[0]:
+                return False
 
+        try:
             _task_data = json.dumps(task_data)
-            await self.client.set(f"{tasks_metadata_key}:{task_data['id']}", _task_data)
+
+            if not unique:
+                await self.client.set(f"{tasks_metadata_key}:{task_data['id']}", _task_data)
+
             # add to sorted set with timestamp as score
             score = at.timestamp()
             await self.client.zadd(scheduled_key, {_task_data: score})

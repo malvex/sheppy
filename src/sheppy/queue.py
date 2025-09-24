@@ -22,16 +22,7 @@ class Queue:
         else:
             tasks = [task.model_dump(mode='json')]
 
-        success = await self.backend.create_tasks(self.name, tasks)
-
-        to_queue = []
-        for i, t in enumerate(tasks):
-            if success[i]:
-                to_queue.append(t)
-
-        await self.backend.append(self.name, to_queue)
-
-        return success
+        return await self.backend.append(self.name, tasks)
 
     @overload
     async def get_task(self, task: Task | UUID) -> Task | None: ...
@@ -79,13 +70,8 @@ class Queue:
             raise TypeError("provided datetime must be offset-aware")
 
         task.__dict__["scheduled_at"] = at
-        task_data = task.model_dump(mode="json")
 
-        success = await self.backend.create_tasks(self.name, [task_data])
-        if not success[0]:
-            return False
-
-        return await self.backend.schedule(self.name, task_data, at)
+        return await self.backend.schedule(self.name, task.model_dump(mode="json"), at)
 
     async def get_scheduled(self) -> list[Task]:
         """List scheduled tasks."""
@@ -138,9 +124,10 @@ class Queue:
                 _task.__dict__["next_retry_at"] = at
                 _task.__dict__["scheduled_at"] = at
 
-            return await self.backend.schedule(self.name, _task.model_dump(mode="json"), at)
+            return await self.backend.schedule(self.name, _task.model_dump(mode="json"), at, unique=False)
 
-        return await self.backend.append(self.name, [_task.model_dump(mode="json")])
+        success = await self.backend.append(self.name, [_task.model_dump(mode="json")], unique=False)
+        return success[0]
 
     async def size(self) -> int:
         """Get number of pending tasks in the queue."""
@@ -182,7 +169,7 @@ class Queue:
 
         tasks_data = await self.backend.pop_scheduled(self.name, now)
         tasks = [Task.model_validate(t) for t in tasks_data]
-        await self.backend.append(self.name, tasks_data)
+        await self.backend.append(self.name, tasks_data, unique=False)
 
         return tasks
 

@@ -19,7 +19,6 @@ class MemoryBackend(Backend):
     def __init__(self) -> None:
         self._task_metadata: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)  # {QUEUE_NAME: {TASK_ID: task_data}}
         self._pending: dict[str, list[str]] = defaultdict(list)
-        self._results: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
         self._scheduled: dict[str, list[ScheduledTask]] = defaultdict(list)
         self._crons: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
 
@@ -36,7 +35,7 @@ class MemoryBackend(Backend):
     def is_connected(self) -> bool:
         return self._connected
 
-    async def create_tasks(self, queue_name: str, tasks: list[dict[str, Any]]) -> list[bool]:
+    async def _create_tasks(self, queue_name: str, tasks: list[dict[str, Any]]) -> list[bool]:
         self._check_connected()
 
         async with self._locks[queue_name]:
@@ -50,17 +49,24 @@ class MemoryBackend(Backend):
 
             return success
 
-    async def append(self, queue_name: str, tasks: list[dict[str, Any]]) -> bool:
+    async def append(self, queue_name: str, tasks: list[dict[str, Any]], unique: bool = True) -> list[bool]:
         self._check_connected()
 
-        async with self._locks[queue_name]:
-            # self._task_metadata[queue_name] |= {str(task["id"]): task for task in tasks}
-            for task in tasks:
-                self._task_metadata[queue_name][task["id"]] = task
-                self._results[queue_name].pop(task["id"], None)
-            self._pending[queue_name].extend([task["id"] for task in tasks])
+        if unique:
+            success = await self._create_tasks(queue_name, tasks)
+            to_queue = [t for i, t in enumerate(tasks) if success[i]]
+        else:
+            success = [True] * len(tasks)
+            to_queue = tasks
 
-        return True
+        async with self._locks[queue_name]:
+            for task in to_queue:
+                if not unique:
+                    self._task_metadata[queue_name][task["id"]] = task
+
+                self._pending[queue_name].append(task["id"])
+
+            return success
 
     async def pop(self, queue_name: str, limit: int = 1, timeout: float | None = None) -> list[dict[str, Any]]:
         self._check_connected()
@@ -75,8 +81,7 @@ class MemoryBackend(Backend):
 
                     for _ in range(min(limit, len(q))):
                         task_id = q.pop(0)
-                        task_data = self._results[queue_name].get(task_id) \
-                                 or self._task_metadata[queue_name].get(task_id)
+                        task_data = self._task_metadata[queue_name].get(task_id)
                         if task_data:
                             tasks.append(task_data)
 
@@ -120,7 +125,6 @@ class MemoryBackend(Backend):
 
             self._task_metadata[queue_name].clear()
             self._pending[queue_name].clear()
-            self._results[queue_name].clear()
             self._scheduled[queue_name].clear()
             self._crons[queue_name].clear()
 
@@ -132,20 +136,27 @@ class MemoryBackend(Backend):
         async with self._locks[queue_name]:
             results = {}
             for task_id in task_ids:
-                result = self._results[queue_name].get(task_id) or self._task_metadata[queue_name].get(task_id)
+                result = self._task_metadata[queue_name].get(task_id)
                 if result:
                     results[task_id] = result
 
             return results
 
-    async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime) -> bool:
+    async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime, unique: bool = True) -> bool:
         self._check_connected()
 
+        if unique:
+            success = await self._create_tasks(queue_name, [task_data])
+            if not success[0]:
+                return False
+
         async with self._locks[queue_name]:
-            self._task_metadata[queue_name][task_data["id"]] = task_data
-            self._results[queue_name].pop(task_data["id"], None)
+            if not unique:
+                self._task_metadata[queue_name][task_data["id"]] = task_data
+
             scheduled_task = ScheduledTask(at, task_data["id"])
             heapq.heappush(self._scheduled[queue_name], scheduled_task)
+
             return True
 
     async def pop_scheduled(self, queue_name: str, now: datetime | None = None) -> list[dict[str, Any]]:
@@ -160,8 +171,7 @@ class MemoryBackend(Backend):
 
             while scheduled_tasks and scheduled_tasks[0].scheduled_time <= now:
                 scheduled_task = heapq.heappop(scheduled_tasks)
-                task_data = self._results[queue_name].get(scheduled_task.task_id) \
-                         or self._task_metadata[queue_name].get(scheduled_task.task_id)
+                task_data = self._task_metadata[queue_name].get(scheduled_task.task_id)
                 if task_data:
                     tasks.append(task_data)
 
@@ -171,7 +181,7 @@ class MemoryBackend(Backend):
         self._check_connected()
 
         async with self._locks[queue_name]:
-            self._results[queue_name][task_data['id']] = task_data
+            self._task_metadata[queue_name][task_data['id']] = task_data
 
             return True
 
@@ -189,7 +199,7 @@ class MemoryBackend(Backend):
         while True:
             async with self._locks[queue_name]:
                 for task_id in task_ids:
-                    task_data = self._results[queue_name].get(task_id, {})
+                    task_data = self._task_metadata[queue_name].get(task_id, {})
 
                     if task_data.get("finished_at"):
                         results[task_id] = task_data
@@ -218,7 +228,7 @@ class MemoryBackend(Backend):
         async with self._locks[queue_name]:
             return {
                 "pending": len(self._pending[queue_name]),
-                "completed": len(self._results[queue_name]),
+                "completed": len([t for t in self._task_metadata[queue_name].values() if t["finished_at"]]),
                 "scheduled": len(self._scheduled[queue_name]),
             }
 
@@ -226,7 +236,7 @@ class MemoryBackend(Backend):
         self._check_connected()
 
         async with self._locks[queue_name]:
-            tasks = self._task_metadata[queue_name] | self._results[queue_name]
+            tasks = self._task_metadata[queue_name]
             return list(tasks.values())
 
     async def list_queues(self) -> dict[str, int]:
