@@ -49,7 +49,7 @@ async def test_wait_for_race(task_fail_once_fn: Callable[[], Task], queue: Queue
     assert recv_task.retry_count == 1
 
     assert await queue.retry(t.id, force=True) is True
- 
+
     with pytest.raises(TimeoutError):
         await queue.wait_for(t.id, timeout=0.01)
 

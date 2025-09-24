@@ -874,7 +874,7 @@ async def test_get_result(task_dict: dict, backend: Backend):
     assert result
 
 
-async def test_get_result_batch(task_dict: dict, backend: Backend):
+async def test_get_result_batch(backend: Backend):
     await backend.connect()
 
     t1 = simple_async_task(1, 2).model_dump(mode="json")
