@@ -211,7 +211,7 @@ class RedisBackend(Backend):
 
         return int(count)
 
-    async def get_task(self, queue_name: str, task_ids: list[str]) -> dict[str,dict[str, Any]]:
+    async def get_tasks(self, queue_name: str, task_ids: list[str]) -> dict[str,dict[str, Any]]:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
 
         if not task_ids:
@@ -323,7 +323,7 @@ class RedisBackend(Backend):
 
         return [json.loads(task_json) for task_json in all_tasks_data]
 
-    async def get_result(self, queue_name: str, task_ids: list[str], timeout: float | None = None) -> dict[str,dict[str, Any]]:
+    async def get_results(self, queue_name: str, task_ids: list[str], timeout: float | None = None) -> dict[str,dict[str, Any]]:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
         finished_tasks_key = self._finished_tasks_key(queue_name)
 

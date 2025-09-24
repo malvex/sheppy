@@ -127,7 +127,7 @@ class TestQueue:
 
         await self._backend.store_result(self.name, task.model_dump(mode='json'))
 
-        data = await self._backend.get_task(self.name, [str(task.id)])
+        data = await self._backend.get_tasks(self.name, [str(task.id)])
         stored_task_data = data.get(str(task.id))
 
         if stored_task_data:

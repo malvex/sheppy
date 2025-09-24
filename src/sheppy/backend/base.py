@@ -31,7 +31,7 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def get_task(self, queue_name: str, task_ids: list[str]) -> dict[str, dict[str, Any]]:
+    async def get_tasks(self, queue_name: str, task_ids: list[str]) -> dict[str, dict[str, Any]]:
         pass
 
     @abstractmethod
@@ -59,7 +59,7 @@ class Backend(ABC):
         pass
 
     @abstractmethod
-    async def get_result(self, queue_name: str, task_ids: list[str], timeout: float | None = None) -> dict[str, dict[str, Any]]:
+    async def get_results(self, queue_name: str, task_ids: list[str], timeout: float | None = None) -> dict[str, dict[str, Any]]:
         pass
 
     @abstractmethod
