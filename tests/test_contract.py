@@ -18,7 +18,7 @@ class TestSuccessfulTasks:
     async def test_task_execution(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
         task = test_case.create_task()
 
-        assert await queue.add(task) == [True]
+        assert await queue.add(task) is True
 
         # verify initial state
         assert_is_new(task)
@@ -39,7 +39,7 @@ class TestSuccessfulTasks:
     async def test_wait_for(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
         task = test_case.create_task()
 
-        assert await queue.add(task) == [True]
+        assert await queue.add(task) is True
 
         # process in background
         process_task = asyncio.create_task(worker.work(max_tasks=1))
@@ -56,7 +56,7 @@ class TestSuccessfulTasks:
     async def test_wait_for_timeout(self, test_case: TaskTestCase, queue: Queue):
 
         task = test_case.create_task()
-        assert await queue.add(task) == [True]
+        assert await queue.add(task) is True
 
         # we aren't processing the task => should raise exception
         with pytest.raises(TimeoutError):
@@ -68,7 +68,7 @@ class TestFailingTasks:
     async def test_task_failure(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
 
         task = test_case.create_task()
-        assert await queue.add(task) == [True]
+        assert await queue.add(task) is True
         assert_is_new(task)
 
         # process the task
@@ -90,7 +90,7 @@ class TestTaskSelfReference:
         task = test_case.create_task()
         task_id = task.id
 
-        assert await queue.add(task) == [True]
+        assert await queue.add(task) is True
         await worker.work(max_tasks=1)
 
         task = await queue.get_task(task)
@@ -178,7 +178,7 @@ class TestScheduledTasks:
         assert await queue.schedule(scheduled_task, at=timedelta(seconds=0.2)) is True
 
         immediate_task = simple_sync_task(3, 4)
-        assert await queue.add(immediate_task) == [True]
+        assert await queue.add(immediate_task) is True
 
         await worker.work(max_tasks=1)
 

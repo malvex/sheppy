@@ -13,16 +13,26 @@ class Queue:
         self.name = name
         self.backend = backend
 
-    async def add(self, task: Task | list[Task]) -> list[bool]:
+    @overload
+    async def add(self, task: Task) -> bool: ...
+
+    @overload
+    async def add(self, task: list[Task]) -> list[bool]: ...
+
+    async def add(self, task: Task | list[Task]) -> bool | list[bool]:
         """Add task into the queue. Accept list of tasks for batch add."""
         await self.__ensure_backend_is_connected()
 
         if isinstance(task, list):
+            batch_mode = True
             tasks = [t.model_dump(mode='json') for t in task]
         else:
+            batch_mode = False
             tasks = [task.model_dump(mode='json')]
 
-        return await self.backend.append(self.name, tasks)
+        success = await self.backend.append(self.name, tasks)
+
+        return success if batch_mode else success[0]
 
     @overload
     async def get_task(self, task: Task | UUID) -> Task | None: ...

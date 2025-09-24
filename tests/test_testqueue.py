@@ -25,7 +25,7 @@ class TestSuccessfulTasks:
     def test_task_execution(self, test_case: TaskTestCase):
         queue = TestQueue()
         task = test_case.create_task()
-        assert queue.add(task) == [True]
+        assert queue.add(task) is True
 
         # there should be no change on tasks after queueing
         assert_is_new(task)
@@ -79,7 +79,7 @@ class TestSuccessfulTasks:
     def test_get_task_pydantic_input(self, test_case: TaskTestCase):
         queue = TestQueue()
         t1 = test_case.create_task()
-        assert queue.add(t1) == [True]
+        assert queue.add(t1) is True
 
         pytest.xfail("not really a bug, but it's a bug")
         assert queue.get_task(t1) == t1
@@ -115,7 +115,7 @@ class TestFailingTasks:
     def test_task_failure(self, test_case: TaskTestCase):
         queue = TestQueue()
         task = test_case.create_task()
-        assert queue.add(task) == [True]
+        assert queue.add(task) is True
 
         # process the task
         processed = queue.process_next()
@@ -139,7 +139,7 @@ class TestTaskSelfReference:
     def test_self_reference(self, test_case: TaskTestCase):
         queue = TestQueue()
         task = test_case.create_task()
-        assert queue.add(task) == [True]
+        assert queue.add(task) is True
 
         task = queue.process_next()
 
@@ -194,8 +194,8 @@ class TestQueueBehavior:
         sync_task = simple_sync_task(1, 2)
         async_task = simple_async_task(3, 4)
 
-        assert queue.add(sync_task) == [True]
-        assert queue.add(async_task) == [True]
+        assert queue.add(sync_task) is True
+        assert queue.add(async_task) is True
 
         # process both
         processed = queue.process_all()
@@ -219,7 +219,7 @@ class TestQueueBehavior:
     def test_process_next_vs_process_all_with_retry(self, task_fail_once_fn: Callable[[], Task]):
         queue = TestQueue()
 
-        assert queue.add(task_fail_once_fn()) == [True]
+        assert queue.add(task_fail_once_fn()) is True
 
         assert queue.size() == 1
         processed = queue.process_next()
@@ -231,7 +231,7 @@ class TestQueueBehavior:
         assert_is_completed(processed)
 
         task = task_fail_once_fn()
-        assert queue.add(task) == [True]
+        assert queue.add(task) is True
         assert queue.size() == 1
 
         processed = queue.process_all()
@@ -326,7 +326,7 @@ class TestScheduledTasks:
         assert queue.schedule(scheduled_task, at=future_time) is True
 
         immediate_task = simple_sync_task(3, 4)
-        assert queue.add(immediate_task) == [True]
+        assert queue.add(immediate_task) is True
 
         processed_immediate = queue.process_next()
         assert_is_completed(processed_immediate)
@@ -476,7 +476,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_noop(1, 2)
 
-        assert queue.add(task) == [True]
+        assert queue.add(task) is True
         task = queue.process_next()
 
         assert task.result == 3
@@ -486,7 +486,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_change_arg(1, 2)
 
-        assert queue.add(task) == [True]
+        assert queue.add(task) is True
         task = queue.process_next()
 
         assert task.result == 7
@@ -496,7 +496,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_change_return_value(1, 2)
 
-        assert queue.add(task) == [True]
+        assert queue.add(task) is True
         task = queue.process_next()
 
         assert task.result == 100003
@@ -506,7 +506,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_multiple(1, 2)
 
-        assert queue.add(task) == [True]
+        assert queue.add(task) is True
         task = queue.process_next()
 
         assert task.result == 100007
@@ -516,7 +516,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_change_return_type(1, 2)
 
-        assert queue.add(task) == [True]
+        assert queue.add(task) is True
         task = queue.process_next()
 
         assert task.result == WrappedNumber(result=100003, extra="hi from middleware")

@@ -382,7 +382,7 @@ async def test_retry(queue: Queue, worker: Worker):
 
     task = failing_task()
 
-    assert await queue.add(task) == [True]
+    assert await queue.add(task) is True
 
     await worker.work(oneshot=True)
 
@@ -407,7 +407,7 @@ async def test_retry(queue: Queue, worker: Worker):
 async def test_retry_automatic_by_worker(task_fail_once_fn, queue: Queue, worker: Worker):
     task = task_fail_once_fn()
 
-    assert await queue.add(task) == [True]
+    assert await queue.add(task) is True
 
     await worker.work(max_tasks=2)
 
@@ -423,7 +423,7 @@ async def test_retry_automatic_by_worker(task_fail_once_fn, queue: Queue, worker
 async def test_retry_force(task_fail_once_fn, queue: Queue, worker: Worker):
     task = task_fail_once_fn()
 
-    assert await queue.add(task) == [True]
+    assert await queue.add(task) is True
     await worker.work(max_tasks=2)
     processed = await queue.get_task(task)
 
@@ -453,7 +453,7 @@ async def test_retry_force(task_fail_once_fn, queue: Queue, worker: Worker):
 async def test_retry_at(datetime_now, queue: Queue, worker: Worker):
     task = failing_task()
 
-    assert await queue.add(task) == [True]
+    assert await queue.add(task) is True
     await worker.work(max_tasks=1)
     processed = await queue.get_task(task)
 
@@ -595,8 +595,8 @@ class TestEdgeCases:
         t2 = task_fn(3, 4)
         t3 = task_fn(5, 6)
 
-        assert await queue.add(t1) == [True], "1"
-        assert await queue.add(t1) == [False], "2"
+        assert await queue.add(t1) is True, "1"
+        assert await queue.add(t1) is False, "2"
         assert await queue.add([t1]) == [False], "3"
         assert await queue.schedule(t1, at=timedelta(seconds=10)) is False, "4"
 
@@ -612,7 +612,7 @@ class TestEdgeCases:
         assert await queue.schedule(t1, at=timedelta(seconds=10)) is True, "1"
         assert await queue.schedule(t1, at=timedelta(seconds=10)) is False, "2"
         assert await queue.schedule(t1, at=timedelta(hours=2)) is False, "3"
-        assert await queue.add(t1) == [False], "4"
+        assert await queue.add(t1) is False, "4"
 
         assert len(await queue.get_scheduled()) == 1, "5"
         assert await queue.size() == 0, "6"
