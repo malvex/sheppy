@@ -353,7 +353,7 @@ async def test_wait_for_batch(task_fn, queue: Queue, worker: Worker):
 
 async def test_wait_for_batch_duplicate_task_ids(task_fn, queue: Queue, worker: Worker):
     await queue.add(t1 := task_fn(1, 2))
-    await queue.add(t2 := task_fn(3, 4))
+    await queue.add(task_fn(3, 4))
 
     assert await queue.size() == 2
 
