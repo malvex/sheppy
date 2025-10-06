@@ -1,11 +1,43 @@
 [project]
 name = "sheppy"
 dynamic = ["version"]
-description = ""
+description = "A modern, fast, and easy to use task queue system for async Python"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-    { name = "Martin", email = "15851033+malvex@users.noreply.github.com" }
+    { name = "Martin", email = "malvex@sheppy.org" }
+]
+license = {text = "MIT"}
+keywords = ["task", "queue", "async", "distributed", "job", "fastapi", "pydantic"]
+classifiers = [
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Clustering",
+    "Topic :: System :: Distributed Computing",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Systems Administration",
+    "Typing :: Typed",
+    "Framework :: FastAPI",
+    "Framework :: AsyncIO",
+    "Framework :: AnyIO",
+    "Framework :: Pydantic",
+    "Framework :: Pydantic :: 2",
+    "Environment :: Console",
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
 ]
 
 dependencies = [
@@ -26,6 +58,13 @@ dev = [
     "pytest-cov>=6.2.1",
     "types-croniter>=6.0.0.20250809",
 ]
+
+[project.urls]
+# Homepage = "https://sheppy.org/"
+Documentation = "https://docs.sheppy.org/"
+Repository = "https://github.com/malvex/sheppy"
+Issues = "https://github.com/malvex/sheppy/issues"
+Changelog = "https://docs.sheppy.org/changelog/"
 
 [build-system]
 requires = ["hatchling"]
