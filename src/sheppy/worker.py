@@ -27,6 +27,47 @@ CRON_MANAGER_PREFIX = "<CronManager> "
 
 
 class Worker:
+    """Worker that processes tasks from the queue.
+
+    The Worker monitors the specified queue(s) for pending tasks and processes them asynchronously. It uses blocking pop operations to efficiently wait for new tasks. The worker can handle multiple tasks concurrently, up to a specified limit.
+    It also handles scheduled tasks and cron jobs.
+
+    Args:
+        queue_name (str | list[str]): Name of the queue or list of queue names to process tasks from.
+        backend (Backend): Instance of the backend to use for storing and retrieving tasks.
+        shutdown_timeout (float): Time in seconds to wait for active tasks to complete during shutdown. Default is 30.0 seconds.
+        max_concurrent_tasks (int): Maximum number of tasks to process concurrently. Default is 10.
+        enable_job_processing (bool): If True, enables job processing. Default is True.
+        enable_scheduler (bool): If True, enables the scheduler to enqueue scheduled tasks. Default is True.
+        enable_cron_manager (bool): If True, enables the cron manager to handle cron jobs. Default is True.
+
+    Attributes:
+        queues (list[Queue]): List of Queue instances corresponding to the specified queue names.
+        worker_id (str): Unique identifier for the worker instance.
+        stats (WorkerStats): Statistics about processed and failed tasks.
+        enable_job_processing (bool): Indicates if job processing is enabled.
+        enable_scheduler (bool): Indicates if the scheduler is enabled.
+        enable_cron_manager (bool): Indicates if the cron manager is enabled.
+
+    Raises:
+        ValueError: If none of the processing types (job processing, scheduler, cron manager) are enabled.
+
+    Example:
+        ```python
+        import asyncio
+        from sheppy import Worker, RedisBackend
+
+        async def main():
+            backend = RedisBackend()
+            worker = Worker(queue_name="default", backend=backend)
+
+            await worker.work()
+
+        if __name__ == "__main__":
+            asyncio.run(main())
+        ```
+    """
+
     def __init__(
         self,
         queue_name: str | list[str],
@@ -72,10 +113,30 @@ class Worker:
         self._tasks_to_process: int | None = None
         self._empty_queues: list[str] = []
 
-    async def work(self, max_tasks: int | None = None, oneshot: bool = False) -> None:
+    async def work(self, max_tasks: int | None = None, oneshot: bool = False, register_signal_handlers: bool = True) -> None:
+        """Start worker to process tasks from the queue.
+
+        Args:
+            max_tasks (int | None): Maximum number of tasks to process before shutting down. If None, process indefinitely.
+            oneshot (bool): If True, process tasks until the queue is empty, then shut down.
+            register_signal_handlers (bool): If True, register SIGINT and SIGTERM signal handlers for graceful shutdown. Default is True.
+
+        Returns:
+            None
+
+        Raises:
+            BackendError: If there is an issue connecting to the backend.
+
+        Note:
+            - The worker can be gracefully shut down by sending a SIGINT or SIGTERM signal (e.g., pressing CTRL+C).
+            - If the worker is already shutting down, pressing CTRL+C multiple times (default 3) will force an immediate shutdown.
+            - The worker will attempt to complete active tasks before shutting down, up to the specified shutdown timeout.
+            - If there are still active tasks after the timeout, they will be cancelled.
+        """
         # register signals
         loop = asyncio.get_event_loop()
-        self.__register_signal_handlers(loop)
+        if register_signal_handlers:
+            self.__register_signal_handlers(loop)
 
         self._tasks_to_process = max_tasks
         self._empty_queues.clear()
@@ -135,8 +196,9 @@ class Worker:
                         #     logger.error(f"Failed to requeue task {task.id}: {e}", exc_info=True)
 
         # unregister signals
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.remove_signal_handler(sig)
+        if register_signal_handlers:
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                loop.remove_signal_handler(sig)
 
         logger.info(f"Worker stopped. Processed: {self.stats.processed}, Failed: {self.stats.failed}")
 
@@ -195,7 +257,6 @@ class Worker:
             await asyncio.sleep(poll_interval)  # TODO: replace polling with notifications when worker notifications are implemented
 
         logger.info(CRON_MANAGER_PREFIX + "stopped")
-
 
     async def _run_worker_loop(self, queue: Queue, oneshot: bool = False) -> None:
         while not self._shutdown_event.is_set():
