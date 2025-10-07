@@ -146,6 +146,15 @@ if task.error:
     print(f"Task failed: {task.error}")  # prints "Task failed: Value must be positive"
 ```
 
+## Next Steps
+
+Now that you understand the basics:
+
+- Learn about [Core Concepts](core-concepts.md) like task lifecycle and queue mechanics
+- Explore [FastAPI Integration](fastapi-integration.md) for using Sheppy with FastAPI
+- Read the [Testing Guide](testing.md) to learn about testing strategies
+- Check out [Examples](../examples/index.md) for real-world usage patterns
+
 ## Quick Tips
 
 1. **Tasks are just functions** - Keep them simple and focused

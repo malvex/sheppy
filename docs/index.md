@@ -97,4 +97,4 @@ sheppy work
 
 ## Next Steps
 
-Ready to get started? Head to the **[Getting Started Guide](getting-started.md)** to install Sheppy and create your first task!
+Ready to get started? Head to the **[Getting Started Guide](getting-started/index.md)** to install Sheppy and create your first task!
