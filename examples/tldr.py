@@ -26,7 +26,7 @@ async def main():
         print(f"Task succeed with result: {updated_task.result}")
         assert updated_task.result == "Hello, World!"
     else:
-        # Note: this won't happen though because wait_for doesn't return pending tasks
+        # Note: this won't happen because wait_for doesn't return pending tasks
         print("Task is still pending!")
 
 if __name__ == "__main__":

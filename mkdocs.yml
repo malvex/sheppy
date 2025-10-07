@@ -1,0 +1,132 @@
+site_name: Sheppy
+site_url: https://docs.sheppy.org/
+
+repo_name: malvex/sheppy
+repo_url: https://github.com/malvex/sheppy
+
+theme:
+  name: material
+  language: en
+  palette:
+    scheme: slate
+    primary: black
+
+  features:
+    - content.code.annotate
+    - content.code.copy
+    - navigation.sections
+    - navigation.footer
+    - navigation.indexes
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.tracking
+    - search.share
+    - search.suggest
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - getting-started/index.md
+    - Quickstart: getting-started/quickstart.md
+    - getting-started/task-scheduling.md
+    - getting-started/error-handling.md
+    - getting-started/validation-with-pydantic.md
+    - getting-started/testing.md
+    - getting-started/cron.md
+    - Advanced:
+      - getting-started/advanced/fastapi-integration.md
+  - API Reference:
+    - Queue class: reference/queue.md
+    - TestQueue class: reference/testqueue.md
+    - CLI reference: reference/cli.md
+    - Models:
+      - Task: reference/task.md
+      - Spec: reference/task-spec.md
+      - Config: reference/task-config.md
+      - TaskCron: reference/task-cron.md
+    - Backends:
+      - Backend class: reference/backends/backend.md
+      - RedisBackend class: reference/backends/redis-backend.md
+      - MemoryBackend class: reference/backends/memory-backend.md
+    - Advanced:
+      - Worker class: reference/worker.md
+  - Code Examples:
+    - examples/index.md
+  - Changelog: changelog.md
+  - About:
+    - About Sheppy: about/index.md
+    - about/roadmap.md
+    - about/license.md
+
+plugins:
+  search: null
+  privacy: null
+  mkdocstrings:
+    handlers:
+      python:
+        options:
+          filters:
+            - '!^_'
+            - "!model_config"
+          show_root_heading: true
+          show_if_no_docstring: true
+          inherited_members: true
+          members_order: source
+          separate_signature: true
+          unwrap_annotated: true
+          merge_init_into_class: true
+          docstring_section_style: spacy
+          signature_crossrefs: true
+          show_symbol_type_heading: true
+          show_symbol_type_toc: true
+          show_labels: false
+          overloads_only: true
+          show_signature_annotations: true
+          show_signature_type_parameters: true
+
+markdown_extensions:
+  # python Markdown
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+
+  # python Markdown Extensions
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+  # code snippets
+  - pymdownx.snippets:
+      check_paths: true
+      # base_path: examples/
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/malvex
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/sheppy/
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/r/malvex/sheppy

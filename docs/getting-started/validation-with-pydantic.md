@@ -1,0 +1,3 @@
+# Validation with Pydantic
+
+todo
