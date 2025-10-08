@@ -9,34 +9,32 @@ This guide covers various strategies and best practices for testing your Sheppy 
 Let's say you have a simple task defined as follows:
 
 ```python title="tasks.py"
---8<-- "testing/basic-example/tasks.py"
+--8<-- "examples/testing/basic-example/tasks.py"
 ```
 
 You can write tests for this task using `pytest` and Sheppy's `TestQueue`.
 
 ```python title="tests/test_tasks.py"
---8<-- "testing/basic-example/tests/test_tasks.py"
+--8<-- "examples/testing/basic-example/tests/test_tasks.py"
 ```
+
+Tasks are executed synchronously in the test, allowing you to easily assert their outcomes.
 
 ### Testing Task Failures
 
+In this example, we have a task `divide` that may raise an exception when dividing by zero. We can write tests to ensure that the task behaves correctly in both success and failure scenarios.
+
 ```python title="tests/test_failure.py"
---8<-- "testing/test_failure.py"
+--8<-- "examples/testing/test_failure.py"
 ```
 
 ### Testing Retry Logic
 
 ```python title="tests/test_retry_logic.py"
---8<-- "testing/test_retry_logic.py"
+--8<-- "examples/testing/test_retry_logic.py"
 ```
 
-### Task timeouts
-
-```python
-
-```
-
-### Assert helper functions
+## Assert helper functions
 
 Sheppy provides several helper functions to assert task states in your tests:
 
@@ -47,9 +45,13 @@ Sheppy provides several helper functions to assert task states in your tests:
 #### Usage
 
 ```python title="tests/test_assert_helper_functions.py"
----8<-- "testing/test_assert_helper_functions.py"
+---8<-- "examples/testing/test_assert_helper_functions.py"
 ```
 
 ## Next Steps
 
-(todo)
+You may be interested in exploring the following topics next:
+
+- [Async Task Testing](advanced/async-task-testing.md) - Learn how to test asynchronous tasks. (advanced)
+- [FastAPI Integration](fastapi-integration.md) - Learn how to use Sheppy with FastAPI.
+- [Examples](../examples/index.md) - Explore real-world usage patterns and examples of Sheppy in action.

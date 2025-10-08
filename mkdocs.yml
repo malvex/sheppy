@@ -27,13 +27,16 @@ nav:
   - Home: index.md
   - Getting Started:
     - getting-started/index.md
+    - Quickstart: getting-started/quickstart.md
     - getting-started/task-scheduling.md
-    - getting-started/cron.md
-    - getting-started/priority-queues.md
-    - getting-started/testing.md
     - getting-started/error-handling.md
-    - getting-started/core-concepts.md
-    - getting-started/fastapi-integration.md
+    - getting-started/validation-with-pydantic.md
+    - getting-started/testing.md
+    - getting-started/cron.md
+    - Advanced:
+      - getting-started/advanced/fastapi-integration.md
+      - getting-started/advanced/async-testing.md
+      - getting-started/advanced/priority-queues.md
   - API Reference:
     - Queue class: reference/queue.md
     - TestQueue class: reference/testqueue.md
@@ -44,19 +47,18 @@ nav:
       - Config: reference/task-config.md
       - TaskCron: reference/task-cron.md
     - Backends:
-      - Backend abstract class: reference/backends/backend.md
+      - Backend class: reference/backends/backend.md
       - RedisBackend class: reference/backends/redis-backend.md
       - MemoryBackend class: reference/backends/memory-backend.md
     - Advanced:
       - Worker class: reference/worker.md
   - Code Examples:
     - examples/index.md
-    - examples/basic-task.md
-    - examples/error-handling.md
-    - examples/fastapi-app.md
-    - examples/scheduled-tasks.md
-    - examples/testing.md
   - Changelog: changelog.md
+  - About:
+    - About Sheppy: about/index.md
+    - about/roadmap.md
+    - about/license.md
 
 plugins:
   search: null
@@ -120,7 +122,7 @@ markdown_extensions:
   # code snippets
   - pymdownx.snippets:
       check_paths: true
-      base_path: examples/
+      # base_path: examples/
 
 extra:
   social:
