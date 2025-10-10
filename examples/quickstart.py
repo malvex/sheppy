@@ -1,16 +1,14 @@
-from sheppy import MemoryBackend, Queue, task
 import asyncio
+from sheppy import Queue, RedisBackend, task
 
-backend = MemoryBackend()
-queue = Queue(backend)
 
 @task
 async def add(x: int, y: int) -> int:
     return x + y
 
-@task
-def divide(x: int, y: int) -> float:  # Task can be sync or async
-    return x / y
+
+backend = RedisBackend("redis://127.0.0.1:6379")
+queue = Queue(backend)
 
 
 async def main():
@@ -29,7 +27,7 @@ async def main():
     elif processed.error:
         print(f"Task {t.id} failed with error: {processed.error}")
     else:
-        # this should not happen because we are waiting for the task to complete
+        # this shouldn't happen because we are waiting for the task to complete
         print(f"Task {t.id} is still pending.")
 
 

@@ -34,7 +34,8 @@ The goal for this library is "to be simple, yet powerful". Sheppy is designed to
 Long story short, this is all you need to know:
 
 ```python
-from sheppy import task, Queue, RedisBackend
+from sheppy import Queue, RedisBackend, task
+
 # 1. use sheppy task decorator to mark functions as tasks
 @task
 async def add(x, y):
@@ -48,52 +49,7 @@ await queue.add(add(1, 2))
 # $ sheppy work
 ```
 
-That's it. Everything else is just Python.
-
-## Quick Example
-
-Create `tasks.py`:
-
-```python
-from sheppy import task
-
-@task
-async def greet(name: str) -> str:
-    return f"Hello, {name}!"
-
-@task
-async def calculate(x: int, y: int) -> int:
-    return x * y
-```
-
-Queue tasks from your app:
-
-```python
-import asyncio
-from sheppy import Queue, RedisBackend
-from tasks import greet, calculate
-
-async def main():
-    # Connect to Redis
-    backend = RedisBackend("redis://localhost:6379")
-    queue = Queue(backend)
-
-    # Queue some tasks
-    task1 = greet("World")
-    task2 = calculate(5, 10)
-
-    await queue.add(task1)
-    await queue.add(task2)
-
-    print(f"Queued tasks: {task1.id}, {task2.id}")
-
-asyncio.run(main())
-```
-
-Start processing (in terminal):
-```bash
-sheppy work
-```
+That's it. Everything else is just Python!
 
 ## Next Steps
 

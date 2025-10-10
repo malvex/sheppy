@@ -8,6 +8,7 @@ This guide will walk you through installing Sheppy and creating your first task 
 pip install sheppy
 # or if you're using uv:
 uv add sheppy
+source .venv/bin/activate
 ```
 
 ## Your First Task
@@ -29,7 +30,7 @@ This will import the necessary components from Sheppy and other standard librari
 Next, define a task using the `@task` decorator:
 
 ```python title="quickstart.py"
---8<-- "examples/quickstart.py:7:9"
+--8<-- "examples/quickstart.py:5:7"
 ```
 
 The `@task` decorator converts your function into a task that can be queued and processed asynchronously.
@@ -39,25 +40,25 @@ The `@task` decorator converts your function into a task that can be queued and 
 
 ### Step 2: Create a Queue
 
-You need a backend to store tasks.
-
-Let's define a Redis backend and create a queue. (FIXME)
+To interact with tasks, we need a queue. Queues require a backend to store tasks, so let's define a Redis backend and create a queue.
 
 ```python title="quickstart.py"
---8<-- "examples/quickstart.py:2:6"
+--8<-- "examples/quickstart.py:10:11"
 ```
 
 !!! note
     * Sheppy currently only supports Redis and in-memory backends, but more are coming soon (see [Roadmap](../about/roadmap.md)).
-    * Alternatively, you can implement your own backend by extending the `Backend` class. More details in the [Custom Backend](advanced/custom-backend.md) guide (advanced topic).
+    * Alternatively, you can implement your own backend by extending the `Backend` class. More details in the [Custom Backend](advanced/custom-backend.md) guide (advanced).
 
 !!! tip
     Start Redis using docker: `docker run -d --name redis -p 6379:6379 redis:latest`
 
 ### Step 3: Instantiating and Adding Tasks to the Queue
 
+Sheppy uses asynchronous python, so we need to define an async `main` function to interact with the queue.
+
 ```python
---8<-- "examples/quickstart.py:16:22"
+--8<-- "examples/quickstart.py:14:20"
 ```
 
 ### Step 4: Wait for Task Completion
@@ -65,10 +66,10 @@ Let's define a Redis backend and create a queue. (FIXME)
 Now we need to wait for the task to get processed to get the result.
 
 ```python
---8<-- "examples/quickstart.py:16:16"
+--8<-- "examples/quickstart.py:14:14"
     # ... previous code ...
 
---8<-- "examples/quickstart.py:25:33"
+--8<-- "examples/quickstart.py:22:31"
 ```
 
 ### Step 5: Run the Script
@@ -76,9 +77,7 @@ Now we need to wait for the task to get processed to get the result.
 First add this to the bottom of `quickstart.py` to run the `main` function:
 
 ```python
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+--8<-- "examples/quickstart.py:34:35"
 ```
 
 Then run the script in your terminal:
@@ -94,22 +93,33 @@ The script will hang because there is no worker to process the task yet.
 In separate terminal, start a worker to process tasks from the queue:
 
 ```bash
-sheppy work --redis-url redis://localhost:6379
+sheppy work --redis-url redis://127.0.0.1:6379
 ```
 
 You should immediately see the worker pick up and process the task.
 
 ```plaintext title="Second Terminal Output"
-Worker started, listening for tasks...
-Processing task (some UUID)...
-Task (some UUID) completed.
+bash:~$ sheppy work --redis-url redis://127.0.0.1:6379
+Starting worker for queue 'default'
+  Backend: redis [redis://127.0.0.1:6379]
+  Job processing: True  Scheduler: True  Cron Manager: True
+  Max concurrent tasks: 10
+
+[03:35:21]  INFO   <Scheduler> started
+            INFO   <CronManager> started
+            INFO   <Worker> Processing task 074396c1-e11f-40a3-b22b-094dc89573ea
+                   (examples.quickstart:add)
+            INFO   <Worker> Task 074396c1-e11f-40a3-b22b-094dc89573ea completed
+                   successfully
 ```
 
 Meanwhile in the first terminal, you should see the result printed after the task is processed:
 
 ```plaintext title="First Terminal Output"
-Task (some UUID) added to the queue.
-Task (some UUID) completed with result: 3
+bash:~$ python quickstart.py
+Task 074396c1-e11f-40a3-b22b-094dc89573ea added to the queue.
+Task 074396c1-e11f-40a3-b22b-094dc89573ea completed with result: 3
+bash:~$
 ```
 
 ### Step 7: Celebrate!
@@ -142,63 +152,11 @@ def sync_task(x: int) -> int:
 
 Sync tasks automatically run in a thread pool to avoid blocking the event loop.
 
-## Task State and Results
-
-Tasks have several states throughout their lifecycle:
-
-```python
-# create a task (not yet queued)
-task = my_task(arg1, arg2)
-
-# add to queue
-await queue.add(task)
-
-# blocking wait for task completion
-task = await queue.wait_for(task)
-assert task.completed
-
-# or retrieve the task anytime even if it's still pending
-# task = await queue.get_task(task)
-
-if task.completed:
-    print(f"Success! Result: {task.result}")
-elif task.error:
-    print(f"Failed with error: {task.error}")
-else:
-    print("Still processing...")
-```
-
-## Error Handling
-
-Tasks that raise exceptions are marked as failed. Exception message is stored in `error` attribute:
-
-```python
-@task
-async def risky_task(value: int) -> int:
-    if value < 0:
-        raise ValueError("Value must be positive")
-    return value * 2
-
-task = risky_task(-5)
-await queue.add(task)
-
-task = await queue.wait_for(task)
-
-if task.error:
-    print(f"Task failed: {task.error}")  # prints "Task failed: Value must be positive"
-```
-
 ## Next Steps
 
 Now that you understand the basics:
 
-- Learn about [Core Concepts](core-concepts.md) like task lifecycle and queue mechanics
-- Explore [FastAPI Integration](fastapi-integration.md) for using Sheppy with FastAPI
+- Learn about [Handling Errors in Tasks](error-handling.md) to manage failures and retries
+- Explore [FastAPI Integration](advanced/fastapi-integration.md) for using Sheppy with FastAPI
 - Read the [Testing Guide](testing.md) to learn about testing strategies
 - Check out [Examples](../examples/index.md) for real-world usage patterns
-
-## Quick Tips
-
-1. **Tasks are just functions** - Keep them simple and focused
-2. **Return Pydantic models** - They're automatically serialized/deserialized
-3. **If you are using FastAPI** - Use `Depends()` with Sheppy for Dependency Injection the same way you use it with FastAPI
