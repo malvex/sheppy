@@ -1,0 +1,48 @@
+name: build-docs
+
+on:
+  push:
+    branches:
+      - master
+      - feat/docs  # temp
+  workflow_dispatch:
+
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure Git Credentials
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 15851033+github-actions[bot]@users.noreply.github.com
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.13
+        run: uv venv --python 3.13
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - run: uv pip install mkdocs-material==9.6.20 'mkdocstrings[python]==0.30.1'
+
+      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
+
+      - uses: actions/cache@v4
+        with:
+          key: mkdocs-material-${{ env.cache_id }}
+          path: ~/.cache
+          restore-keys: |
+            mkdocs-material-
+
+      - run: uv run mkdocs gh-deploy --force
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
