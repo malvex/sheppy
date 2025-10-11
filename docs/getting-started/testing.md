@@ -52,6 +52,6 @@ Sheppy provides several helper functions to assert task states in your tests:
 
 You may be interested in exploring the following topics next:
 
-- [Async Task Testing](advanced/async-task-testing.md) - Learn how to test asynchronous tasks. (advanced)
+- [Async Task Testing](advanced/async-task-testing.md) - Learn how to test asynchronous tasks.
 - [FastAPI Integration](advanced/fastapi-integration.md) - Learn how to use Sheppy with FastAPI.
 - [Examples](../examples/index.md) - Explore real-world usage patterns and examples of Sheppy in action.

@@ -114,7 +114,7 @@ class Worker:
         self._tasks_to_process: int | None = None
         self._empty_queues: list[str] = []
 
-    async def work(self, max_tasks: int | None = None, oneshot: bool = False) -> None:
+    async def work(self, max_tasks: int | None = None, oneshot: bool = False, register_signal_handlers: bool = True) -> None:
         """Start worker to process tasks from the queue.
 
         Args:
@@ -135,7 +135,8 @@ class Worker:
         """
         # register signals
         loop = asyncio.get_event_loop()
-        self.__register_signal_handlers(loop)
+        if register_signal_handlers:
+            self.__register_signal_handlers(loop)
 
         self._tasks_to_process = max_tasks
         self._empty_queues.clear()
@@ -195,8 +196,9 @@ class Worker:
                         #     logger.error(f"Failed to requeue task {task.id}: {e}", exc_info=True)
 
         # unregister signals
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.remove_signal_handler(sig)
+        if register_signal_handlers:
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                loop.remove_signal_handler(sig)
 
         logger.info(f"Worker stopped. Processed: {self.stats.processed}, Failed: {self.stats.failed}")
 
