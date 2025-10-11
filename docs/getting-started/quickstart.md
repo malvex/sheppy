@@ -48,7 +48,7 @@ To interact with tasks, we need a queue. Queues require a backend to store tasks
 
 !!! note
     * Sheppy currently only supports Redis and in-memory backends, but more are coming soon (see [Roadmap](../about/roadmap.md)).
-    * Alternatively, you can implement your own backend by extending the `Backend` class. More details in the [Custom Backend](advanced/custom-backend.md) guide (advanced).
+    * Alternatively, you can implement your own backend by extending the `Backend` class.
 
 !!! tip
     Start Redis using docker: `docker run -d --name redis -p 6379:6379 redis:latest`

@@ -12,7 +12,6 @@ Sheppy is an async-first task queue designed to be simple enough to understand c
 - **Simplicity**: Just two concepts - `@task` decorator and `Queue`
 - **Zero Latency**: Redis Streams deliver tasks instantly, no polling
 - **Type Safety**: Full Pydantic integration for automatic validation and serialization
-- **Production Ready**: Battle-tested with Redis, built for real workloads
 - **Scale Naturally**: Just run more workers with `sheppy work`
 - **No Magic** - You should be able to understand what's happening
 
@@ -29,7 +28,7 @@ Most task queues are either:
 
 ### The Solution
 
-The goal for this library is "to be simple, yet powerful". Sheppy is designed to be have minimal API interface with just a few simple concepts to learn, while implementing industry best practices. No complex abstractions, no unnecessary wrappers. Just functions (tasks) and queues. If you can't learn this library in 5 minutes, then I owe you a beer!
+The goal for this library is to be "simple, yet powerful". Sheppy is designed to be have minimal API interface with just a few simple concepts to learn, while implementing industry best practices. No complex abstractions, no unnecessary wrappers. Just functions (tasks) and queues. If you can't learn this library in 5 minutes, then I owe you a beer!
 
 Long story short, this is all you need to know:
 

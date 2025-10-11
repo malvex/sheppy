@@ -132,5 +132,3 @@ extra:
       link: https://pypi.org/project/sheppy/
     - icon: fontawesome/brands/docker
       link: https://hub.docker.com/r/malvex/sheppy
-
-copyright: Copyright &copy; 2025 malvex
