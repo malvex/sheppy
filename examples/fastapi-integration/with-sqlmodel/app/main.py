@@ -9,6 +9,7 @@ This example demonstrates:
 """
 
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import Depends, FastAPI, HTTPException
 from sqlmodel import Session, select
@@ -17,7 +18,7 @@ from sheppy import Queue, RedisBackend
 
 from .database import create_db_and_tables, get_session
 from .models import AuditLog, User
-from .schemas import AuditLogResponse, TaskStatus, UserCreate, UserResponse, UserUpdate
+from .schemas import AuditLogResponse, UserCreate, UserResponse, UserUpdate
 from .tasks import (
     bulk_update_users,
     cleanup_inactive_users,
@@ -35,7 +36,7 @@ def get_queue() -> Queue:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
     # Startup: Create database tables
     create_db_and_tables()
@@ -72,7 +73,7 @@ async def create_user(
 ) -> User:
     """
     Create a new user.
-    
+
     This endpoint:
     1. Creates a user in the database synchronously
     2. Queues a background task to create an audit log
@@ -82,12 +83,12 @@ async def create_user(
     existing_user = session.exec(statement).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="User with this email already exists")
-    
+
     statement = select(User).where(User.username == user_data.username)
     existing_user = session.exec(statement).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="User with this username already exists")
-    
+
     # Create user
     user = User(
         email=user_data.email,
@@ -97,7 +98,7 @@ async def create_user(
     session.add(user)
     session.commit()
     session.refresh(user)
-    
+
     # Queue background task to create audit log
     task = create_audit_log(
         user_id=user.id,
@@ -106,7 +107,7 @@ async def create_user(
         metadata={"email": user.email, "username": user.username},
     )
     await queue.add(task)
-    
+
     return user
 
 
@@ -143,25 +144,24 @@ async def update_user(
 ) -> User:
     """
     Update a user.
-    
+
     This endpoint demonstrates updating the user synchronously
     and creating an audit log in the background.
     """
     user = session.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     # Update user fields
     update_data = user_data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(user, key, value)
-    
-    from datetime import datetime
+
     user.updated_at = datetime.utcnow()
     session.add(user)
     session.commit()
     session.refresh(user)
-    
+
     # Queue background task to create audit log
     task = create_audit_log(
         user_id=user.id,
@@ -170,7 +170,7 @@ async def update_user(
         metadata=update_data,
     )
     await queue.add(task)
-    
+
     return user
 
 
@@ -182,13 +182,13 @@ async def toggle_user_status(
 ) -> dict:
     """
     Toggle user active status using a background task.
-    
+
     This demonstrates using sheppy to handle database writes asynchronously.
     The API responds immediately while the task processes in the background.
     """
     task = update_user_activity(user_id=user_id, is_active=is_active)
     await queue.add(task)
-    
+
     return {
         "message": "User status update queued",
         "task_id": task.id,
@@ -205,14 +205,14 @@ async def bulk_update_users_endpoint(
 ) -> dict:
     """
     Bulk update multiple users in the background.
-    
+
     This is useful for long-running operations that shouldn't block the API.
     """
     update_dict = update_data.model_dump(exclude_unset=True)
-    
+
     task = bulk_update_users(user_ids=user_ids, update_data=update_dict)
     await queue.add(task)
-    
+
     return {
         "message": f"Bulk update queued for {len(user_ids)} users",
         "task_id": task.id,
@@ -227,13 +227,13 @@ async def cleanup_inactive_users_endpoint(
 ) -> dict:
     """
     Queue a task to cleanup inactive users.
-    
+
     This demonstrates scheduling maintenance tasks that query
     and update the database based on conditions.
     """
     task = cleanup_inactive_users(days_inactive=days_inactive)
     await queue.add(task)
-    
+
     return {
         "message": "Cleanup task queued",
         "task_id": task.id,
@@ -250,14 +250,14 @@ async def list_audit_logs(
 ) -> list[AuditLog]:
     """
     List audit logs with optional filtering by user.
-    
+
     This demonstrates reading data created by background tasks.
     """
     statement = select(AuditLog)
-    
+
     if user_id is not None:
         statement = statement.where(AuditLog.user_id == user_id)
-    
+
     statement = statement.order_by(AuditLog.created_at.desc()).offset(skip).limit(limit)
     audit_logs = session.exec(statement).all()
     return list(audit_logs)
@@ -271,5 +271,5 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

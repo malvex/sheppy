@@ -1,7 +1,6 @@
 """Database models for the FastAPI + SQLModel + Sheppy example."""
 
 from datetime import datetime
-from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
@@ -9,10 +8,10 @@ from sqlmodel import Field, SQLModel
 class User(SQLModel, table=True):
     """User model representing application users."""
 
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     email: str = Field(unique=True, index=True)
     username: str = Field(unique=True, index=True)
-    full_name: Optional[str] = None
+    full_name: str | None = None
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -21,9 +20,9 @@ class User(SQLModel, table=True):
 class AuditLog(SQLModel, table=True):
     """Audit log for tracking user actions and system events."""
 
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = Field(default=None, foreign_key="user.id", index=True)
     action: str = Field(index=True)
     description: str
-    metadata: Optional[str] = None  # JSON string for additional data
+    metadata: str | None = None  # JSON string for additional data
     created_at: datetime = Field(default_factory=datetime.utcnow)

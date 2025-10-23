@@ -1,7 +1,7 @@
 """Background tasks using sheppy for database operations."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import Depends
 from sqlmodel import Session, select
@@ -23,7 +23,7 @@ async def create_audit_log(
 ) -> TaskStatus:
     """
     Background task to create an audit log entry.
-    
+
     This demonstrates sheppy's ability to work with database operations
     using FastAPI's dependency injection pattern.
     """
@@ -37,7 +37,7 @@ async def create_audit_log(
         session.add(audit_log)
         session.commit()
         session.refresh(audit_log)
-        
+
         return TaskStatus(
             success=True,
             message=f"Audit log created with ID {audit_log.id}",
@@ -59,7 +59,7 @@ async def update_user_activity(
 ) -> TaskStatus:
     """
     Background task to update user activity status.
-    
+
     Demonstrates database write operations in background tasks.
     """
     try:
@@ -69,13 +69,13 @@ async def update_user_activity(
                 success=False,
                 message=f"User with ID {user_id} not found",
             )
-        
+
         user.is_active = is_active
         user.updated_at = datetime.utcnow()
         session.add(user)
         session.commit()
         session.refresh(user)
-        
+
         # Create an audit log for this action
         audit_log = AuditLog(
             user_id=user_id,
@@ -84,7 +84,7 @@ async def update_user_activity(
         )
         session.add(audit_log)
         session.commit()
-        
+
         return TaskStatus(
             success=True,
             message=f"User {user_id} activity updated to {is_active}",
@@ -106,13 +106,13 @@ async def bulk_update_users(
 ) -> TaskStatus:
     """
     Background task to update multiple users at once.
-    
+
     Demonstrates bulk database operations in background tasks.
     This is useful for long-running operations that shouldn't block API responses.
     """
     try:
         updated_count = 0
-        
+
         for user_id in user_ids:
             user = session.get(User, user_id)
             if user:
@@ -122,13 +122,13 @@ async def bulk_update_users(
                     user.full_name = update_data["full_name"]
                 if "is_active" in update_data:
                     user.is_active = update_data["is_active"]
-                
+
                 user.updated_at = datetime.utcnow()
                 session.add(user)
                 updated_count += 1
-        
+
         session.commit()
-        
+
         # Create audit log for bulk update
         audit_log = AuditLog(
             user_id=None,
@@ -138,7 +138,7 @@ async def bulk_update_users(
         )
         session.add(audit_log)
         session.commit()
-        
+
         return TaskStatus(
             success=True,
             message=f"Successfully updated {updated_count} out of {len(user_ids)} users",
@@ -158,30 +158,28 @@ async def cleanup_inactive_users(
 ) -> TaskStatus:
     """
     Background task to find and deactivate users who haven't been active.
-    
+
     This demonstrates querying the database and performing conditional updates.
     """
     try:
-        from datetime import timedelta
-        
         cutoff_date = datetime.utcnow() - timedelta(days=days_inactive)
-        
+
         # Find users who haven't been updated recently and are still active
         statement = select(User).where(
             User.updated_at < cutoff_date,
             User.is_active == True  # noqa: E712
         )
         users = session.exec(statement).all()
-        
+
         deactivated_count = 0
         for user in users:
             user.is_active = False
             user.updated_at = datetime.utcnow()
             session.add(user)
             deactivated_count += 1
-        
+
         session.commit()
-        
+
         # Create audit log
         audit_log = AuditLog(
             user_id=None,
@@ -191,7 +189,7 @@ async def cleanup_inactive_users(
         )
         session.add(audit_log)
         session.commit()
-        
+
         return TaskStatus(
             success=True,
             message=f"Deactivated {deactivated_count} inactive users",
