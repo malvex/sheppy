@@ -15,3 +15,6 @@ wheels/
 .vscode
 .coverage
 .cache/
+
+# Documentation build artifacts
+site/
