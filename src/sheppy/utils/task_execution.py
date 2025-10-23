@@ -137,8 +137,15 @@ class TaskProcessor:
         if task.should_retry:
             task.retry_count += 1
             task.last_retry_at = datetime.now(timezone.utc)
-            task.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task))
-            task.finished_at = None
+            
+            # Check again after incrementing retry_count
+            if task.should_retry:
+                task.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task))
+                task.finished_at = None
+            else:
+                # Last retry exhausted
+                task.next_retry_at = None
+                task.finished_at = datetime.now(timezone.utc)
         else:
             task.finished_at = datetime.now(timezone.utc)
 

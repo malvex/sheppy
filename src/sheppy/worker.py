@@ -1,8 +1,10 @@
 import asyncio
+import inspect
 import logging
 import signal
 from functools import partial
 
+import anyio
 from pydantic import BaseModel
 
 from .backend.base import Backend
@@ -40,6 +42,7 @@ class Worker:
         enable_job_processing (bool): If True, enables job processing. Default is True.
         enable_scheduler (bool): If True, enables the scheduler to enqueue scheduled tasks. Default is True.
         enable_cron_manager (bool): If True, enables the cron manager to handle cron jobs. Default is True.
+        on_failure (callable | None): Optional callback function to handle permanently failed tasks (Dead Letter Queue handler). The callback receives a Task instance as its only argument. It can be either sync or async. Default is None.
 
     Attributes:
         queues (list[Queue]): List of Queue instances corresponding to the specified queue names.
@@ -48,6 +51,7 @@ class Worker:
         enable_job_processing (bool): Indicates if job processing is enabled.
         enable_scheduler (bool): Indicates if the scheduler is enabled.
         enable_cron_manager (bool): Indicates if the cron manager is enabled.
+        on_failure (callable | None): Callback function for permanently failed tasks.
 
     Raises:
         ValueError: If none of the processing types (job processing, scheduler, cron manager) are enabled.
@@ -55,11 +59,19 @@ class Worker:
     Example:
         ```python
         import asyncio
-        from sheppy import Worker, RedisBackend
+        from sheppy import Worker, RedisBackend, Task
+
+        async def handle_failed_task(task: Task):
+            print(f"Task {task.id} failed permanently: {task.error}")
+            # Send alert, log to monitoring system, etc.
 
         async def main():
             backend = RedisBackend()
-            worker = Worker(queue_name="default", backend=backend)
+            worker = Worker(
+                queue_name="default",
+                backend=backend,
+                on_failure=handle_failed_task
+            )
 
             await worker.work()
 
@@ -77,6 +89,7 @@ class Worker:
         enable_job_processing: bool = True,
         enable_scheduler: bool = True,
         enable_cron_manager: bool = True,
+        on_failure: object | None = None,
     ):
         if not any([enable_job_processing, enable_scheduler, enable_cron_manager]):
             raise ValueError("At least one processing type must be enabled")
@@ -105,6 +118,7 @@ class Worker:
         self.enable_job_processing = enable_job_processing
         self.enable_scheduler = enable_scheduler
         self.enable_cron_manager = enable_cron_manager
+        self.on_failure = on_failure
 
         self._work_queue_tasks: list[asyncio.Task[None]] = []
         self._scheduler_task: asyncio.Task[None] | None = None
@@ -329,19 +343,33 @@ class Worker:
         else:
             self.stats.failed += 1
 
-        # non retriable task
+        # non retriable task - permanent failure
         if task.error and not task.is_retriable:
             logger.error(WORKER_PREFIX + f"Task {task.id} failed: {exception}", exc_info=True)
+            if self.on_failure:
+                await self._invoke_failure_handler(task)
 
-        # retriable task - final failure
+        # retriable task - final failure after exhausting retries
         if task.error and task.is_retriable and not task.should_retry:
             logger.error(WORKER_PREFIX + f"Task {task.id} failed after {task.retry_count} retries: {exception}", exc_info=True)
+            if self.on_failure:
+                await self._invoke_failure_handler(task)
 
         # retriable task - reschedule
         if task.error and task.should_retry:
             logger.warning(WORKER_PREFIX + f"Task {task.id} failed (attempt {task.retry_count}/{task.config.retry}), scheduling retry at {task.next_retry_at}")
 
         return task
+
+    async def _invoke_failure_handler(self, task: Task) -> None:
+        """Invoke the on_failure handler for permanently failed tasks."""
+        try:
+            if inspect.iscoroutinefunction(self.on_failure):
+                await self.on_failure(task)  # type: ignore[misc]
+            else:
+                await anyio.to_thread.run_sync(lambda: self.on_failure(task))  # type: ignore[misc]
+        except Exception:
+            logger.exception(f"DLQ handler failed for task {task.id}", exc_info=True)
 
     async def _store_result(self, queue: Queue, task: Task) -> None:
         try:
