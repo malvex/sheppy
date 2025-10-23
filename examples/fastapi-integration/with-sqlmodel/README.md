@@ -73,6 +73,17 @@ sheppy work
 
 The worker will process background tasks from the queue.
 
+## Quick Demo
+
+To see all the features in action, run the demo script (after starting the app and worker):
+
+```bash
+cd examples/fastapi-integration/with-sqlmodel
+python demo.py
+```
+
+This will demonstrate all the key features including user creation, updates, background tasks, and audit logging.
+
 ## API Endpoints
 
 ### Users
