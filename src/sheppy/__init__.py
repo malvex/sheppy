@@ -1,5 +1,5 @@
 from .backend import Backend, BackendError, MemoryBackend, RedisBackend
-from .models import Task
+from .models import CURRENT_TASK, Task
 from .queue import Queue
 from .task_factory import task
 from .testqueue import TestQueue
@@ -12,7 +12,7 @@ __all__ = [  # noqa
     # fastapi
     "Depends",
     # task
-    "task", "Task",
+    "task", "Task", "CURRENT_TASK",
     # queue
     "Queue",
     # testqueue

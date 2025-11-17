@@ -8,7 +8,7 @@ from typing import Annotated, Any, get_args, get_origin, get_type_hints
 
 from pydantic import TypeAdapter, ValidationError
 
-from sheppy.models import Task
+from sheppy.models import CURRENT_TASK
 
 from .fastapi import Depends
 
@@ -39,11 +39,8 @@ def validate_input(
 
     for param_name, param in signature.parameters.items():
 
+        # task self injection
         if _is_task_injection(param):
-            if param.default != inspect.Parameter.empty:
-                raise ValidationError.from_exception_data(
-                    f"Task injection parameter '{param_name}' cannot have a default value", line_errors=[]
-                )
             if param_name in remaining_kwargs:
                 raise ValidationError.from_exception_data(
                     f"Cannot provide value for Task injection parameter '{param_name}'", line_errors=[]
@@ -109,10 +106,7 @@ def validate_input(
 
 
 def _is_task_injection(param: inspect.Parameter) -> bool:
-    if param.name != 'self':
-        return False
-
-    return param.annotation is Task or param.annotation == 'Task'
+    return param.default is CURRENT_TASK
 
 
 def _is_depends_parameter(param: inspect.Parameter) -> bool:
