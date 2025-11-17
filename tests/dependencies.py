@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel
 
-from sheppy import Depends, Task, task
+from sheppy import CURRENT_TASK, Depends, Task, task
 
 
 class User(BaseModel):
@@ -139,18 +139,18 @@ async def async_task_with_pydantic_model(user: User) -> Status:
 
 
 @task
-def task_with_self(self: Task, x: int, y: int) -> dict[str, Any]:
-    return {"task_id": self.id, "result": x + y}
+def task_with_current_task(current: Task = CURRENT_TASK, x: int = 5, y: int = 6) -> dict[str, Any]:
+    return {"task_id": current.id, "result": x + y}
 
 
 @task
-def task_with_self_middle(x: int, self: Task, y: int) -> dict[str, Any]:
-    return {"task_id": self.id, "result": x + y}
+def task_with_current_task_middle(x: int, current: Task = CURRENT_TASK, y: int = 7) -> dict[str, Any]:
+    return {"task_id": current.id, "result": x + y}
 
 
 @task
-def task_with_self_end(x: int, y: int, self: Task) -> dict[str, Any]:
-    return {"task_id": self.id, "result": x + y}
+def task_with_current_task_end(x: int, y: int, current: Task = CURRENT_TASK) -> dict[str, Any]:
+    return {"task_id": current.id, "result": x + y}
 
 
 @task
@@ -482,9 +482,9 @@ class TaskTestCases:
     def self_referencing_tasks() -> list[TaskTestCase]:
         """Tasks that should fail."""
         return [
-            TaskTestCase("task_with_self", task_with_self, (22, 33), expected_result=55),
-            TaskTestCase("task_with_self_middle", task_with_self_middle, (22, 33), expected_result=55),
-            TaskTestCase("task_with_self_end", task_with_self_end, (22, 33), expected_result=55),
+            TaskTestCase("task_with_current_task", task_with_current_task, (), {"x": 22, "y": 33}, expected_result=55),
+            TaskTestCase("task_with_current_task_middle", task_with_current_task_middle, (22, ), {"y": 33}, expected_result=55),
+            TaskTestCase("task_with_current_task_end", task_with_current_task_end, (22, 33), expected_result=55),
         ]
 
     @staticmethod

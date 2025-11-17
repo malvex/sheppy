@@ -26,6 +26,9 @@ R = TypeVar('R')
 
 TASK_CRON_NS = UUID('7005b432-c135-4131-b19e-d3dc89703a9a')
 
+# sentinel object for current task injection (def my_task(x: int, task: Task = CURRENT_TASK): ...)
+CURRENT_TASK = object()
+
 
 def cron_expression_validator(value: str) -> str:
     if not croniter.is_valid(value):
