@@ -608,3 +608,65 @@ class TestRetry:
         assert len(processed2) == 1
         assert_is_failed(processed2[0])
         assert queue.get_scheduled() == []
+
+
+class TestChaining:
+    def test_retry(self):
+        queue = TestQueue()
+        task = failing_task()
+
+        queue.add(task)
+
+
+    def test_task_chaining(self, task_chaining_fn: Callable[[], Task]) -> None:
+        queue = TestQueue()
+        t1 = task_chaining_fn(3, asynchronous=True)  # type: Task
+        t2 = task_chaining_fn(4, asynchronous=False)  # type: Task
+
+        queue.add([t1, t2])
+
+        assert queue.size() == 2
+
+        t1 = queue.process_next()
+        t2 = queue.process_next()
+
+        assert queue.size() == 2
+
+        assert_is_completed(t1)
+        assert_is_completed(t2)
+
+        t1_subtask = t1.result
+        t2_subtask = t2.result
+
+        assert_is_new(t1_subtask)
+        assert_is_new(t2_subtask)
+        assert isinstance(t1_subtask, Task)
+        assert isinstance(t2_subtask, Task)
+
+        processed = queue.process_all()
+        assert len(processed) == 2
+        assert queue.size() == 0
+
+        t1_subtask, t2_subtask = processed
+
+        assert_is_completed(t1_subtask)
+        assert_is_completed(t2_subtask)
+
+        assert t1_subtask.result == 9
+        assert t2_subtask.result == 12
+
+
+    def test_task_chaining_bulk(self, task_chaining_bulk_fn: Callable[[], Task]) -> None:
+        queue = TestQueue()
+        t1 = task_chaining_bulk_fn(3, asynchronous=True)  # type: Task
+        t2 = task_chaining_bulk_fn(4, asynchronous=False)  # type: Task
+
+        queue.add([t1, t2])
+
+        assert queue.size() == 2
+
+        queue.process_next()
+        queue.process_next()
+
+        # bulk task chaining not supported yet
+        assert queue.size() == 0
