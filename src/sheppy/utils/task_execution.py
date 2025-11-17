@@ -123,7 +123,7 @@ class TaskProcessor:
     @staticmethod
     async def handle_failed_task(task: TaskInternal, exception: Exception) -> TaskInternal:
         task.completed = False
-        task.error = str(exception)
+        task.error = f"{exception.__class__.__name__}: {exception}"
 
         if task.is_retriable:
             task = TaskProcessor.handle_retry(task)

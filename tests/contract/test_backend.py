@@ -30,13 +30,13 @@ def tasks(datetime_now: datetime) -> dict[str, dict]:
 
     def _set_failed(task: TaskInternal) -> None:
         task.completed = False
-        task.error = "some error happened"
+        task.error = "Exception: some error happened"
         task.result = None
         task.finished_at = datetime_now
 
     def _set_failed_should_retry(task: TaskInternal) -> None:
         task.completed = False
-        task.error = "some error happened"
+        task.error = "Exception: some error happened"
         task.result = None
         task.retry_count += 1
         task.last_retry_at = datetime_now - timedelta(seconds=6)

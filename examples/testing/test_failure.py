@@ -26,4 +26,4 @@ def test_divide_by_zero():
 
     # verify the second task result (should fail)
     assert processed_tasks[1].completed is False
-    assert processed_tasks[1].error == "division by zero"
+    assert processed_tasks[1].error == "ZeroDivisionError: division by zero"

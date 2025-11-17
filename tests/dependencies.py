@@ -496,14 +496,14 @@ class TaskTestCases:
                 failing_task,
                 kwargs={"message": "Test failure"},
                 should_fail=True,
-                expected_error="Test failure"
+                expected_error="ValueError: Test failure"
             ),
             TaskTestCase(
                 "async_failure",
                 async_failing_task,
                 kwargs={"message": "Async test failure"},
                 should_fail=True,
-                expected_error="Async test failure"
+                expected_error="ValueError: Async test failure"
             ),
         ]
 
