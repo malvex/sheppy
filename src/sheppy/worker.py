@@ -321,6 +321,19 @@ class Worker:
             if task.error and task.should_retry and task.next_retry_at is not None:
                 await queue.retry(task, task.next_retry_at)
 
+            # basic task chaining
+            if task.completed and task.result:
+                if isinstance(task.result, Task):
+                    logger.info(WORKER_PREFIX + f"Adding task {task.id} into Queue (Chained Task)")
+                    await queue.add(task.result)
+
+                # temporary hacky way to handle this, should be done better once this is refactored
+                elif isinstance(task.result, list) and isinstance(task.result[0], Task):
+                    _tasks = [item for item in task.result if isinstance(item, Task)]
+                    for _task in _tasks:
+                        logger.info(WORKER_PREFIX + f"Adding task {_task.id} into Queue (Chained Task)")
+                    await queue.add(_tasks)
+
             return task
 
     async def process_task(self, task: Task) -> Task:

@@ -6,7 +6,6 @@ from typing import (
     Any,
     ParamSpec,
     TypeVar,
-    get_type_hints,
     overload,
 )
 
@@ -24,23 +23,6 @@ class TaskFactory:
 
     def __init__(self) -> None:
         pass
-
-    @staticmethod
-    def _get_return_type(func: Callable[..., Any]) -> str | None:
-        """Get function return type"""
-        if func in cache_return_type:
-            return cache_return_type.get(func)
-
-        try:
-            return_type = get_type_hints(func).get('return')
-            if return_type and hasattr(return_type, '__module__') and hasattr(return_type, '__qualname__'):
-                return_type = f"{return_type.__module__}.{return_type.__qualname__}"
-        except TypeError:
-            return_type = None
-
-        cache_return_type[func] = return_type
-
-        return return_type
 
     @staticmethod
     def _stringify_function(func: Callable[..., Any]) -> str:
@@ -66,8 +48,6 @@ class TaskFactory:
                     retry_delay: float | list[float] | None,
                     middleware: list[Callable[..., Any]] | None
                     ) -> Task:
-        # Store return type to later reconstruct the result
-        return_type = TaskFactory._get_return_type(func)
 
         task_config: dict[str, Any] = {
             "retry": retry
@@ -90,7 +70,6 @@ class TaskFactory:
                 func=func_string,
                 args=args,
                 kwargs=kwargs,
-                return_type=return_type,
                 middleware=stringified_middlewares
             ),
             config=TaskConfig(**task_config)
