@@ -36,4 +36,4 @@ def test_fail_once():
 
     # check results manually as well
     assert processed[0].result == 3
-    assert processed[1].error == "division by zero"
+    assert processed[1].error == "ZeroDivisionError: division by zero"

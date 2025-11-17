@@ -17,7 +17,7 @@ async def test_retry(task_fail_once_fn: Callable[[], Task], queue: Queue, worker
 
     t = await queue.get_task(t)
     assert_is_failed(t)
-    assert t.error == "transient error"
+    assert t.error == "Exception: transient error"
     assert t.retry_count == 1
 
     await worker.work(1)

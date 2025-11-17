@@ -86,7 +86,7 @@ class TestQueue:
             # check task is failed
             assert_is_failed(processed_task)
             assert processed_task.result is None
-            assert processed_task.error == "division by zero"
+            assert processed_task.error == "ZeroDivisionError: division by zero"
 
             # check queue size is now zero
             assert q.size() == 0
