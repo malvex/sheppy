@@ -1,0 +1,71 @@
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - task --list
+    silent: true
+
+  install:
+    desc: Install dependencies
+    cmd: uv sync --dev
+
+  install-fastapi:
+    desc: Install FastAPI
+    cmd: uv pip install "fastapi[standard]"
+
+  ci:
+    desc: Run tests that runs in CI
+    cmds:
+      - task: test
+      - task: lint
+
+  test:
+    desc: Run pytest
+    cmd: uv run pytest tests/ --tb=short -ra --cov=src/sheppy --cov-report=term-missing
+
+  lint:
+    desc: Run mypy and ruff check
+    cmds:
+      - uv run mypy --strict src/sheppy/
+      - uv run ruff check src/ tests/
+
+  lintf:
+    # desc: Run ruff format check (doesn't run in CI atm)
+    cmd: uv run ruff format --check src/ tests/
+
+  generate_cli_docs:
+    desc: Generates docs/cli.md
+    cmd: uv run typer sheppy.cli.cli utils docs --name sheppy --title "Sheppy CLI reference" --output docs/reference/cli.md
+
+  py310:
+    desc: Switch Python to version 3.10
+    cmd: uv venv --python 3.10 --clear && uv sync --dev
+
+  py311:
+    desc: Switch Python to version 3.11
+    cmd: uv venv --python 3.11 --clear && uv sync --dev
+
+  py312:
+    desc: Switch Python to version 3.12
+    cmd: uv venv --python 3.12 --clear && uv sync --dev
+
+  py313:
+    desc: Switch Python to version 3.13
+    cmd: uv venv --python 3.13 --clear && uv sync --dev
+
+  py314:
+    desc: Switch Python to version 3.14
+    cmd: uv venv --python 3.14 --clear && uv sync --dev
+
+  docs-install:
+    desc: Install dependencies for docs
+    cmd: uv pip install mkdocs-material==9.6.20 'mkdocstrings[python]==0.30.1'
+
+  docs-build:
+    desc: Build docs
+    cmd: uv run mkdocs build
+
+  docs-dev:
+    desc: Run docs locally
+    cmd: uv run mkdocs serve --livereload -w src -w examples # --strict
