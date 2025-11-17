@@ -74,6 +74,7 @@ class Worker:
         backend: Backend,
         shutdown_timeout: float = 30.0,
         max_concurrent_tasks: int = 10,
+        max_prefetch_tasks: int = None,
         enable_job_processing: bool = True,
         enable_scheduler: bool = True,
         enable_cron_manager: bool = True,
@@ -93,6 +94,7 @@ class Worker:
 
         self._task_processor = TaskProcessor()
         self._task_semaphore = asyncio.Semaphore(max_concurrent_tasks)
+        self._max_prefetch_tasks = max_prefetch_tasks
         self._shutdown_event = asyncio.Event()
         self._ctrl_c_counter = 0
 
@@ -277,6 +279,8 @@ class Worker:
 
             # how many tasks to get
             capacity = self._task_semaphore._value
+            if self._max_prefetch_tasks:
+                capacity = min(capacity, self._max_prefetch_tasks)
             if self._tasks_to_process is not None:
                 capacity = min(capacity, self._tasks_to_process)
 
