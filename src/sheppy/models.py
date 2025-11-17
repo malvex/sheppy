@@ -1,4 +1,3 @@
-import importlib
 from datetime import datetime, timezone
 from typing import (
     Annotated,
@@ -15,10 +14,11 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    TypeAdapter,
     field_validator,
     model_validator,
 )
+
+from .utils.functions import reconstruct_result
 
 P = ParamSpec('P')
 R = TypeVar('R')
@@ -46,7 +46,6 @@ class TaskSpec(BaseModel):
         func (str): Fully qualified function name, e.g. `my_module.my_submodule:my_function`
         args (tuple[Any, ...]): Positional arguments to be passed to the function.
         kwargs (dict[str, Any]): Keyword arguments to be passed to the function.
-        return_type (str|None): Fully qualified return type name, e.g. `my_module.submodule:MyPydanticModel`. This is used to reconstruct the return value if it's a pydantic model.
         middleware (list[str]|None): List of fully qualified middleware function names to be applied to the task, e.g. `['my_module.submodule:my_middleware']`. Middleware will be applied in the order they are listed.
 
     Note:
@@ -76,8 +75,6 @@ class TaskSpec(BaseModel):
     """tuple[Any, ...]: Positional arguments to be passed to the function."""
     kwargs: dict[str, Any] = Field(default_factory=dict)
     """dict[str, Any]: Keyword arguments to be passed to the function."""
-    return_type: str | None = None
-    """str|None: Fully qualified return type name, e.g. `my_module.submodule:MyPydanticModel`. This is used to reconstruct the return value if it's a pydantic model."""
     middleware: list[str] | None = None
     """list[str]|None: List of fully qualified middleware function names to be applied to the task, e.g. `['my_module.submodule:my_middleware']`. Middleware will be applied in the order they are listed."""
 
@@ -211,12 +208,8 @@ class Task(BaseModel):
     def _reconstruct_pydantic_result(self) -> 'Task':
         """Reconstruct result if it's pydantic model."""
 
-        if self.result and self.spec.return_type:
-            # Reconstruct return if it's pydantic model
-            module_name, type_name = self.spec.return_type.rsplit('.', 1)
-            module = importlib.import_module(module_name)
-            return_type = getattr(module, type_name)
-            self.__dict__["result"] = TypeAdapter(return_type).validate_python(self.result)
+        if self.result is not None:
+            self.__dict__["result"] = reconstruct_result(self.spec.func, self.result)
 
         return self
 

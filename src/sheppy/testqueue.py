@@ -407,6 +407,16 @@ class TestQueue:
                 # retry immediately
                 await self._queue.retry(task)
 
+        # basic task chaining
+        if task.completed and task.result:
+            if isinstance(task.result, Task):
+                await self._queue.add(task.result)
+
+            # temporary hacky way to handle this, should be done better once this is refactored
+            elif isinstance(task.result, list) and isinstance(task.result[0], Task):
+                _tasks = [item for item in task.result if isinstance(item, Task)]
+                await self._queue.add(_tasks)
+
         await self._backend.store_result(self.name, task.model_dump(mode='json'))
 
         data = await self._backend.get_tasks(self.name, [str(task.id)])

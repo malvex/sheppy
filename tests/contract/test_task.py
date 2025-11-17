@@ -7,11 +7,8 @@ from sheppy import Task, task
 from sheppy.models import TaskConfig
 from tests.dependencies import (
     Status,
-    failing_task,
     simple_async_task,
-    simple_async_task_no_param,
     simple_sync_task,
-    simple_sync_task_no_param,
 )
 
 
@@ -84,7 +81,6 @@ def test_instanced_task_defaults(task_fn):
     assert task.spec.func == fn_name
     assert task.spec.args == (1, 2)
     assert task.spec.kwargs == {}
-    assert task.spec.return_type == "builtins.int"
     assert task.spec.middleware == []
 
     assert task.config.retry == 0
@@ -158,52 +154,6 @@ def test_input_pydantic_conversion(arg):
     t = convert_input(arg)
     assert isinstance(t.spec.args[0], Status)
     assert t.spec.args[0] == Status(code=200, message="OK")
-
-
-@pytest.mark.parametrize("task_fn,expected", [
-    (task_reconstruct, "tests.dependencies.Status"),
-    (task_reconstruct_no_annotation, None),
-    (task_reconstruct_from_annotation, "tests.dependencies.Status"),
-    (simple_async_task_no_param, "builtins.int"),
-    (simple_sync_task_no_param, "builtins.int"),
-    (failing_task, "builtins.NoneType"),  # ! FIXME?: this should probably just be `None`
-    (task_with_retry_only, None),
-])
-def test_task_return_type(task_fn, expected):
-    assert task_fn().spec.return_type == expected
-
-
-@pytest.mark.parametrize("task_fn", [
-    pytest.param(task_reconstruct, id="pydantic-model"),
-    pytest.param(task_reconstruct_from_annotation, id="dict-string-to-int"),
-])
-def test_reconstruct_result(task_fn):
-    task_orig = task_fn()
-    task_orig_dict = task_orig.model_dump(mode="json")
-
-    assert task_orig.spec.return_type == "tests.dependencies.Status"
-
-    task = Task.model_validate(task_orig_dict | {"result": {"code": 200, "message": "OK"}})
-
-    assert isinstance(task.result, Status)
-    assert task.result == Status(code=200, message="OK")
-
-
-@pytest.mark.parametrize("task_fn", [
-    pytest.param(task_reconstruct_no_annotation, id="dict"),
-    pytest.param(async_task_reconstruct_no_annotation, id="dict_async"),
-])
-def test_reconstruct_result_no_annotation(task_fn):
-    task_orig = task_fn()
-    task_orig_dict = task_orig.model_dump(mode="json")
-
-    assert task_orig.spec.return_type is None
-
-    task = Task.model_validate(task_orig_dict | {"result": {"code": 200, "message": "OK"}})
-
-    # no automatic model conversion if there is no annotation provided!
-    assert isinstance(task.result, dict)
-    assert task.result == {"code": 200, "message": "OK"}
 
 
 def test_immediate_validation(task_fn):

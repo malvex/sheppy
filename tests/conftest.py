@@ -89,3 +89,72 @@ def task_fail_once_fn(request):
         return sync_fail_once
 
     raise NotImplementedError
+
+
+@task
+async def async_task_add(x: int, y: int) -> int:
+    return x + y
+
+
+@task
+def sync_task_add(x: int, y: int) -> int:
+    return x + y
+
+
+@pytest.fixture(params=["async_task", "sync_task"])
+def task_add_fn(request):
+    if request.param == "async_task":
+        return async_task_add
+
+    if request.param == "sync_task":
+        return sync_task_add
+
+    raise NotImplementedError
+
+
+@task
+async def async_task_chaining(x: int, asynchronous: bool = True) -> Task:
+    return async_task_add(x, x*2) if asynchronous else sync_task_add(x, x*2)
+
+
+@task
+def sync_task_chaining(x: int, asynchronous: bool = True) -> Task:
+    return async_task_add(x, x*2) if asynchronous else sync_task_add(x, x*2)
+
+
+@pytest.fixture(params=["async_task", "sync_task"])
+def task_chaining_fn(request):
+    if request.param == "async_task":
+        return async_task_chaining
+
+    if request.param == "sync_task":
+        return sync_task_chaining
+
+    raise NotImplementedError
+
+
+@task
+async def async_task_chaining_bulk(x: int, asynchronous: bool = True) -> list[Task]:
+    return [
+        async_task_add(x, x*2) if asynchronous else sync_task_add(x, x*2),
+        async_task_add(x, x+2) if asynchronous else sync_task_add(x, x+2)
+    ]
+
+
+@task
+def sync_task_chaining_bulk(x: int, asynchronous: bool = True) -> list[Task]:
+    return [
+        async_task_add(x, x*2) if asynchronous else sync_task_add(x, x*2),
+        async_task_add(x, x+2) if asynchronous else sync_task_add(x, x+2)
+    ]
+
+
+@pytest.fixture(params=["async_task", "sync_task"])
+def task_chaining_bulk_fn(request):
+    if request.param == "async_task":
+        return async_task_chaining_bulk
+
+    if request.param == "sync_task":
+        return sync_task_chaining_bulk
+
+    raise NotImplementedError
