@@ -79,7 +79,15 @@ class TaskProcessor:
         except Exception as e:
             raise Exception("Middleware error") from e
 
-        return exception, task.create_task()
+        # result validation might fail
+        try:
+            final_task = task.create_task()
+        except Exception as e:
+            task = await TaskProcessor.handle_failed_task(task, e)
+            exception = e
+            final_task = task.create_task()
+
+        return exception, final_task
 
     @staticmethod
     async def process_pre_task_middleware(task: TaskInternal) -> tuple[TaskInternal, list[Any]]:
@@ -123,6 +131,7 @@ class TaskProcessor:
     @staticmethod
     async def handle_failed_task(task: TaskInternal, exception: Exception) -> TaskInternal:
         task.completed = False
+        task.result = None
         task.error = f"{exception.__class__.__name__}: {exception}"
 
         if task.is_retriable:
