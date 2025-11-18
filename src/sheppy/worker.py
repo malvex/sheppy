@@ -74,7 +74,7 @@ class Worker:
         backend: Backend,
         shutdown_timeout: float = 30.0,
         max_concurrent_tasks: int = 10,
-        max_prefetch_tasks: int = None,
+        max_prefetch_tasks: int | None = None,
         enable_job_processing: bool = True,
         enable_scheduler: bool = True,
         enable_cron_manager: bool = True,

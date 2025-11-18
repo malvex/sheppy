@@ -17,7 +17,7 @@ def work(
     backend: BackendType = typer.Option(BackendType.redis, "--backend", "-b", help="Queue backend type"),
     redis_url: str = typer.Option("redis://127.0.0.1:6379", "--redis-url", "-r", help="Redis server URL"),
     max_concurrent: int = typer.Option(10, "--max-concurrent", "-c", help="Max concurrent tasks", min=1),
-    max_prefetch: int = typer.Option(None, "--max-prefetch", help="Max prefetch tasks", min=1),
+    max_prefetch: int | None = typer.Option(None, "--max-prefetch", help="Max prefetch tasks", min=1),
     autoreload: bool = typer.Option(False, "--reload", help="Reload worker on file changes"),
     oneshot: bool = typer.Option(False, "--oneshot", help="Process pending tasks and then exit"),
     max_tasks: int | None = typer.Option(None, "--max-tasks", help="Maximum amount of tasks to process", min=1),
