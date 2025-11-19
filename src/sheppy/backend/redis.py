@@ -48,7 +48,7 @@ class RedisBackend(Backend):
                 **self.redis_kwargs
             )
             self._client = redis.Redis.from_pool(self._pool)
-            await self._client.ping()
+            await self._client.ping()  # type: ignore[misc]
         except Exception as e:
             self._client = None
             self._pool = None
