@@ -193,7 +193,7 @@ class Worker:
                         # try:
                         #     await queue.add(task)
                         # except Exception as e:
-                        #     logger.error(f"Failed to requeue task {task.id}: {e}", exc_info=True)
+                        #     logger.error(f"Failed to requeue task {task.id}: {e}")
 
         # unregister signals
         if register_signal_handlers:
@@ -220,7 +220,7 @@ class Worker:
                 break
 
             except Exception as e:
-                logger.exception(SCHEDULER_PREFIX + f"Scheduling failed with error: {e}", exc_info=True)
+                logger.exception(SCHEDULER_PREFIX + f"Scheduling failed with error: {e}")
                 self._shutdown_event.set()
                 break
 
@@ -250,7 +250,7 @@ class Worker:
                 break
 
             except Exception as e:
-                logger.exception(CRON_MANAGER_PREFIX + f"failed with error: {e}", exc_info=True)
+                logger.exception(CRON_MANAGER_PREFIX + f"failed with error: {e}")
                 self._shutdown_event.set()
                 break
 
@@ -304,7 +304,7 @@ class Worker:
                 break
 
             except Exception as e:
-                logger.exception(WORKER_PREFIX + f"failed with error: {e}", exc_info=True)
+                logger.exception(WORKER_PREFIX + f"failed with error: {e}")
                 self._shutdown_event.set()
                 break
 
@@ -331,11 +331,11 @@ class Worker:
 
         # non retriable task
         if task.error and not task.is_retriable:
-            logger.error(WORKER_PREFIX + f"Task {task.id} failed: {exception}", exc_info=True)
+            logger.error(WORKER_PREFIX + f"Task {task.id} failed: {exception}")
 
         # retriable task - final failure
         if task.error and task.is_retriable and not task.should_retry:
-            logger.error(WORKER_PREFIX + f"Task {task.id} failed after {task.retry_count} retries: {exception}", exc_info=True)
+            logger.error(WORKER_PREFIX + f"Task {task.id} failed after {task.retry_count} retries: {exception}")
 
         # retriable task - reschedule
         if task.error and task.should_retry:
@@ -347,7 +347,7 @@ class Worker:
         try:
             await queue.backend.store_result(queue.name, task.model_dump(mode='json'))  # TODO
         except Exception:
-            logger.exception(f"Failed to store result for task {task.id}", exc_info=True)
+            logger.exception(f"Failed to store result for task {task.id}")
 
     def __register_signal_handlers(self, loop: asyncio.AbstractEventLoop) -> None:
         CTRL_C_THRESHOLD = 3
