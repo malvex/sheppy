@@ -15,7 +15,7 @@ from uuid import uuid4
 import anyio
 from pydantic import ConfigDict, PydanticSchemaGenerationError, TypeAdapter
 
-from ..models import Task
+from ..models import CurrentTask, Task
 from .fastapi import Depends
 
 cache_main_module: str | None = None
@@ -218,14 +218,18 @@ class TaskProcessor:
 
         for param_name, param in list(signature.parameters.items()):
             # Task injection (self: Task)
-            if task and TaskProcessor._is_task_injection(param):
-                final_args.append(task)
-                continue
+            # if task and TaskProcessor._is_task_injection(param, kwargs.get(param_name)):
+            #     final_args.append(task)
+            #     continue
 
             # validate positional args
             if remaining_args:
                 final_args.append(TaskProcessor._validate(remaining_args.pop(0), param.annotation))
                 continue
+
+            # Task self injection
+            if param.default != inspect.Parameter.empty and isinstance(param.default, CurrentTask):
+                final_kwargs[param_name] = task
 
             # dependency injection
             if depends := TaskProcessor.get_depends_from_param(param):

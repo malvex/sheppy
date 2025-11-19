@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pytest
 import pytest_asyncio
 
-from sheppy import Queue, Task, Worker, task
+from sheppy import CurrentTask, Queue, Task, Worker, task
 from sheppy.backend import Backend, MemoryBackend, RedisBackend
 
 TEST_QUEUE_NAME = "pytest"
@@ -67,14 +67,14 @@ async def queue(backend: Backend) -> Queue:
 
 
 @task(retry=2, retry_delay=0.1)
-async def async_fail_once(self: Task) -> str:
+async def async_fail_once(self: Task = CurrentTask()) -> str:
     if self.retry_count == 0:
         raise Exception("transient error")
     return "ok"
 
 
 @task(retry=2, retry_delay=0)
-def sync_fail_once(self: Task) -> str:
+def sync_fail_once(self: Task = CurrentTask()) -> str:
     if self.retry_count == 0:
         raise Exception("transient error")
     return "ok"

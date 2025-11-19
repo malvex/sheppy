@@ -349,3 +349,8 @@ class TaskCron(BaseModel):
             spec=self.spec.model_copy(deep=True),
             config=self.config.model_copy(deep=True)
         )
+
+
+class CurrentTask:
+    """Placeholder class for Dependency Injection of a current task"""
+    pass
