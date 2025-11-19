@@ -6,7 +6,7 @@ from .testqueue import TestQueue
 from .utils.fastapi import Depends
 from .worker import Worker
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 __all__ = [  # noqa
     # fastapi
