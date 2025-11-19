@@ -17,6 +17,7 @@ def work(
     backend: BackendType = typer.Option(BackendType.redis, "--backend", "-b", help="Queue backend type"),
     redis_url: str = typer.Option("redis://127.0.0.1:6379", "--redis-url", "-r", help="Redis server URL"),
     max_concurrent: int = typer.Option(10, "--max-concurrent", "-c", help="Max concurrent tasks", min=1),
+    max_prefetch: int | None = typer.Option(None, "--max-prefetch", help="Max prefetch tasks", min=1),
     autoreload: bool = typer.Option(False, "--reload", help="Reload worker on file changes"),
     oneshot: bool = typer.Option(False, "--oneshot", help="Process pending tasks and then exit"),
     max_tasks: int | None = typer.Option(None, "--max-tasks", help="Maximum amount of tasks to process", min=1),
@@ -70,16 +71,17 @@ def work(
             console.print("[yellow]Warning: --oneshot is not compatible with --reload, ignoring[/yellow]")
 
         run_process('.', target=_start_worker,
-                    args=(queues, backend_instance, max_concurrent, log_level,
+                    args=(queues, backend_instance, max_concurrent, max_prefetch, log_level,
                           disable_job_processing, disable_scheduler, disable_cron_manager),
                     callback=lambda _: console.print("Detected file changes, reloading worker..."))
     else:
-        _start_worker(queues, backend_instance, max_concurrent, log_level,
+        _start_worker(queues, backend_instance, max_concurrent, max_prefetch, log_level,
                       disable_job_processing, disable_scheduler, disable_cron_manager,
                       oneshot, max_tasks)
 
 
-def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, log_level: LogLevel,
+def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, max_prefetch_tasks: int | None,
+                  log_level: LogLevel,
                   disable_job_processing: bool, disable_scheduler: bool, disable_cron_manager: bool,
                   oneshot: bool = False, max_tasks: int | None = None,
                   ) -> None:
@@ -96,6 +98,7 @@ def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, log_
         ))
 
     worker = Worker(queues, backend=backend, max_concurrent_tasks=max_concurrent,
+                    max_prefetch_tasks=max_prefetch_tasks,
                     enable_job_processing=not disable_job_processing,
                     enable_scheduler=not disable_scheduler,
                     enable_cron_manager=not disable_cron_manager)
