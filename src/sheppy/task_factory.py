@@ -62,7 +62,7 @@ class TaskFactory:
     def create_task(func: Callable[..., Any],
                     args: list[Any],
                     kwargs: dict[str, Any],
-                    retry: float,
+                    retry: int,
                     retry_delay: float | list[float] | None,
                     middleware: list[Callable[..., Any]] | None
                     ) -> Task:
@@ -111,7 +111,7 @@ class TaskFactory:
 @overload
 def task(
     *,
-    retry: float = 0,
+    retry: int = 0,
     retry_delay: float | list[float] | None = None,
     middleware: list[Callable[..., Any]] | None = None
 ) -> Callable[[Callable[P, R]], Callable[P, Task]]:
@@ -125,7 +125,7 @@ def task(func: Callable[P, R], /) -> Callable[P, Task]:
 def task(
     func: Callable[P, R] | None = None,
     *,
-    retry: float = 0,
+    retry: int = 0,
     retry_delay: float | list[float] | None = None,
     middleware: list[Callable[..., Any]] | None = None
 ) -> Callable[[Callable[P, R]], Callable[P, Task]] | Callable[P, Task]:
