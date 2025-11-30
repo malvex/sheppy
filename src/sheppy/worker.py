@@ -210,7 +210,7 @@ class Worker:
         while not self._shutdown_event.is_set():
             try:
                 for queue in self.queues:
-                    tasks = await queue.enqueue_scheduled()
+                    tasks = await queue._enqueue_scheduled()
 
                     if tasks:
                         _l = len(tasks)
@@ -285,7 +285,7 @@ class Worker:
                 capacity = min(capacity, self._tasks_to_process)
 
             try:
-                available_tasks = await queue.pop_pending(timeout=self._blocking_timeout,
+                available_tasks = await queue._pop_pending(timeout=self._blocking_timeout,
                                                 limit=capacity)
 
                 if oneshot and not available_tasks:

@@ -189,7 +189,7 @@ async def test_get_pending_after_pop(task_fn, queue: Queue, worker: Worker):
     assert res[0] == t
     assert await queue.size() == 1
 
-    await queue.pop_pending()
+    await queue._pop_pending()
 
     if queue.backend.__class__.__name__ == "RedisBackend":
         if len(await queue.get_pending()) == 1:
@@ -225,7 +225,7 @@ async def test_clear(task_fn, queue: Queue, worker: Worker):
 
     await worker.work(1)
 
-    res = await queue.pop_pending()
+    res = await queue._pop_pending()
     assert len(res) == 1
     assert res[0] == t2
 
@@ -251,28 +251,28 @@ async def test_pop_pending(task_fn, queue: Queue):
     await queue.add(t8 := task_fn(15, 16))
     assert await queue.size() == 8
 
-    assert await queue.pop_pending() == [t1]
-    assert await queue.pop_pending(timeout=0.01) == [t2]
-    assert await queue.pop_pending(limit=2, timeout=0.01) == [t3, t4]
-    assert await queue.pop_pending(limit=1) == [t5]
-    assert await queue.pop_pending(limit=2) == [t6, t7]
-    assert await queue.pop_pending(limit=2) == [t8]
+    assert await queue._pop_pending() == [t1]
+    assert await queue._pop_pending(timeout=0.01) == [t2]
+    assert await queue._pop_pending(limit=2, timeout=0.01) == [t3, t4]
+    assert await queue._pop_pending(limit=1) == [t5]
+    assert await queue._pop_pending(limit=2) == [t6, t7]
+    assert await queue._pop_pending(limit=2) == [t8]
 
-    assert await queue.pop_pending() == []
-    assert await queue.pop_pending(limit=2) == []
-    assert await queue.pop_pending(timeout=0.01) == []
-    assert await queue.pop_pending(limit=2, timeout=0.01) == []
+    assert await queue._pop_pending() == []
+    assert await queue._pop_pending(limit=2) == []
+    assert await queue._pop_pending(timeout=0.01) == []
+    assert await queue._pop_pending(limit=2, timeout=0.01) == []
 
 
 async def test_pop_invalid(queue: Queue):
     with pytest.raises(ValueError):
-        assert await queue.pop_pending(0)
+        assert await queue._pop_pending(0)
 
     with pytest.raises(ValueError):
-        assert await queue.pop_pending(-1)
+        assert await queue._pop_pending(-1)
 
     with pytest.raises(TypeError):
-        assert await queue.pop_pending(None)
+        assert await queue._pop_pending(None)
 
 
 async def test_get_all_tasks(task_fn, queue: Queue, worker: Worker):
@@ -301,7 +301,7 @@ async def test_get_all_tasks(task_fn, queue: Queue, worker: Worker):
     assert all_tasks == tasks
 
     await worker.work(4)
-    res = await queue.pop_pending(limit=2)
+    res = await queue._pop_pending(limit=2)
     assert res == [tasks[4], tasks[5]]
 
     all_tasks = await queue.get_all_tasks()
@@ -469,7 +469,7 @@ async def test_retry_at(datetime_now, queue: Queue, worker: Worker):
     assert len(scheduled) == 1
     assert scheduled[0].id == task.id
 
-    enqueued = await queue.enqueue_scheduled(datetime_now + timedelta(hours=11))
+    enqueued = await queue._enqueue_scheduled(datetime_now + timedelta(hours=11))
     assert len(enqueued) == 1
     assert enqueued[0].id == task.id
 
