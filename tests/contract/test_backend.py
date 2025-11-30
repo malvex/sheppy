@@ -407,7 +407,7 @@ class TestGetResults:
 
     def _simulate_processing(self, task_data: dict, backend: Backend):
         async def processing():
-            await asyncio.sleep(0.02)
+            await asyncio.sleep(0.1)
             await backend.store_result(Q, task_data)
 
         return asyncio.create_task(processing())
