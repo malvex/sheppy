@@ -16,6 +16,7 @@ from pydantic import (
     ConfigDict,
     Field,
     TypeAdapter,
+    field_validator,
     model_validator,
 )
 
@@ -112,6 +113,13 @@ class Config(BaseModel):
 
     # timeout: float | None = None  # seconds
     # tags: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator('retry_delay')
+    @classmethod
+    def validate_retry_delay(cls, v: float | list[float]) -> float | list[float]:
+        if isinstance(v, list) and len(v) == 0:
+            raise ValueError("retry_delay list cannot be empty")
+        return v
 
 
 class Task(BaseModel):
