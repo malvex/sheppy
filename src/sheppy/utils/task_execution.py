@@ -158,9 +158,6 @@ class TaskProcessor:
         if isinstance(task.config.retry_delay, float):
             return task.config.retry_delay  # constant delay for all retries
         if isinstance(task.config.retry_delay, list):
-            if len(task.config.retry_delay) == 0:
-                return 1.0  # empty list defaults to 1 second  # todo - we should probably refuse empty lists as input
-
             if task.retry_count < len(task.config.retry_delay):
                 return float(task.config.retry_delay[task.retry_count])
             else:

@@ -221,3 +221,12 @@ def test_immediate_validation(task_fn):
         task_fn(1, 2, 3)  # too many arugments, fail
     with pytest.raises(ValidationError, match="No value provided for parameter 'y'"):
         task_fn(2, x=1)
+
+
+def test_retry_delay_cannot_be_empty_list():
+    @task(retry=1, retry_delay=[])
+    def task_empty_retry_delay():
+        pass
+
+    with pytest.raises(ValidationError, match="retry_delay list cannot be empty"):
+        task_empty_retry_delay()
