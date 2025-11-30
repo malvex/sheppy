@@ -378,8 +378,8 @@ class Queue:
         await self.__ensure_backend_is_connected()
         return [TaskCron.model_validate(tc) for tc in await self.backend.get_crons(self.name)]
 
-    async def pop_pending(self, limit: int = 1, timeout: float | None = None) -> list[Task]:
-        """Get next task to process. Used internally by workers.
+    async def _pop_pending(self, limit: int = 1, timeout: float | None = None) -> list[Task]:
+        """Get next task to process. Internal method used by workers.
 
         Args:
             limit: Maximum number of tasks to return
@@ -396,8 +396,8 @@ class Queue:
         tasks_data = await self.backend.pop(self.name, limit, timeout)
         return [Task.model_validate(t) for t in tasks_data]
 
-    async def enqueue_scheduled(self, now: datetime | None = None) -> list[Task]:
-        """Enqueue scheduled tasks that are ready to be processed. Used internally by workers.
+    async def _enqueue_scheduled(self, now: datetime | None = None) -> list[Task]:
+        """Enqueue scheduled tasks that are ready to be processed. Internal method used by workers.
 
         Args:
             now: Current time for scheduling

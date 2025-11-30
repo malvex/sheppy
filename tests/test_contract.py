@@ -108,7 +108,7 @@ class TestScheduledTasks:
 
         assert await queue.schedule(task, at=delay) is True
 
-        popped = await queue.pop_pending(timeout=0.01)
+        popped = await queue._pop_pending(timeout=0.01)
         assert not popped
 
         task = await queue.get_task(task)
@@ -127,7 +127,7 @@ class TestScheduledTasks:
 
         assert await queue.schedule(task, at=scheduled_time) is True
 
-        popped = await queue.pop_pending(timeout=0.01)
+        popped = await queue._pop_pending(timeout=0.01)
         assert not popped
 
         await asyncio.sleep(0.15)
@@ -147,7 +147,7 @@ class TestScheduledTasks:
         assert await queue.schedule(task2, at=timedelta(seconds=0.4)) is True
         assert await queue.schedule(task3, at=timedelta(seconds=0.6)) is True
 
-        popped = await queue.pop_pending(timeout=0.01)
+        popped = await queue._pop_pending(timeout=0.01)
         assert not popped
 
         await worker.work(max_tasks=1)

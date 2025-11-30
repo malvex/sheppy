@@ -353,7 +353,7 @@ class TestQueue:
             ```
         """
         async def _process_next_async() -> Task | None:
-            tasks = await self._queue.pop_pending(limit=1)
+            tasks = await self._queue._pop_pending(limit=1)
             return await self._execute_task(tasks[0]) if tasks else None
 
         return asyncio.run(_process_next_async())
