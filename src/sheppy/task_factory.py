@@ -60,7 +60,7 @@ class TaskFactory:
 
     @staticmethod
     def create_task(func: Callable[..., Any],
-                    args: list[Any],
+                    args: tuple[Any, ...],
                     kwargs: dict[str, Any],
                     retry: int,
                     retry_delay: float | list[float] | None,
@@ -77,7 +77,7 @@ class TaskFactory:
 
         func_string = TaskFactory._stringify_function(func)
 
-        args, kwargs = validate_input(func, list(args or []), dict(kwargs or {}))
+        args, kwargs = validate_input(func, tuple(args or ()), dict(kwargs or {}))
 
         stringified_middlewares = []
         if middleware:
@@ -133,7 +133,7 @@ def task(
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> Task:
 
-            return TaskFactory.create_task(func, list(args), kwargs, retry, retry_delay, middleware)
+            return TaskFactory.create_task(func, tuple(args), kwargs, retry, retry_delay, middleware)
 
         return wrapper
 

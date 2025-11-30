@@ -40,7 +40,7 @@ class Spec(BaseModel):
 
     Attributes:
         func (str): Fully qualified function name, e.g. `my_module.my_submodule:my_function`
-        args (list[Any]): Positional arguments to be passed to the function.
+        args (tuple[Any, ...]): Positional arguments to be passed to the function.
         kwargs (dict[str, Any]): Keyword arguments to be passed to the function.
         return_type (str|None): Fully qualified return type name, e.g. `my_module.submodule:MyPydanticModel`. This is used to reconstruct the return value if it's a pydantic model.
         middleware (list[str]|None): List of fully qualified middleware function names to be applied to the task, e.g. `['my_module.submodule:my_middleware']`. Middleware will be applied in the order they are listed.
@@ -60,7 +60,7 @@ class Spec(BaseModel):
         t = my_task(42, "hello")  # returns a Task instance, it is NOT executed yet
 
         print(t.spec.func)  # e.g. "my_module:my_task"
-        print(t.spec.args)  # [42, "hello"]
+        print(t.spec.args)  # (42, "hello")
         print(t.spec.return_type)  # "builtins.str"
         ```
     """
@@ -68,8 +68,8 @@ class Spec(BaseModel):
 
     func: str
     """str: Fully qualified function name, e.g. `my_module.my_submodule:my_function`"""
-    args: list[Any] = Field(default_factory=list)
-    """list[Any]: Positional arguments to be passed to the function."""
+    args: tuple[Any, ...] = Field(default_factory=tuple)
+    """tuple[Any, ...]: Positional arguments to be passed to the function."""
     kwargs: dict[str, Any] = Field(default_factory=dict)
     """dict[str, Any]: Keyword arguments to be passed to the function."""
     return_type: str | None = None
