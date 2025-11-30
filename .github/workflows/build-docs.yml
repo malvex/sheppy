@@ -1,10 +1,8 @@
 name: build-docs
 
 on:
-  push:
-    branches:
-      - master
-      - feat/docs  # temp
+  release:
+    types: [published]
   workflow_dispatch:
 
 
