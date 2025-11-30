@@ -18,9 +18,9 @@ cache_type_hints: dict[Callable[..., Any], dict[str, Any]] = {}
 
 def validate_input(
     func: Callable[..., Any],
-    args: list[Any],
+    args: tuple[Any, ...],
     kwargs: dict[str, Any]
-) -> tuple[list[Any], dict[str, Any]]:
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
 
     signature = cache_signature.get(func)
     if not signature:
@@ -105,7 +105,7 @@ def validate_input(
             f"Unexpected keyword arguments: {', '.join(remaining_kwargs.keys())}", line_errors=[]
         )
 
-    return final_args, final_kwargs
+    return tuple(final_args), final_kwargs
 
 
 def _is_task_injection(param: inspect.Parameter) -> bool:

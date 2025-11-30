@@ -579,7 +579,9 @@ def middleware_too_many_args(task: Task, another_task: Task):  # noqa: ARG001
     return
 
 def middleware_change_arg(task: Task):
-    task.spec.__dict__["args"][0] = 5
+    args = list(task.spec.__dict__["args"])
+    args[0] = 5
+    task.spec.__dict__["args"] = tuple(args)
     yield task
 
 def middleware_change_return_value(task: Task):

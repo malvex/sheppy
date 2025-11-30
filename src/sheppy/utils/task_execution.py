@@ -43,7 +43,7 @@ class TaskProcessor:
     async def _actually_execute_task(task: TaskInternal) -> Any:
         # resolve the function from its string representation
         func = TaskProcessor.resolve_function(task.spec.func)
-        args = task.spec.args or []
+        args = task.spec.args or ()
         kwargs = task.spec.kwargs or {}
 
         # validate all parameters, inject DI and Task
@@ -202,7 +202,7 @@ class TaskProcessor:
     @staticmethod
     async def process_function_parameters(
         func: Callable[..., Any],
-        args: list[Any],
+        args: tuple[Any, ...],
         kwargs: dict[str, Any],
         task: TaskInternal | None = None,
     ) -> tuple[list[Any], dict[str, Any]]:
@@ -214,7 +214,7 @@ class TaskProcessor:
 
         final_args = []
         final_kwargs = kwargs.copy()
-        remaining_args = args.copy()
+        remaining_args = list(args)
 
         for param_name, param in list(signature.parameters.items()):
             # Task injection (self: Task)
@@ -264,7 +264,7 @@ class TaskProcessor:
         # func = resolver.dependency_overrides.get(dep_func, dep_func)  # ! FIXME
 
         # resolve nested dependencies
-        _, kwargs = await TaskProcessor.process_function_parameters(func, [], {}, None)
+        _, kwargs = await TaskProcessor.process_function_parameters(func, (), {}, None)
 
         # execute dependency
         if inspect.iscoroutinefunction(func):

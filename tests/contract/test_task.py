@@ -82,7 +82,7 @@ def test_instanced_task_defaults(task_fn):
         fn_name = "tests.dependencies:simple_sync_task"
 
     assert task.spec.func == fn_name
-    assert task.spec.args == [1, 2]
+    assert task.spec.args == (1, 2)
     assert task.spec.kwargs == {}
     assert task.spec.return_type == "builtins.int"
     assert task.spec.middleware == []
@@ -112,8 +112,7 @@ def test_task_is_frozen(task_fn):
     with pytest.raises(ValidationError, match="Instance is frozen"):
         task.config = Config()
 
-    pytest.xfail("BUG: does not raise error! (should args be frozen?)")
-    with pytest.raises(ValidationError, match="Instance is frozen"):
+    with pytest.raises(TypeError, match="does not support item assignment"):
         task.spec.args[0] = 5
 
 
