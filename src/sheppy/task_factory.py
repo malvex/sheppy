@@ -10,7 +10,7 @@ from typing import (
     overload,
 )
 
-from .models import Config, Spec, Task, TaskCron
+from .models import Task, TaskConfig, TaskCron, TaskSpec
 from .utils.validation import validate_input
 
 P = ParamSpec('P')
@@ -86,14 +86,14 @@ class TaskFactory:
                 stringified_middlewares.append(TaskFactory._stringify_function(m))
 
         _task = Task(
-            spec=Spec(
+            spec=TaskSpec(
                 func=func_string,
                 args=args,
                 kwargs=kwargs,
                 return_type=return_type,
                 middleware=stringified_middlewares
             ),
-            config=Config(**task_config)
+            config=TaskConfig(**task_config)
         )
 
         return _task

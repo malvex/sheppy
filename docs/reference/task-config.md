@@ -1,3 +1,3 @@
 # `TaskConfig` model reference
 
-::: sheppy.models.Config
+::: sheppy.models.TaskConfig

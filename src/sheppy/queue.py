@@ -372,7 +372,7 @@ class Queue:
             crons = await q.get_crons()
 
             for cron in crons:
-                print(f"Cron ID: {cron.id}, Expression: {cron.expression}, Task Spec: {cron.spec}")
+                print(f"Cron ID: {cron.id}, Expression: {cron.expression}, TaskSpec: {cron.spec}")
             ```
         """
         await self.__ensure_backend_is_connected()

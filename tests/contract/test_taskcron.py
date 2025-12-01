@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from sheppy.models import Config, Spec, TaskCron
+from sheppy.models import TaskConfig, TaskCron, TaskSpec
 
 
 @pytest.mark.parametrize("cron_expression", [
@@ -26,7 +26,7 @@ from sheppy.models import Config, Spec, TaskCron
 ])
 def test_valid_cron_expressions(cron_expression):
 
-    TaskCron(expression=cron_expression, spec=Spec(func=""), config=Config())
+    TaskCron(expression=cron_expression, spec=TaskSpec(func=""), config=TaskConfig())
 
 
 @pytest.mark.parametrize("cron_expression", [
@@ -50,7 +50,7 @@ def test_valid_cron_expressions(cron_expression):
 def test_invalid_cron_expressions(cron_expression):
 
     with pytest.raises(ValidationError):
-        TaskCron(expression=cron_expression, spec=Spec(func=""), config=Config())
+        TaskCron(expression=cron_expression, spec=TaskSpec(func=""), config=TaskConfig())
 
 
 @pytest.mark.parametrize("expression,spec,config", [

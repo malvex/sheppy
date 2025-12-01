@@ -36,7 +36,7 @@ def cron_expression_validator(value: str) -> str:
 CronExpression = Annotated[str, AfterValidator(cron_expression_validator)]
 
 
-class Spec(BaseModel):
+class TaskSpec(BaseModel):
     """Task specification.
 
     Attributes:
@@ -47,7 +47,7 @@ class Spec(BaseModel):
         middleware (list[str]|None): List of fully qualified middleware function names to be applied to the task, e.g. `['my_module.submodule:my_middleware']`. Middleware will be applied in the order they are listed.
 
     Note:
-        - You should not create Spec instances directly. Instead, use the `@task` decorator to define a task function, and then call that function to create a Task instance.
+        - You should not create TaskSpec instances directly. Instead, use the `@task` decorator to define a task function, and then call that function to create a Task instance.
         - `args` and `kwargs` must be JSON serializable.
 
     Example:
@@ -79,7 +79,7 @@ class Spec(BaseModel):
     """list[str]|None: List of fully qualified middleware function names to be applied to the task, e.g. `['my_module.submodule:my_middleware']`. Middleware will be applied in the order they are listed."""
 
 
-class Config(BaseModel):
+class TaskConfig(BaseModel):
     """Task configuration
 
     Attributes:
@@ -87,7 +87,7 @@ class Config(BaseModel):
         retry_delay (float|list[float]): Delay between retries in seconds. If a single float is provided, it will be used for all retries. If a list is provided, it will be used for each retry attempt respectively (exponential backoff). Default is 1.0 seconds.
 
     Note:
-        - You should not create Config instances directly. Instead, use the `@task` decorator to define a task function, and then call that function to create a Task instance.
+        - You should not create TaskConfig instances directly. Instead, use the `@task` decorator to define a task function, and then call that function to create a Task instance.
         - `retry` must be a non-negative integer.
         - `retry_delay` must be a positive float or a list of positive floats.
 
@@ -130,8 +130,8 @@ class Task(BaseModel):
         completed (bool): A completion flag that is set to True only if task finished successfully.
         error (str|None): Error message if the task failed. None if the task succeeded or is not yet executed.
         result (Any): The result of the task execution. If the task failed, this will be None.
-        spec (sheppy.models.Spec): Task specification
-        config (sheppy.models.Config): Task configuration
+        spec (sheppy.models.TaskSpec): Task specification
+        config (sheppy.models.TaskConfig): Task configuration
         created_at (datetime): Timestamp when the task was created.
         finished_at (datetime|None): Timestamp when the task was finished. None if the task is not yet finished.
         scheduled_at (datetime|None): Timestamp when the task is scheduled to run. None if the task is not scheduled.
@@ -171,9 +171,9 @@ class Task(BaseModel):
     result: Any = None
     """Any: The result of the task execution. This will be None if the task failed or is not yet executed."""
 
-    spec: Spec
+    spec: TaskSpec
     """Task specification"""
-    config: Config = Field(default_factory=Config)
+    config: TaskConfig = Field(default_factory=TaskConfig)
     """Task configuration"""
 
     created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -244,8 +244,8 @@ class TaskCron(BaseModel):
     Attributes:
         id (UUID): Unique identifier for the cron definition.
         expression (str): Cron expression defining the schedule, e.g. "*/5 * * * *" for every 5 minutes.
-        spec (sheppy.models.Spec): Task specification
-        config (sheppy.models.Config): Task configuration
+        spec (sheppy.models.TaskSpec): Task specification
+        config (sheppy.models.TaskConfig): Task configuration
 
     Note:
         - You should not create TaskCron instances directly. Instead, use the `add_cron` method of the Queue class to create a cron definition.
@@ -283,9 +283,9 @@ class TaskCron(BaseModel):
     expression: CronExpression
     """str: Cron expression defining the schedule, e.g. "*/5 * * * *" for every 5 minutes."""
 
-    spec: Spec
+    spec: TaskSpec
     """Task specification"""
-    config: Config
+    config: TaskConfig
     """Task configuration"""
 
     # enabled: bool = True
