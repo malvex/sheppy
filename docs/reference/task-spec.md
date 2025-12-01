@@ -1,3 +1,3 @@
 # `TaskSpec` model reference
 
-::: sheppy.models.Spec
+::: sheppy.models.TaskSpec

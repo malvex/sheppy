@@ -41,8 +41,8 @@ nav:
     - CLI reference: reference/cli.md
     - Models:
       - Task: reference/task.md
-      - Spec: reference/task-spec.md
-      - Config: reference/task-config.md
+      - TaskSpec: reference/task-spec.md
+      - TaskConfig: reference/task-config.md
       - TaskCron: reference/task-cron.md
     - Backends:
       - Backend class: reference/backends/backend.md

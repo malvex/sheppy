@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from sheppy import Task, task
-from sheppy.models import Config
+from sheppy.models import TaskConfig
 from tests.dependencies import (
     Status,
     failing_task,
@@ -110,7 +110,7 @@ def test_task_is_frozen(task_fn):
         task.config.retry = 5.5
 
     with pytest.raises(ValidationError, match="Instance is frozen"):
-        task.config = Config()
+        task.config = TaskConfig()
 
     with pytest.raises(TypeError, match="does not support item assignment"):
         task.spec.args[0] = 5
