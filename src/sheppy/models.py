@@ -65,7 +65,7 @@ class TaskSpec(BaseModel):
         print(t.spec.return_type)  # "builtins.str"
         ```
     """
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     func: str
     """str: Fully qualified function name, e.g. `my_module.my_submodule:my_function`"""
@@ -104,7 +104,7 @@ class TaskConfig(BaseModel):
         print(t.config.retry_delay)  # [1.0, 2.0, 3.0]
         ```
     """
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     retry: int = Field(default=0, ge=0)
     """int: Number of times to retry the task if it fails. Default is 0 (no retries)."""

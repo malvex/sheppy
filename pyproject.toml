@@ -84,6 +84,7 @@ sheppy = "sheppy.cli.cli:app"
 
 [tool.mypy]
 strict = true
+plugins = ['pydantic.mypy']
 
 [tool.ruff.lint]
 select = [
