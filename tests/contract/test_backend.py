@@ -6,8 +6,7 @@ import pytest
 from pydantic.type_adapter import TypeAdapter
 
 from sheppy import Backend, BackendError
-from sheppy.task_factory import TaskFactory
-from sheppy.utils.task_execution import TaskInternal
+from sheppy.task_factory import Task, TaskFactory
 from tests.dependencies import add_retriable, simple_async_task
 
 Q = "pytest"
@@ -22,115 +21,130 @@ def task_dict():
 
 @pytest.fixture
 def tasks(datetime_now: datetime) -> dict[str, dict]:
-    def _set_completed(task: TaskInternal) -> None:
-        task.completed = True
-        task.error = None
-        task.result = 3
-        task.finished_at = datetime_now
+    def _set_completed(task: Task) -> Task:
+        return task.model_copy(
+            deep=True,
+            update={
+                "completed": True,
+                "error": None,
+                "result": 3,
+                "finished_at": datetime_now,
+            },
+        )
 
-    def _set_failed(task: TaskInternal) -> None:
-        task.completed = False
-        task.error = "Exception: some error happened"
-        task.result = None
-        task.finished_at = datetime_now
+    def _set_failed(task: Task) -> Task:
+        return task.model_copy(
+            deep=True,
+            update={
+                "completed": False,
+                "error": "Exception: some error happened",
+                "result": None,
+                "finished_at": datetime_now,
+            },
+        )
 
-    def _set_failed_should_retry(task: TaskInternal) -> None:
-        task.completed = False
-        task.error = "Exception: some error happened"
-        task.result = None
-        task.retry_count += 1
-        task.last_retry_at = datetime_now - timedelta(seconds=6)
-        task.next_retry_at = datetime_now - timedelta(seconds=5)
-        task.scheduled_at = datetime_now - timedelta(seconds=5)
-        task.finished_at = None
+    def _set_failed_should_retry(task: Task) -> Task:
+        return task.model_copy(
+            deep=True,
+            update={
+                "completed": False,
+                "error": "Exception: some error happened",
+                "result": None,
+                "retry_count": 1,
+                "last_retry_at": datetime_now - timedelta(seconds=6),
+                "next_retry_at": datetime_now - timedelta(seconds=5),
+                "scheduled_at": datetime_now - timedelta(seconds=5),
+                "finished_at": None,
+            },
+        )
 
     # standard tasks
-    task_new = TaskInternal.from_task(simple_async_task(1, 2))
+    task_new = simple_async_task(1, 2)
     # task_new.id = TASK_ID
-    task_new.created_at = datetime_now - timedelta(seconds=10)
+    task_new.__dict__["created_at"] = datetime_now - timedelta(seconds=10)
 
     task_completed = task_new.model_copy(deep=True)
-    _set_completed(task_completed)
+    task_completed = _set_completed(task_completed)
 
     task_failed = task_new.model_copy(deep=True)
-    _set_failed(task_failed)
+    task_failed = _set_failed(task_failed)
 
     # scheduled tasks
     task_scheduled = task_new.model_copy(deep=True)
-    task_scheduled.scheduled_at = datetime_now - timedelta(seconds=5)
+    task_scheduled.__dict__["scheduled_at"] = datetime_now - timedelta(seconds=5)
 
     task_scheduled_completed = task_scheduled.model_copy(deep=True)
-    _set_completed(task_scheduled_completed)
+    task_scheduled_completed = _set_completed(task_scheduled_completed)
 
     task_scheduled_failed = task_scheduled.model_copy(deep=True)
-    _set_failed(task_scheduled_failed)
+    task_scheduled_failed = _set_failed(task_scheduled_failed)
 
     # cron tasks
-    _task_cron = TaskFactory.create_cron_from_task(task_new.create_task(), "* * * * *")
+    _task_cron = TaskFactory.create_cron_from_task(task_new, "* * * * *")
     _next_run = _task_cron.next_run(datetime_now - timedelta(minutes=1))
 
-    task_cron_new = TaskInternal.from_task(_task_cron.create_task(_next_run))
+    task_cron_new = _task_cron.create_task(_next_run)
     # task_cron_new.id = TASK_ID
-    task_cron_new.scheduled_at = _next_run
+    task_cron_new.__dict__["scheduled_at"] = _next_run
 
     task_cron_completed = task_cron_new.model_copy(deep=True)
-    _set_completed(task_cron_completed)
+    task_cron_completed = _set_completed(task_cron_completed)
 
     task_cron_failed = task_cron_new.model_copy(deep=True)
-    _set_failed(task_cron_failed)
+    task_cron_failed = _set_failed(task_cron_failed)
 
     # retriable tasks
-    task_retriable_new = TaskInternal.from_task(add_retriable(1, 2))
+    task_retriable_new = add_retriable(1, 2)
     # task_retriable_new.id = TASK_ID
-    task_retriable_new.created_at = datetime_now - timedelta(seconds=10)
+    task_retriable_new.__dict__["created_at"] = datetime_now - timedelta(seconds=10)
 
     task_retriable_completed = task_retriable_new.model_copy(deep=True)
-    _set_completed(task_retriable_completed)
+    task_retriable_completed = _set_completed(task_retriable_completed)
 
     task_retriable_failed_should_retry = task_retriable_new.model_copy(deep=True)
-    _set_failed_should_retry(task_retriable_failed_should_retry)
+    task_retriable_failed_should_retry = _set_failed_should_retry(task_retriable_failed_should_retry)
 
     task_retriable_retried_completed = task_retriable_failed_should_retry.model_copy(deep=True)
-    _set_completed(task_retriable_retried_completed)
+    task_retriable_retried_completed = _set_completed(task_retriable_retried_completed)
 
     task_retriable_retried_failed = task_retriable_failed_should_retry.model_copy(deep=True)
-    _set_failed(task_retriable_retried_failed)
+    task_retriable_retried_failed = _set_failed(task_retriable_retried_failed)
 
     # scheduled retriable tasks
     task_retriable_scheduled = task_retriable_new.model_copy(deep=True)
-    task_retriable_scheduled.scheduled_at = datetime_now - timedelta(seconds=5)
+    task_retriable_scheduled.__dict__["scheduled_at"] = datetime_now - timedelta(seconds=5)
 
     task_retriable_scheduled_completed = task_retriable_scheduled.model_copy(deep=True)
-    _set_completed(task_retriable_scheduled_completed)
+    task_retriable_scheduled_completed = _set_completed(task_retriable_scheduled_completed)
 
     task_retriable_scheduled_failed_should_retry = task_retriable_scheduled.model_copy(deep=True)
-    _set_failed_should_retry(task_retriable_scheduled_failed_should_retry)
+    task_retriable_scheduled_failed_should_retry = _set_failed_should_retry(task_retriable_scheduled_failed_should_retry)
 
     task_retriable_scheduled_retried_completed = task_retriable_scheduled_failed_should_retry.model_copy(deep=True)
-    _set_completed(task_retriable_scheduled_retried_completed)
+    task_retriable_scheduled_retried_completed = _set_completed(task_retriable_scheduled_retried_completed)
 
     task_retriable_scheduled_retried_failed = task_retriable_scheduled_failed_should_retry.model_copy(deep=True)
-    _set_failed(task_retriable_scheduled_retried_failed)
+    task_retriable_scheduled_retried_failed = _set_failed(task_retriable_scheduled_retried_failed)
 
     # cron tasks
-    _task_retriable_cron = TaskFactory.create_cron_from_task(task_retriable_new.create_task(), "* * * * *")
+    _task_retriable_cron = TaskFactory.create_cron_from_task(task_retriable_new, "* * * * *")
     _next_run = _task_retriable_cron.next_run(datetime_now - timedelta(minutes=1))
 
-    task_retriable_cron_new = TaskInternal.from_task(_task_retriable_cron.create_task(_next_run))
+    task_retriable_cron_new = _task_retriable_cron.create_task(_next_run)
     # task_retriable_cron_new.id = TASK_ID
-    task_retriable_cron_new.scheduled_at = _next_run
+    task_retriable_cron_new.__dict__["scheduled_at"] = _next_run
 
     task_retriable_cron_completed = task_retriable_cron_new.model_copy(deep=True)
-    _set_completed(task_retriable_cron_completed)
+    task_retriable_cron_completed = _set_completed(task_retriable_cron_completed)
 
     task_retriable_cron_failed_should_retry = task_retriable_cron_new.model_copy(deep=True)
-    _set_failed_should_retry(task_retriable_cron_failed_should_retry)
+    task_retriable_cron_failed_should_retry = _set_failed_should_retry(task_retriable_cron_failed_should_retry)
 
     task_retriable_cron_retried_completed = task_retriable_cron_failed_should_retry.model_copy(deep=True)
-    _set_completed(task_retriable_cron_retried_completed)
+    task_retriable_cron_retried_completed = _set_completed(task_retriable_cron_retried_completed)
 
     task_retriable_cron_retried_failed = task_retriable_cron_failed_should_retry.model_copy(deep=True)
-    _set_failed(task_retriable_cron_retried_failed)
+    task_retriable_cron_retried_failed = _set_failed(task_retriable_cron_retried_failed)
 
     tasks = {
         "new": task_new,
@@ -159,7 +173,7 @@ def tasks(datetime_now: datetime) -> dict[str, dict]:
         "retriable_cron_retried_failed": task_retriable_cron_retried_failed,
     }
 
-    return {k: v.create_task().model_dump(mode="json") for k, v in tasks.items()}
+    return {k: v.model_dump(mode="json") for k, v in tasks.items()}
 
 
 async def test_require_manual_connect(task_dict: dict, backend: Backend):

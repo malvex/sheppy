@@ -338,7 +338,7 @@ class Worker:
 
     async def process_task(self, task: Task) -> Task:
 
-        exception, task = await self._task_processor.execute_task(task, self.worker_id)
+        exception, task = await self._task_processor.process_task(task, self.worker_id)
 
         if task.completed:
             self.stats.processed += 1
