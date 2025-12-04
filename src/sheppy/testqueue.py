@@ -354,7 +354,7 @@ class TestQueue:
         """
         async def _process_next_async() -> Task | None:
             tasks = await self._queue._pop_pending(limit=1)
-            return await self._execute_task(tasks[0]) if tasks else None
+            return await self._process_task(tasks[0]) if tasks else None
 
         return asyncio.run(_process_next_async())
 
@@ -391,12 +391,12 @@ class TestQueue:
 
         async def _process_scheduled_async(at: datetime) -> list[Task]:
             tasks = [Task.model_validate(t) for t in await self._backend.pop_scheduled(self.name, at)]
-            return [await self._execute_task(task) for task in tasks]
+            return [await self._process_task(task) for task in tasks]
 
         return asyncio.run(_process_scheduled_async(at))
 
-    async def _execute_task(self, __task: Task) -> Task:
-        _, task = await self._task_processor.execute_task(__task, self._worker_id)
+    async def _process_task(self, task: Task) -> Task:
+        _, task = await self._task_processor.process_task(task, self._worker_id)
 
         self.processed_tasks.append(task)
 

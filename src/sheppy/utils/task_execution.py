@@ -10,24 +10,13 @@ from typing import Annotated, Any, get_args, get_origin
 from uuid import uuid4
 
 import anyio
-from pydantic import ConfigDict, PydanticSchemaGenerationError, TypeAdapter
+from pydantic import PydanticSchemaGenerationError, TypeAdapter
 
 from ..models import CURRENT_TASK, Task
 from .fastapi import Depends
-from .functions import resolve_function
+from .functions import reconstruct_result, resolve_function
 
 cache_signature: dict[Callable[..., Any], inspect.Signature] = {}
-
-
-class TaskInternal(Task):
-    model_config = ConfigDict(frozen=False)
-
-    @staticmethod
-    def from_task(task: Task) -> "TaskInternal":
-        return TaskInternal.model_validate(task.model_dump(mode="json"))
-
-    def create_task(self) -> Task:
-        return Task.model_validate(self.model_dump(mode="json"))
 
 
 def generate_unique_worker_id(prefix: str) -> str:
@@ -37,7 +26,27 @@ def generate_unique_worker_id(prefix: str) -> str:
 class TaskProcessor:
 
     @staticmethod
-    async def _actually_execute_task(task: TaskInternal) -> Any:
+    async def process_task(task: "Task", worker_id: str) -> tuple[Exception | None, "Task"]:
+        task, _generators = await TaskProcessor.process_pre_task_middleware(task)
+
+        try:
+            result = await TaskProcessor._execute_task_function(task)
+            exception = None
+            task = TaskProcessor.mark_completed(task, result, worker_id)
+
+        except Exception as e:
+            task = TaskProcessor.mark_failed(task, e)
+            exception = e  # temporary
+
+            if task.is_retriable:
+                task = TaskProcessor.handle_retry(task)
+
+        task = await TaskProcessor.process_post_task_middleware(task, _generators)
+
+        return exception, task
+
+    @staticmethod
+    async def _execute_task_function(task: Task) -> Any:
         # resolve the function from its string representation
         func = resolve_function(task.spec.func)
         args = task.spec.args or ()
@@ -54,104 +63,82 @@ class TaskProcessor:
         return await anyio.to_thread.run_sync(lambda: func(*final_args, **final_kwargs))
 
     @staticmethod
-    async def execute_task(__task: "Task", worker_id: str) -> tuple[Exception | None, "Task"]:
-        task = TaskInternal.from_task(__task)
-
-        try:
-            task, _generators = await TaskProcessor.process_pre_task_middleware(task)
-        except Exception as e:
-            raise Exception("Middleware error") from e
-
-        try:
-            result = await TaskProcessor._actually_execute_task(task)
-            task = TaskProcessor.handle_success_and_update_task_metadata(task, result, worker_id)
-            exception = None
-
-        except Exception as e:
-            task = await TaskProcessor.handle_failed_task(task, e)
-            exception = e  # temporary
-
-        try:
-            task = await TaskProcessor.process_post_task_middleware(task, _generators)
-        except Exception as e:
-            raise Exception("Middleware error") from e
-
-        # result validation might fail
-        try:
-            final_task = task.create_task()
-        except Exception as e:
-            task = await TaskProcessor.handle_failed_task(task, e)
-            exception = e
-            final_task = task.create_task()
-
-        return exception, final_task
-
-    @staticmethod
-    async def process_pre_task_middleware(task: TaskInternal) -> tuple[TaskInternal, list[Any]]:
+    async def process_pre_task_middleware(task: Task) -> tuple[Task, list[Any]]:
         if not task.spec.middleware:
             return task, []
 
         _generators = []
 
-        for middleware_string in task.spec.middleware:
-            middleware = resolve_function(middleware_string, wrapped=False)
-            gen = middleware(task)
-            task = next(gen) or task
-            _generators.append(gen)
+        try:
+            for middleware_string in task.spec.middleware:
+                middleware = resolve_function(middleware_string, wrapped=False)
+                gen = middleware(task)
+                task = next(gen) or task
+                _generators.append(gen)
+        except Exception as e:
+            raise Exception("Middleware error") from e
 
         return task, _generators
 
     @staticmethod
-    async def process_post_task_middleware(task: TaskInternal, _generators: list[Any]) -> TaskInternal:
+    async def process_post_task_middleware(task: Task, _generators: list[Any]) -> Task:
         if not _generators:
             return task
 
-        for gen in _generators[::-1]:  # post task middleware goes in reverse order
-            try:
-                task = gen.send(task) or task
-            except StopIteration as e:
-                task = e.value or task
+        try:
+            for gen in _generators[::-1]:  # post task middleware goes in reverse order
+                try:
+                    task = gen.send(task) or task
+                except StopIteration as e:
+                    task = e.value or task
+        except Exception as e:
+            raise Exception("Middleware error") from e
 
         return task
 
     @staticmethod
-    def handle_success_and_update_task_metadata(task: TaskInternal, result: Any, worker_id: str) -> TaskInternal:
-        task.result = result
-        task.completed = True
-        task.error = None
-
-        #task.config.worker = worker_id
-        task.finished_at = datetime.now(timezone.utc)
-
-        return task
-
-    @staticmethod
-    async def handle_failed_task(task: TaskInternal, exception: Exception) -> TaskInternal:
-        task.completed = False
-        task.result = None
-        task.error = f"{exception.__class__.__name__}: {exception}"
-
-        if task.is_retriable:
-            task = TaskProcessor.handle_retry(task)
-        else:
-            task.finished_at = datetime.now(timezone.utc)
-
-        return task
+    def mark_completed(task: Task, result: Any, worker_id: str) -> Task:
+        return task.model_copy(
+            deep=True,
+            update={
+                "completed": True,
+                # we reconstruct result here only to trigger result validation
+                # before we store task as completed
+                "result": reconstruct_result(task.spec.func, result),
+                "error": None,
+                "finished_at": datetime.now(timezone.utc),
+            },
+        )
 
     @staticmethod
-    def handle_retry(task: TaskInternal) -> TaskInternal:
-        if task.should_retry:
-            task.retry_count += 1
-            task.last_retry_at = datetime.now(timezone.utc)
-            task.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task))
-            task.finished_at = None
-        else:
-            task.finished_at = datetime.now(timezone.utc)
-
-        return task
+    def mark_failed(task: Task, exception: Exception) -> Task:
+        return task.model_copy(
+            deep=True,
+            update={
+                "completed": False,
+                "result": None,
+                "error": f"{exception.__class__.__name__}: {exception}",
+                "finished_at": datetime.now(timezone.utc),
+            },
+        )
 
     @staticmethod
-    def calculate_retry_delay(task: TaskInternal) -> float:
+    def handle_retry(task: Task) -> Task:
+        if not task.should_retry:
+            return task
+
+        return task.model_copy(
+            deep=True,
+            update={
+                "retry_count": task.retry_count + 1,
+                "last_retry_at": datetime.now(timezone.utc),
+                "next_retry_at": datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task)),
+                "finished_at": None
+            },
+        )
+
+    @staticmethod
+    def calculate_retry_delay(task: Task) -> float:
         if isinstance(task.config.retry_delay, float):
             return task.config.retry_delay  # constant delay for all retries
         if isinstance(task.config.retry_delay, list):
@@ -172,7 +159,7 @@ class TaskProcessor:
         func: Callable[..., Any],
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
-        task: TaskInternal | None = None,
+        task: Task | None = None,
     ) -> tuple[list[Any], dict[str, Any]]:
 
         signature = cache_signature.get(func)
