@@ -75,7 +75,7 @@ For more details, see the <a href="https://docs.sheppy.org/getting-started/" tar
 ## Requirements
 
 - Python 3.10+
-- Redis 8+
+- Redis 6.2+
 
 ## Developing
 

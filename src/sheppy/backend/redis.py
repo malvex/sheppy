@@ -290,7 +290,8 @@ class RedisBackend(Backend):
                     pipe.xadd(finished_tasks_key, {"task_id": task_data["id"]}, minid=min_id)
                 # ack and delete the task from the stream (cleanup)
                 if message_id:
-                    pipe.xackdel(pending_tasks_key, self.consumer_group, message_id)
+                    pipe.xack(pending_tasks_key, self.consumer_group, message_id)
+                    pipe.xdel(pending_tasks_key, message_id)
 
                 await (pipe.execute())
 

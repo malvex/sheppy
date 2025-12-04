@@ -1,6 +1,6 @@
 services:
   redis:
-    image: redis:8-bookworm
+    image: redis:6.2-bookworm
     ports:
       - "6379:6379"
     volumes:
