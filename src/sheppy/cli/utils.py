@@ -4,7 +4,7 @@ from enum import Enum
 
 from rich.console import Console
 
-from sheppy import Backend, MemoryBackend, RedisBackend
+from sheppy import Backend, LocalBackend, RedisBackend
 
 console = Console()
 
@@ -29,15 +29,16 @@ class LogLevel(str, Enum):
 class BackendType(str, Enum):
     """Backend type enum."""
     redis = "redis"
+    local = "local"
 
 
-def get_backend(backend_type: BackendType, redis_url: str) -> Backend:
+def get_backend(backend_type: BackendType, redis_url: str, local_backend_port: int, local_backend_embedded_server: bool) -> Backend:
     """Create backend instance based on type."""
     if backend_type == BackendType.redis:
         return RedisBackend(redis_url)
 
-    elif backend_type == BackendType.memory:
-        return MemoryBackend()
+    elif backend_type == BackendType.local:
+        return LocalBackend(port=local_backend_port, embedded=local_backend_embedded_server)
 
     else:
         raise ValueError(f"Unknown backend: {backend_type}")

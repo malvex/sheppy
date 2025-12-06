@@ -1,10 +1,13 @@
 import asyncio
 import heapq
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from ..models import Task
+from ..utils.task_execution import TaskProcessor
 from .base import Backend, BackendError
 
 
@@ -16,7 +19,12 @@ class ScheduledTask:
 
 class MemoryBackend(Backend):
 
-    def __init__(self) -> None:
+    def __init__(self,
+                 *,
+                 instant_processing: bool = True,
+                 dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None,
+                 ) -> None:
+
         self._task_metadata: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)  # {QUEUE_NAME: {TASK_ID: task_data}}
         self._pending: dict[str, list[str]] = defaultdict(list)
         self._scheduled: dict[str, list[ScheduledTask]] = defaultdict(list)
@@ -24,6 +32,10 @@ class MemoryBackend(Backend):
 
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)  # for thread-safety
         self._connected = False
+
+        self._instant_processing = instant_processing
+        self._task_processor = TaskProcessor(dependency_overrides=dependency_overrides)
+        self._worker_id = "MemoryBackend"
 
     async def connect(self) -> None:
         self._connected = True
@@ -66,7 +78,12 @@ class MemoryBackend(Backend):
 
                 self._pending[queue_name].append(task["id"])
 
-            return success
+        if self._instant_processing:
+            for i, task_data in enumerate(tasks):
+                if success[i]:
+                    await self._process_task(queue_name, task_data)
+
+        return success
 
     async def pop(self, queue_name: str, limit: int = 1, timeout: float | None = None) -> list[dict[str, Any]]:
         self._check_connected()
@@ -154,10 +171,14 @@ class MemoryBackend(Backend):
             if not unique:
                 self._task_metadata[queue_name][task_data["id"]] = task_data
 
-            scheduled_task = ScheduledTask(at, task_data["id"])
-            heapq.heappush(self._scheduled[queue_name], scheduled_task)
+        if self._instant_processing:
+            await self.append(queue_name, [task_data], unique=False)
+        else:
+            async with self._locks[queue_name]:
+                scheduled_task = ScheduledTask(at, task_data["id"])
+                heapq.heappush(self._scheduled[queue_name], scheduled_task)
 
-            return True
+        return True
 
     async def pop_scheduled(self, queue_name: str, now: datetime | None = None) -> list[dict[str, Any]]:
         self._check_connected()
@@ -288,3 +309,34 @@ class MemoryBackend(Backend):
     def _check_connected(self) -> None:
         if not self.is_connected:
             raise BackendError("Not connected")
+
+    async def _process_task(self, queue_name: str, task_data: dict[str, Any]) -> None:
+        # pop from pending
+        task_id = task_data["id"]
+        if task_id in self._pending[queue_name]:
+            self._pending[queue_name].remove(task_id)
+
+        # process the task
+        task = Task.model_validate(task_data)
+        _, processed_task = await self._task_processor.process_task(task, self._worker_id)
+
+        # handle retry
+        if processed_task.error and processed_task.should_retry and processed_task.next_retry_at is not None:
+            async with self._locks[queue_name]:
+                processed_data = processed_task.model_dump(mode="json")
+                self._task_metadata[queue_name][task_id] = processed_data
+                self._pending[queue_name].append(task_id)
+            await self._process_task(queue_name, processed_data)
+            return
+
+        # handle task chaining
+        if processed_task.completed and processed_task.result:
+            if isinstance(processed_task.result, Task):
+                chained_data = processed_task.result.model_dump(mode="json")
+                await self.append(queue_name, [chained_data])
+
+            elif isinstance(processed_task.result, list) and processed_task.result and isinstance(processed_task.result[0], Task):
+                chained_tasks = [t.model_dump(mode="json") for t in processed_task.result if isinstance(t, Task)]
+                if chained_tasks:
+                    await self.append(queue_name, chained_tasks)
+        await self.store_result(queue_name, processed_task.model_dump(mode="json"))

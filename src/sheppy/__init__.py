@@ -1,4 +1,4 @@
-from .backend import Backend, BackendError, MemoryBackend, RedisBackend
+from .backend import Backend, BackendError, LocalBackend, MemoryBackend, RedisBackend
 from .models import CURRENT_TASK, Task
 from .queue import Queue
 from .task_factory import task
@@ -20,5 +20,5 @@ __all__ = [  # noqa
     # worker
     "Worker",
     # backend/
-    "Backend", "MemoryBackend", "RedisBackend", "BackendError",
+    "Backend", "LocalBackend", "MemoryBackend", "RedisBackend", "BackendError",
 ]

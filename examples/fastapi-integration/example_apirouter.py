@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sheppy import Queue, RedisBackend, task
+from sheppy import MemoryBackend, Queue, task
 from sheppy.fastapi import create_router
 
 
@@ -11,7 +11,7 @@ def add(x: int, y: int) -> int:
     return x + y
 
 
-backend = RedisBackend()
+backend = MemoryBackend()
 queue = Queue(backend)
 
 app = FastAPI()
