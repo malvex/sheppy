@@ -2,6 +2,7 @@
 This file contains utility functions meant for internal use only. Expect breaking changes if you use them directly.
 """
 
+import asyncio
 import inspect
 import socket
 from collections.abc import Callable
@@ -21,6 +22,10 @@ cache_signature: dict[Callable[..., Any], inspect.Signature] = {}
 
 def generate_unique_worker_id(prefix: str) -> str:
     return f"{prefix}-{socket.gethostname()}-{str(uuid4())[:8]}"
+
+
+class TaskTimeoutError(TimeoutError):
+    pass
 
 
 class TaskProcessor:
@@ -43,7 +48,7 @@ class TaskProcessor:
             exception = e  # temporary
 
             if task.is_retriable:
-                task = TaskProcessor.handle_retry(task)
+                task = TaskProcessor.handle_retry(task, exception)
 
         task = await TaskProcessor.process_post_task_middleware(task, _generators)
 
@@ -60,10 +65,18 @@ class TaskProcessor:
 
         # async task
         if inspect.iscoroutinefunction(func):
-            return await func(*final_args, **final_kwargs)
+            coro = func(*final_args, **final_kwargs)
+        else:
+            # sync task
+            coro = anyio.to_thread.run_sync(lambda: func(*final_args, **final_kwargs))
 
-        # sync task
-        return await anyio.to_thread.run_sync(lambda: func(*final_args, **final_kwargs))
+        if task.config.timeout is not None:
+            try:
+                return await asyncio.wait_for(coro, timeout=task.config.timeout)
+            except asyncio.TimeoutError:
+                raise TaskTimeoutError(f"Task exceeded timeout of {task.config.timeout} seconds") from None
+
+        return await coro
 
     @staticmethod
     async def process_pre_task_middleware(task: Task) -> tuple[Task, list[Any]]:
@@ -126,8 +139,11 @@ class TaskProcessor:
         )
 
     @staticmethod
-    def handle_retry(task: Task) -> Task:
+    def handle_retry(task: Task, exception: Exception) -> Task:
         if not task.should_retry:
+            return task
+
+        if isinstance(exception, TaskTimeoutError) and not task.config.retry_on_timeout:
             return task
 
         return task.model_copy(
