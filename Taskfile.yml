@@ -69,3 +69,8 @@ tasks:
   docs-dev:
     desc: Run docs locally
     cmd: uv run mkdocs serve --livereload -w src -w examples # --strict
+
+includes:
+  sandbox:
+    taskfile: ./sandbox.ignore/Taskfile.yml
+    optional: true
