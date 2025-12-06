@@ -111,7 +111,8 @@ class TaskConfig(BaseModel):
     retry_delay: float | list[float] = Field(default=1.0)
     """float|list[float]: Delay between retries in seconds. If a single float is provided, it will be used for all retries. If a list is provided, it will be used for each retry attempt respectively (exponential backoff). Default is 1.0 seconds."""
 
-    # timeout: float | None = None  # seconds
+    timeout: float | None = None  # seconds
+    retry_on_timeout: bool = False
     # tags: dict[str, str] = Field(default_factory=dict)
 
     @field_validator('retry_delay')
