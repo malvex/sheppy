@@ -46,7 +46,9 @@ class TaskFactory:
                     kwargs: dict[str, Any],
                     retry: int,
                     retry_delay: float | list[float] | None,
-                    middleware: list[Callable[..., Any]] | None
+                    middleware: list[Callable[..., Any]] | None,
+                    timeout: float | None,
+                    retry_on_timeout: bool | None,
                     ) -> Task:
 
         task_config: dict[str, Any] = {
@@ -54,6 +56,11 @@ class TaskFactory:
         }
         if retry_delay is not None:
             task_config["retry_delay"] = retry_delay
+
+        if timeout is not None:
+            task_config["timeout"] = timeout
+        if retry_on_timeout is not None:
+            task_config["retry_on_timeout"] = retry_on_timeout
 
         func_string = TaskFactory._stringify_function(func)
 
@@ -92,7 +99,9 @@ def task(
     *,
     retry: int = 0,
     retry_delay: float | list[float] | None = None,
-    middleware: list[Callable[..., Any]] | None = None
+    middleware: list[Callable[..., Any]] | None = None,
+    timeout: float | None = None,
+    retry_on_timeout: bool | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, Task]]:
     ...
 
@@ -106,13 +115,15 @@ def task(
     *,
     retry: int = 0,
     retry_delay: float | list[float] | None = None,
-    middleware: list[Callable[..., Any]] | None = None
+    middleware: list[Callable[..., Any]] | None = None,
+    timeout: float | None = None,
+    retry_on_timeout: bool | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, Task]] | Callable[P, Task]:
     def decorator(func: Callable[P, R]) -> Callable[P, Task]:
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> Task:
 
-            return TaskFactory.create_task(func, tuple(args), kwargs, retry, retry_delay, middleware)
+            return TaskFactory.create_task(func, tuple(args), kwargs, retry, retry_delay, middleware, timeout, retry_on_timeout)
 
         return wrapper
 
