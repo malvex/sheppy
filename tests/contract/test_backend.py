@@ -393,7 +393,9 @@ class TestGetResults:
         assert await backend.size(Q) == 1
 
     async def _setup_schedule(self, task_data: dict, backend: Backend, create_task: bool = True):
-        await backend.connect()
+        if create_task:
+            await backend.connect()
+
         assert await backend.size(Q) == 0
 
         assert await backend.schedule(Q, task_data, at=TypeAdapter(datetime).validate_python(task_data["scheduled_at"]), unique=create_task)

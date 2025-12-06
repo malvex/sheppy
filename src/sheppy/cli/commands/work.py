@@ -16,6 +16,8 @@ def work(
     queue: list[str] = typer.Option(["default"], "--queue", "-q", help="Name of queue to process (can be used multiple times)"),
     backend: BackendType = typer.Option(BackendType.redis, "--backend", "-b", help="Queue backend type"),
     redis_url: str = typer.Option("redis://127.0.0.1:6379", "--redis-url", "-r", help="Redis server URL"),
+    local_backend_embedded_server: bool = typer.Option(False, "--local-backend-embedded-server", help="Enable embedded server (local backend)"),
+    local_backend_port: int = typer.Option("17420", "--local-backend-port", help="Local backend port"),
     max_concurrent: int = typer.Option(10, "--max-concurrent", "-c", help="Max concurrent tasks", min=1),
     max_prefetch: int | None = typer.Option(None, "--max-prefetch", help="Max prefetch tasks", min=1),
     autoreload: bool = typer.Option(False, "--reload", help="Reload worker on file changes"),
@@ -44,7 +46,7 @@ def work(
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
 
-    backend_instance = get_backend(backend, redis_url)
+    backend_instance = get_backend(backend, redis_url, local_backend_port, local_backend_embedded_server)
 
     _bs = ""
     if backend == BackendType.redis:

@@ -10,11 +10,13 @@ from ...utils import BackendType, console, get_backend
 def list_queues(
     backend: Annotated[BackendType, typer.Option("--backend", "-b", help="Queue backend type")] = BackendType.redis,
     redis_url: Annotated[str, typer.Option("--redis-url", "-r", help="Redis server URL")] = "redis://127.0.0.1:6379",
+    local_backend_embedded_server: bool = typer.Option(False, "--local-backend-embedded-server", help="Enable embedded server (local backend)"),
+    local_backend_port: int = typer.Option("17420", "--local-backend-port", help="Local backend port"),
 ) -> None:
     """List all queues with their pending task counts."""
 
     async def _list() -> None:
-        backend_instance = get_backend(backend, redis_url)
+        backend_instance = get_backend(backend, redis_url, local_backend_port, local_backend_embedded_server)
 
         await backend_instance.connect()
         queues = await backend_instance.list_queues()

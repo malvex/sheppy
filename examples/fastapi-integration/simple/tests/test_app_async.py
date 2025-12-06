@@ -6,30 +6,12 @@ from main import app, get_queue
 
 
 @pytest.fixture
-def backend():
-    return MemoryBackend()
+def queue():
+    return Queue(MemoryBackend(), "pytest")
 
 
-@pytest.fixture
-def queue(backend):
-    return Queue(backend, "pytest")
-
-
-@pytest.fixture
-def worker(backend):
-    w = Worker("pytest", backend)
-    # speed up tests (temporary solution)
-    w._blocking_timeout = 0.01
-    w._scheduler_polling_interval = 0.01
-    w._cron_polling_interval = 0.01
-    return w
-
-
-async def test_fastapi_send_email_route(queue, worker):
-    # start worker process
-    asyncio.create_task(worker.work(max_tasks=1, register_signal_handlers=False))
-
-    # override queue dependency
+async def test_fastapi_send_email_route(queue):
+    # override queue dependency to inject PytestBackend
     app.dependency_overrides[get_queue] = lambda: queue
 
     async with AsyncClient(

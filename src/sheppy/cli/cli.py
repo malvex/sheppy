@@ -4,6 +4,7 @@ from rich import print as rprint
 from sheppy import __version__
 
 from .commands.cron.list import list_crons
+from .commands.dev_server import dev_server
 from .commands.queue.list import list_queues
 from .commands.task.add import add
 from .commands.task.info import info
@@ -53,3 +54,4 @@ cron_app.command(name="list")(list_crons)
 app.add_typer(cron_app, name="cron")
 
 app.command()(work)
+app.command()(dev_server)

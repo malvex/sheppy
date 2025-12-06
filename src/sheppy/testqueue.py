@@ -102,7 +102,7 @@ class TestQueue:
     ):
         self.name = name
 
-        self._backend = MemoryBackend()
+        self._backend = MemoryBackend(instant_processing=False)
         self._backend._connected = True
         self._queue = Queue(self._backend, self.name)
         self._worker_id = "TestQueue"
