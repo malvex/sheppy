@@ -1,6 +1,7 @@
 import asyncio
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import overload
+from typing import Any, overload
 from uuid import UUID
 
 from .backend.memory import MemoryBackend
@@ -97,16 +98,15 @@ class TestQueue:
     def __init__(
         self,
         name: str = "test-queue",
-        #dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None  # ! FIXME
+        dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None,
     ):
         self.name = name
 
         self._backend = MemoryBackend()
         self._backend._connected = True
         self._queue = Queue(self._backend, self.name)
-        #self._dependency_resolver = DependencyResolver(dependency_overrides)
         self._worker_id = "TestQueue"
-        self._task_processor = TaskProcessor()
+        self._task_processor = TaskProcessor(dependency_overrides=dependency_overrides)
 
         self.processed_tasks: list[Task] = []
         self.failed_tasks: list[Task] = []
@@ -403,7 +403,7 @@ class TestQueue:
         if task.error:
             self.failed_tasks.append(task)
 
-            if task.should_retry:
+            if task.should_retry and task.next_retry_at is not None:
                 # retry immediately
                 await self._queue.retry(task)
 
