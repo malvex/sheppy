@@ -24,13 +24,17 @@ def generate_unique_worker_id(prefix: str) -> str:
 
 
 class TaskProcessor:
+    def __init__(
+            self,
+            dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None,
+    ):
+        self.dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] = dependency_overrides or {}
 
-    @staticmethod
-    async def process_task(task: "Task", worker_id: str) -> tuple[Exception | None, "Task"]:
+    async def process_task(self, task: Task, worker_id: str) -> tuple[Exception | None, "Task"]:
         task, _generators = await TaskProcessor.process_pre_task_middleware(task)
 
         try:
-            result = await TaskProcessor._execute_task_function(task)
+            result = await self._execute_task_function(task)
             exception = None
             task = TaskProcessor.mark_completed(task, result, worker_id)
 
@@ -45,15 +49,14 @@ class TaskProcessor:
 
         return exception, task
 
-    @staticmethod
-    async def _execute_task_function(task: Task) -> Any:
+    async def _execute_task_function(self, task: Task) -> Any:
         # resolve the function from its string representation
         func = resolve_function(task.spec.func)
         args = task.spec.args or ()
         kwargs = task.spec.kwargs or {}
 
         # validate all parameters, inject DI and Task
-        final_args, final_kwargs = await TaskProcessor.process_function_parameters(func, args, kwargs, task)
+        final_args, final_kwargs = await self.process_function_parameters(func, args, kwargs, task)
 
         # async task
         if inspect.iscoroutinefunction(func):
@@ -154,8 +157,8 @@ class TaskProcessor:
         # this should never happen if the library is used correctly
         raise ValueError(f"Invalid retry_delay type: {type(task.config.retry_delay).__name__}. Expected float or list[float].")
 
-    @staticmethod
     async def process_function_parameters(
+        self,
         func: Callable[..., Any],
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
@@ -188,7 +191,7 @@ class TaskProcessor:
 
             # dependency injection
             if depends := TaskProcessor.get_depends_from_param(param):
-                final_kwargs[param_name] = await TaskProcessor._resolve_dependency(depends.dependency)
+                final_kwargs[param_name] = await self._resolve_dependency(depends.dependency)
                 continue
 
             # validate kwargs
@@ -212,12 +215,11 @@ class TaskProcessor:
 
         return value
 
-    @staticmethod
-    async def _resolve_dependency(func: Callable[..., Any]) -> Any:
-        # func = resolver.dependency_overrides.get(dep_func, dep_func)  # ! FIXME
+    async def _resolve_dependency(self, func: Callable[..., Any]) -> Any:
+        func = self.dependency_overrides.get(func, func)
 
         # resolve nested dependencies
-        _, kwargs = await TaskProcessor.process_function_parameters(func, (), {}, None)
+        _, kwargs = await self.process_function_parameters(func, (), {}, None)
 
         # execute dependency
         if inspect.iscoroutinefunction(func):
