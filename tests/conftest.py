@@ -54,6 +54,8 @@ async def worker_backend(backend: Backend) -> AsyncGenerator[Backend, None]:
 @pytest_asyncio.fixture
 async def worker(worker_backend: Backend) -> Worker:
     worker = Worker(TEST_QUEUE_NAME, worker_backend)
+    # is needed to speed up retry logic that is being scheduled (and tests are then waiting for scheduler poll interval).
+    # will be fixed once we introduce scheduler notifications instead of polling
     worker._blocking_timeout = 0.01
     worker._scheduler_polling_interval = 0.01
     worker._cron_polling_interval = 0.01

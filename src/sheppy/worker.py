@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import signal
 from functools import partial
@@ -218,7 +219,7 @@ class Worker:
                         logger.info(SCHEDULER_PREFIX + f"Enqueued {_l} scheduled task{'s' if _l > 1 else ''} for processing: {_task_s}")
 
             except asyncio.CancelledError:
-                logger.warning(SCHEDULER_PREFIX + "cancelled")
+                logger.info(SCHEDULER_PREFIX + "cancelled")
                 break
 
             except Exception as e:
@@ -226,7 +227,9 @@ class Worker:
                 self._shutdown_event.set()
                 break
 
-            await asyncio.sleep(poll_interval)  # TODO: replace polling with notifications when worker notifications are implemented
+            # TODO: replace polling with notifications when worker notifications are implemented
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(self._shutdown_event.wait(), timeout=poll_interval)
 
         logger.info(SCHEDULER_PREFIX + "stopped")
 
@@ -248,7 +251,7 @@ class Worker:
                                 logger.info(CRON_MANAGER_PREFIX + f"Cron {cron.id} ({cron.spec.func}) scheduled at {_next_run}")
 
             except asyncio.CancelledError:
-                logger.warning(CRON_MANAGER_PREFIX + "cancelled")
+                logger.info(CRON_MANAGER_PREFIX + "cancelled")
                 break
 
             except Exception as e:
@@ -256,7 +259,9 @@ class Worker:
                 self._shutdown_event.set()
                 break
 
-            await asyncio.sleep(poll_interval)  # TODO: replace polling with notifications when worker notifications are implemented
+            # TODO: replace polling with notifications when worker notifications are implemented
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(self._shutdown_event.wait(), timeout=poll_interval)
 
         logger.info(CRON_MANAGER_PREFIX + "stopped")
 
@@ -285,8 +290,28 @@ class Worker:
                 capacity = min(capacity, self._tasks_to_process)
 
             try:
-                available_tasks = await queue._pop_pending(timeout=self._blocking_timeout,
-                                                limit=capacity)
+                pop_task = asyncio.create_task(
+                    queue._pop_pending(timeout=self._blocking_timeout, limit=capacity)
+                )
+                shutdown_wait_task = asyncio.create_task(self._shutdown_event.wait())
+
+                done, pending = await asyncio.wait(
+                    [pop_task, shutdown_wait_task],
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+
+                # asyncio is single-threaded, so we cannot loose any data here.
+                # if any task is popped at the same time, then it will be in pending,
+                # and processed in "remaining_tasks" thing above
+                if shutdown_wait_task in done and pop_task not in done:
+                    pop_task.cancel()
+                    break
+
+                # if pop completed (most of the times), cancel waiting task to prevent asyncio errors
+                if shutdown_wait_task in pending:
+                    shutdown_wait_task.cancel()
+
+                available_tasks = pop_task.result()
 
                 if oneshot and not available_tasks:
                     logger.info(WORKER_PREFIX + f"Queue '{queue.name}' emptied")
@@ -304,7 +329,7 @@ class Worker:
                         self._tasks_to_process -= 1
 
             except asyncio.CancelledError:
-                logger.warning(WORKER_PREFIX + "cancelled")
+                logger.info(WORKER_PREFIX + "cancelled")
                 break
 
             except Exception as e:
