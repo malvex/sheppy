@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 try:
-    from fastapi.params import Depends  # type: ignore
+    from fastapi.params import Depends  # type: ignore[import-not-found,unused-ignore]
 except ImportError:
     # fallback implementation if FastAPI is not installed
     class Depends:  # type: ignore[no-redef]
