@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.0.4
+
+* refactor(backend): use xack+xdel instead of xackdel. PR [#20](https://github.com/malvex/sheppy/pull/20) by [@malvex](https://github.com/malvex)
+* feat: add dependency override to TestQueue. PR [#21](https://github.com/malvex/sheppy/pull/21) by [@malvex](https://github.com/malvex)
+* feat: add task timeout. PR [#22](https://github.com/malvex/sheppy/pull/22) by [@malvex](https://github.com/malvex)
+* fix(worker): improve logic to fix slow shutdown. PR [#23](https://github.com/malvex/sheppy/pull/23) by [@malvex](https://github.com/malvex)
+* feat: add FastAPI APIRouter. PR [#24](https://github.com/malvex/sheppy/pull/24) by [@malvex](https://github.com/malvex)
+* feat: add local backend and improve memory backend. PR [#25](https://github.com/malvex/sheppy/pull/25) by [@malvex](https://github.com/malvex)
+
 ## 0.0.3
 
 * Multiple bugfixes and small refactor. PR [#18](https://github.com/malvex/sheppy/pull/18) by [@malvex](https://github.com/malvex)
