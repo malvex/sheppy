@@ -49,6 +49,11 @@ dependencies = [
     "watchfiles>=1.1.0",
 ]
 
+[project.optional-dependencies]
+fastapi = [
+    "fastapi[standard]>=0.112.0",
+]
+
 [dependency-groups]
 dev = [
     "ruff>=0.12.7",
