@@ -38,6 +38,7 @@ async def test_wait_for(task_fail_once_fn: Callable[[], Task], queue: Queue, wor
     assert recv_task.retry_count == 1
 
 
+@pytest.mark.slow
 async def test_wait_for_race(task_fail_once_fn: Callable[[], Task], queue: Queue, worker: Worker):
     t = task_fail_once_fn()
     await queue.add(t)
@@ -60,6 +61,7 @@ async def test_wait_for_race(task_fail_once_fn: Callable[[], Task], queue: Queue
     assert recv_task.id == recv_task2.id
 
 
+@pytest.mark.slow
 async def test_wait_for_race_w_at(task_fail_once_fn: Callable[[], Task], queue: Queue, worker: Worker):
     t = task_fail_once_fn()
     await queue.add(t)
@@ -83,6 +85,7 @@ async def test_wait_for_race_w_at(task_fail_once_fn: Callable[[], Task], queue: 
     assert recv_task != recv_task2
 
 
+@pytest.mark.slow
 async def test_wait_for_race_no_retriable(queue: Queue, worker: Worker):
     t = failing_task()
     await queue.add(t)

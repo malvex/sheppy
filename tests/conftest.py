@@ -71,9 +71,9 @@ async def worker(worker_backend: Backend) -> Worker:
     worker = Worker(TEST_QUEUE_NAME, worker_backend)
     # is needed to speed up retry logic that is being scheduled (and tests are then waiting for scheduler poll interval).
     # will be fixed once we introduce scheduler notifications instead of polling
-    worker._blocking_timeout = 0.01
-    worker._scheduler_polling_interval = 0.01
-    worker._cron_polling_interval = 0.01
+    worker._blocking_timeout = 0.001
+    worker._scheduler_polling_interval = 0.001
+    worker._cron_polling_interval = 0.001
 
     return worker
 
@@ -83,7 +83,7 @@ async def queue(backend: Backend) -> Queue:
     return Queue(backend, TEST_QUEUE_NAME)
 
 
-@task(retry=2, retry_delay=0.1)
+@task(retry=2, retry_delay=0.01)
 async def async_fail_once(current: Task = CURRENT_TASK) -> str:
     if current.retry_count == 0:
         raise Exception("transient error")

@@ -124,3 +124,6 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "-rXs --strict-config --strict-markers"
 xfail_strict = true
+markers = [
+    "slow",
+]
