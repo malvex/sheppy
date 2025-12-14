@@ -48,10 +48,9 @@ class TestSuccessfulTasks:
         task = await queue.wait_for(task, timeout=3.0)
         assert_is_completed(task)
         assert task.result == test_case.expected_result
-
-        await asyncio.sleep(0.01)
         await process_task
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("test_case", TaskTestCases.subset_successful_tasks()[1:2], ids=lambda tc: tc.name)
     async def test_wait_for_timeout(self, test_case: TaskTestCase, queue: Queue):
 
@@ -101,10 +100,11 @@ class TestTaskSelfReference:
 
 
 class TestScheduledTasks:
+    @pytest.mark.slow
     @pytest.mark.parametrize("test_case", TaskTestCases.subset_successful_tasks(), ids=lambda tc: tc.name)
     async def test_schedule_with_timedelta(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
         task = test_case.create_task()
-        delay = timedelta(seconds=0.1)
+        delay = timedelta(seconds=0.03)
 
         assert await queue.schedule(task, at=delay) is True
 
@@ -123,14 +123,12 @@ class TestScheduledTasks:
     @pytest.mark.parametrize("test_case", TaskTestCases.subset_successful_tasks()[:1], ids=lambda tc: tc.name)
     async def test_schedule_with_datetime(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
         task = test_case.create_task()
-        scheduled_time = datetime.now(timezone.utc) + timedelta(seconds=0.1)
+        scheduled_time = datetime.now(timezone.utc) + timedelta(seconds=0.03)
 
         assert await queue.schedule(task, at=scheduled_time) is True
 
         popped = await queue._pop_pending(timeout=0.01)
         assert not popped
-
-        await asyncio.sleep(0.15)
 
         await worker.work(max_tasks=1)
 
@@ -138,6 +136,7 @@ class TestScheduledTasks:
         assert_is_completed(task)
         assert task.result == test_case.expected_result
 
+    @pytest.mark.slow
     async def test_multiple_scheduled_tasks(self, queue: Queue, worker: Worker):
         task1 = simple_sync_task(1, 2)
         task2 = simple_sync_task(3, 4)
@@ -175,7 +174,7 @@ class TestScheduledTasks:
 
     async def test_scheduled_task_with_immediate_task(self, queue: Queue, worker: Worker):
         scheduled_task = simple_sync_task(1, 2)
-        assert await queue.schedule(scheduled_task, at=timedelta(seconds=0.2)) is True
+        assert await queue.schedule(scheduled_task, at=timedelta(seconds=0.02)) is True
 
         immediate_task = simple_sync_task(3, 4)
         assert await queue.add(immediate_task) is True
@@ -200,7 +199,7 @@ class TestScheduledTasks:
     async def test_scheduled_failing_task(self, test_case: TaskTestCase, queue: Queue, worker: Worker):
         task = test_case.create_task()
 
-        assert await queue.schedule(task, at=timedelta(seconds=0.1)) is True
+        assert await queue.schedule(task, at=timedelta(seconds=0.03)) is True
 
         await worker.work(max_tasks=1)
 

@@ -485,6 +485,7 @@ async def test_retry_at(datetime_now, queue: Queue, worker: Worker):
 
 
 class TestBatchOperations:
+    @pytest.mark.slow
     async def test_batch_add(self, task_fn, queue: Queue, worker: Worker):
         worker.enable_scheduler = False
         worker.enable_cron_manager = False

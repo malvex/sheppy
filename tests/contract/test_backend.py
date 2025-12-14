@@ -385,6 +385,7 @@ async def test_get_scheduled(datetime_now: datetime, backend: Backend):
     assert await backend.get_scheduled("different-queue") == []
 
 
+@pytest.mark.slow
 class TestGetResults:
     async def _setup_append(self, task_data: dict, backend: Backend):
         await backend.connect()
