@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import (
     Annotated,
     Any,
+    Literal,
     ParamSpec,
     TypeVar,
 )
@@ -37,6 +38,8 @@ def cron_expression_validator(value: str) -> str:
     return value
 
 CronExpression = Annotated[str, AfterValidator(cron_expression_validator)]
+TaskStatus = Literal['new', 'scheduled', 'pending', 'processing', 'retrying',
+                     'completed', 'failed', 'cancelled', 'unknown']
 
 
 class TaskSpec(BaseModel):
@@ -128,7 +131,7 @@ class Task(BaseModel):
 
     Attributes:
         id (UUID): Unique identifier for the task.
-        completed (bool): A completion flag that is set to True only if task finished successfully.
+        status (TaskStatus): Task status.
         error (str|None): Error message if the task failed. None if the task succeeded or is not yet executed.
         result (Any): The result of the task execution. If the task failed, this will be None.
         spec (sheppy.models.TaskSpec): Task specification
@@ -165,8 +168,8 @@ class Task(BaseModel):
 
     id: UUID = Field(default_factory=uuid4)
     """UUID: Unique identifier for the task."""
-    completed: bool = False
-    """bool: A completion flag that is set to True only if task finished successfully."""
+    status: TaskStatus = 'new'
+    """TaskStatus: Task status."""
     error: str | None = None
     """str|None: Error message if the task failed. None if the task succeeded or is not yet executed."""
     result: Any = None
@@ -205,6 +208,13 @@ class Task(BaseModel):
         """Returns True if the task should be retried based on its retry configuration and current retry count."""
         return self.config.retry > 0 and self.retry_count < self.config.retry
 
+    @property
+    def completed(self) -> bool:
+        """Deprecated, DO NOT USE. Temporary compatibility attr mostly for my stuff"""
+        import warnings  # noqa: PLC0415
+        warnings.warn("task.completed is deprecated, use task.status instead", category=DeprecationWarning, stacklevel=2)
+        return self.status == "completed"
+
     @model_validator(mode='after')
     def _reconstruct_pydantic_result(self) -> 'Task':
         """Reconstruct result if it's pydantic model."""
@@ -225,7 +235,7 @@ class Task(BaseModel):
             "func": repr(self.spec.func),
             "args": repr(self.spec.args),
             "kwargs": repr(self.spec.kwargs),
-            "completed": repr(self.completed),
+            "status": repr(self.status),
             "error": repr(self.error)
         }
 

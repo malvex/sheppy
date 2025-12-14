@@ -23,7 +23,7 @@ async def main() -> None:
     task = await queue.wait_for(task)
 
     print(f"task result: {task.result}")
-    print(f"completed: {task.completed}")
+    print(f"status: {task.status}")
     print(f"error: {task.error}")
 
 

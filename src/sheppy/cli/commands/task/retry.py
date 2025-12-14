@@ -42,10 +42,8 @@ def retry(
             console.print(f"[red]Error: Task {task_id} not found in queue '{queue}'[/red]")
             raise typer.Exit(1)
 
-        is_failed = task.error and (task.finished_at or not task.completed)
-
-        if not is_failed and not force:
-            if task.completed:
+        if not task.error and not force:
+            if task.status == 'completed':
                 console.print(f"[yellow]Task {task_id} has already completed successfully[/yellow]")
             else:
                 console.print(f"[yellow]Task {task_id} is still pending/in-progress[/yellow]")

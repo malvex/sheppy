@@ -40,9 +40,9 @@ def test_timeout():
     print(processed2)
     print(processed3)
 
-    assert processed1.completed is True
-    assert processed2.completed is True
-    assert processed3.completed is False
+    assert processed1.status == 'completed'
+    assert processed2.status == 'completed'
+    assert processed3.status == 'failed'
     assert processed3.error == "TaskTimeoutError: Task exceeded timeout of 1.0 seconds"
 
 

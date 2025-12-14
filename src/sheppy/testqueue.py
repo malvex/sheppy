@@ -5,7 +5,7 @@ from typing import Any, overload
 from uuid import UUID
 
 from .backend.memory import MemoryBackend
-from .models import Task, TaskCron
+from .models import Task, TaskCron, TaskStatus
 from .queue import Queue
 from .utils.task_execution import TaskProcessor
 
@@ -349,7 +349,7 @@ class TestQueue:
             q.add(task)
             processed_task = q.process_next()
             assert processed_task is not None
-            assert processed_task.completed is True
+            assert processed_task.status == 'completed'
             ```
         """
         async def _process_next_async() -> Task | None:
@@ -408,7 +408,7 @@ class TestQueue:
                 await self._queue.retry(task)
 
         # basic task chaining
-        if task.completed and task.result:
+        if task.status == 'completed' and task.result:
             if isinstance(task.result, Task):
                 await self._queue.add(task.result)
 
@@ -428,7 +428,7 @@ class TestQueue:
         return task
 
 
-def assert_is_new(task: Task | None) -> None:
+def assert_is_new(task: Task | None, status: TaskStatus = 'new') -> None:
     """Assert that the task is new (not yet processed). Useful in tests.
 
     Args:
@@ -440,13 +440,13 @@ def assert_is_new(task: Task | None) -> None:
     assert task is not None
     assert isinstance(task, Task)
 
-    assert task.completed is False
+    assert task.status == status
     assert task.error is None
     assert task.result is None
     assert task.finished_at is None
 
 
-def assert_is_completed(task: Task | None) -> None:
+def assert_is_completed(task: Task | None, status: TaskStatus = 'completed') -> None:
     """Assert that the task is completed (processed successfully). Useful in tests.
 
     Args:
@@ -458,12 +458,12 @@ def assert_is_completed(task: Task | None) -> None:
     assert task is not None
     assert isinstance(task, Task)
 
-    assert task.completed is True
+    assert task.status == status
     assert task.error is None
     assert task.finished_at is not None
 
 
-def assert_is_failed(task: Task | None) -> None:
+def assert_is_failed(task: Task | None, status: TaskStatus = 'failed') -> None:
     """Assert that the task has failed (processed with error). Useful in tests.
 
     Args:
@@ -475,7 +475,7 @@ def assert_is_failed(task: Task | None) -> None:
     assert task is not None
     assert isinstance(task, Task)
 
-    assert not task.completed
+    assert task.status == status
     assert task.error is not None
     assert task.result is None
 

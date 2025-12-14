@@ -19,4 +19,4 @@ def test_multiply_without_async():
 
     # check results
     assert task.result == 10
-    assert task.completed
+    assert task.status == 'completed'

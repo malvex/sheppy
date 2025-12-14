@@ -75,7 +75,7 @@ class TestTaskListing:
         data = resp.json()
         assert len(data) == 1
         assert data[0]["id"] == str(t.id)
-        assert data[0]["completed"] is True
+        assert data[0]["status"] == "completed"
         assert data[0]["result"] == 3
 
     async def test_list_pending_tasks_empty(self, client: "AsyncClient"):

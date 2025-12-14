@@ -50,15 +50,15 @@ def list_tasks(
         #if status_filter in ["all", "completed", "failed"]:
 
         for task in all_backend_tasks:
-            if task.completed:
+            if task.status == 'completed':
                 queue_status = "[green]completed[/green]"
             elif task.error:
                 queue_status = "[red]failed[/red]"
             #elif str(task.id) in all_scheduled_task_ids:
-            elif task.scheduled_at:
+            elif task.status == 'scheduled':
                 queue_status = "[magenta]scheduled[/magenta]"
             else:
-                queue_status = "pending"
+                queue_status = task.status
 
             tasks.append((task, queue_status))
 

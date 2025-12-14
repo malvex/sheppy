@@ -46,7 +46,7 @@ async def main():
 
     if updated_task.error:
         print(f"Task failed with error: {updated_task.error}")
-    elif updated_task.completed:
+    elif updated_task.status == 'completed':
         print(f"Task succeed with result: {updated_task.result}")
         assert updated_task.result == "Hello, World!"
     else:

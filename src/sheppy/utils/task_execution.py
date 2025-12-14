@@ -117,7 +117,7 @@ class TaskProcessor:
         return task.model_copy(
             deep=True,
             update={
-                "completed": True,
+                "status": "completed",
                 # we reconstruct result here only to trigger result validation
                 # before we store task as completed
                 "result": reconstruct_result(task.spec.func, result),
@@ -131,7 +131,7 @@ class TaskProcessor:
         return task.model_copy(
             deep=True,
             update={
-                "completed": False,
+                "status": "failed",
                 "result": None,
                 "error": f"{exception.__class__.__name__}: {exception}",
                 "finished_at": datetime.now(timezone.utc),
@@ -149,6 +149,7 @@ class TaskProcessor:
         return task.model_copy(
             deep=True,
             update={
+                "status": "retrying",
                 "retry_count": task.retry_count + 1,
                 "last_retry_at": datetime.now(timezone.utc),
                 "next_retry_at": datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task)),
