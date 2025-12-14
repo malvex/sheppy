@@ -398,6 +398,18 @@ class Queue:
         tasks_data = await self.backend.pop(self.name, limit, timeout)
         return [Task.model_validate(t) for t in tasks_data]
 
+    async def _store_result(self, task: Task) -> bool:
+        """Store task result. Internal method used by workers.
+
+        Args:
+            task: Instance of a Task
+
+        Returns:
+            Success boolean
+        """
+        await self.__ensure_backend_is_connected()
+        return await self.backend.store_result(self.name, task.model_dump(mode='json'))
+
     async def _enqueue_scheduled(self, now: datetime | None = None) -> list[Task]:
         """Enqueue scheduled tasks that are ready to be processed. Internal method used by workers.
 

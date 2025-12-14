@@ -28,7 +28,7 @@ class TestMiddleware:
         t2 = task_add_with_middleware_noop(1, 2)
 
         assert len(t1.spec.middleware) == 0
-        assert len(t2.spec.middleware) == 1
+        assert len(t2.spec.middleware) == 2
 
         await queue.add([t1, t2])
         await worker.work(max_tasks=2)
@@ -37,7 +37,7 @@ class TestMiddleware:
         t2 = await queue.get_task(t2)
 
         assert len(t1.spec.middleware) == 0
-        assert len(t2.spec.middleware) == 1
+        assert len(t2.spec.middleware) == 2
 
         assert t1.result == 3
         assert t2.result == 3
@@ -71,7 +71,7 @@ class TestMiddleware:
         await worker.work(max_tasks=1)
         task = await queue.get_task(task)
 
-        assert task.result == 100003
+        assert task.result == 105003
 
     async def test_multiple(self, queue: Queue, worker: Worker):
 
@@ -81,4 +81,4 @@ class TestMiddleware:
         await worker.work(max_tasks=1)
         task = await queue.get_task(task)
 
-        assert task.result == 100007
+        assert task.result == 105007

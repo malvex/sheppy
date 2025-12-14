@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel
 
-from sheppy import CURRENT_TASK, Depends, Task, task
+from sheppy import CURRENT_TASK, Depends, Queue, Task, task
 
 
 class User(BaseModel):
@@ -539,57 +539,66 @@ class WrappedNumber(BaseModel):
     extra: str = "hello"
 
 
-def middleware_noop(task: Task):
-    task = yield task
+def middleware_noop(task: Task, queue: Queue):  # noqa: ARG001
+    task, exception = yield task
     return task
 
-# todo!
-# async def async_middleware_noop(task: Task):
-#     task = yield task
-#     return task
+async def async_middleware_noop(task: Task, queue: Queue):  # noqa: ARG001
+    task, exception = yield task
+    yield task
 
-def middleware_noop_no_val(task: Task):  # noqa: ARG001
+def middleware_noop_no_val(task: Task, queue: Queue):  # noqa: ARG001
     yield
     return
 
-def middleware_noop_return_no_val(task: Task):
+def middleware_noop_return_no_val(task: Task, queue: Queue):  # noqa: ARG001
     yield task
     return
 
-def middleware_noop_yield_no_val(task: Task):
-    task = yield
+def middleware_noop_yield_no_val(task: Task, queue: Queue):  # noqa: ARG001
+    task, exception = yield  # noqa: ARG001
     return task
 
-def middleware_noop_pass(task: Task):  # noqa: ARG001
+def middleware_noop_pass(task: Task, queue: Queue):  # noqa: ARG001
     pass
 
-def middleware_noop_yield_only_no_val(task: Task):  # noqa: ARG001
+def middleware_noop_yield_only_no_val(task: Task, queue: Queue):  # noqa: ARG001
     yield
 
 # should fail (tbd: more wrong formats)
-def middleware_noop_return_only_no_val(task: Task):  # noqa: ARG001
+def middleware_noop_return_only_no_val(task: Task, queue: Queue):  # noqa: ARG001
     return
 
 def middleware_no_args():
     yield
     return
 
-def middleware_too_many_args(task: Task, another_task: Task):  # noqa: ARG001
+def middleware_too_many_args(task: Task, queue: Queue, another_task: Task):  # noqa: ARG001
     yield
     return
 
-def middleware_change_arg(task: Task):
+def middleware_check_queue_exists(task: Task, queue: Queue):
+    task, exception = yield
+    assert queue.backend.is_connected
+    return
+
+def middleware_change_arg(task: Task, queue: Queue):  # noqa: ARG001
     args = list(task.spec.__dict__["args"])
     args[0] = 5
     task.spec.__dict__["args"] = tuple(args)
     yield task
 
-def middleware_change_return_value(task: Task):
-    returning_task = yield task
+def middleware_change_return_value(task: Task, queue: Queue):  # noqa: ARG001
+    returning_task, exception = yield task
     returning_task.__dict__["result"] += 100000
     return returning_task
 
-@task(middleware=[middleware_noop])
+async def async_middleware_change_return_value(task: Task, queue: Queue):  # noqa: ARG001
+    returning_task, exception = yield task
+    returning_task.__dict__["result"] += 5000
+    yield returning_task
+
+@task(middleware=[middleware_noop, async_middleware_noop])
 def task_add_with_middleware_noop(x: int, y: int) -> int:
     return x + y
 
@@ -597,10 +606,14 @@ def task_add_with_middleware_noop(x: int, y: int) -> int:
 def task_add_with_middleware_change_arg(x: int, y: int) -> int:
     return x + y
 
-@task(middleware=[middleware_change_return_value])
+@task(middleware=[middleware_change_return_value, async_middleware_change_return_value])
 def task_add_with_middleware_change_return_value(x: int, y: int) -> int:
     return x + y
 
-@task(middleware=[middleware_noop, middleware_change_arg, middleware_change_return_value])
+@task(middleware=[middleware_noop, middleware_change_arg, middleware_change_return_value, async_middleware_change_return_value])
 def task_add_with_middleware_multiple(x: int, y: int) -> int:
+    return x + y
+
+@task(middleware=[middleware_check_queue_exists])
+def task_middleware_check_queue_exists(x: int, y: int) -> int:
     return x + y

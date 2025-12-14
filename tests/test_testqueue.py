@@ -458,13 +458,13 @@ class TestMiddleware:
         t2 = task_add_with_middleware_noop(1, 2)
 
         assert len(t1.spec.middleware) == 0
-        assert len(t2.spec.middleware) == 1
+        assert len(t2.spec.middleware) == 2
 
         queue.add([t1, t2])
         t1, t2 = queue.process_all()
 
         assert len(t1.spec.middleware) == 0
-        assert len(t2.spec.middleware) == 1
+        assert len(t2.spec.middleware) == 2
 
         assert t1.result == 3
         assert t2.result == 3
@@ -497,7 +497,7 @@ class TestMiddleware:
         assert queue.add(task) is True
         task = queue.process_next()
 
-        assert task.result == 100003
+        assert task.result == 105003
 
     def test_multiple(self):
         queue = TestQueue()
@@ -507,7 +507,7 @@ class TestMiddleware:
         assert queue.add(task) is True
         task = queue.process_next()
 
-        assert task.result == 100007
+        assert task.result == 105007
 
 
 class TestRetry:

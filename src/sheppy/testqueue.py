@@ -396,7 +396,7 @@ class TestQueue:
         return asyncio.run(_process_scheduled_async(at))
 
     async def _process_task(self, task: Task) -> Task:
-        _, task = await self._task_processor.process_task(task, self._worker_id)
+        _, task = await self._task_processor.process_task(task, self._queue, self._worker_id)
 
         self.processed_tasks.append(task)
 
