@@ -10,6 +10,8 @@ from tests.dependencies import (
     failing_task,
     simple_async_task,
     simple_sync_task,
+    task_add_with_middleware_multiple,
+    task_middleware_check_queue_exists,
 )
 
 
@@ -138,6 +140,26 @@ class TestMemoryBackend:
 
     async def test_get_pending_is_empty(self, queue: Queue):
         await queue.add(simple_async_task(1, 2))
+
+        # no pending tasks - all processed
+        pending = await queue.get_pending()
+        assert pending == []
+
+    async def test_middleware(self, queue: Queue):
+        await queue.add(t := task_add_with_middleware_multiple(1, 2))
+
+        result = await queue.get_task(t)
+        assert result.result == 105007
+
+        # no pending tasks - all processed
+        pending = await queue.get_pending()
+        assert pending == []
+
+    async def test_middleware_queue_exists(self, queue: Queue):
+        await queue.add(t := task_middleware_check_queue_exists(1, 2))
+
+        result = await queue.get_task(t)
+        assert result.result == 3
 
         # no pending tasks - all processed
         pending = await queue.get_pending()

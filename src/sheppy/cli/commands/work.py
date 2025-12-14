@@ -88,16 +88,20 @@ def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, max_
                   oneshot: bool = False, max_tasks: int | None = None,
                   ) -> None:
 
-    worker_logger = logging.getLogger("sheppy.worker")
+    loggers = [
+        logging.getLogger("sheppy.worker"),
+        logging.getLogger("sheppy.middleware"),
+    ]
 
-    if not worker_logger.hasHandlers():
-        worker_logger.setLevel(log_level.to_logging_level())
-        worker_logger.addHandler(RichHandler(
-            rich_tracebacks=True,
-            tracebacks_show_locals=True,
-            log_time_format="[%X] ",
-            show_path=False
-        ))
+    for logger in loggers:
+        if not logger.hasHandlers():
+            logger.setLevel(log_level.to_logging_level())
+            logger.addHandler(RichHandler(
+                rich_tracebacks=True,
+                tracebacks_show_locals=True,
+                log_time_format="[%X] ",
+                show_path=False
+            ))
 
     worker = Worker(queues, backend=backend, max_concurrent_tasks=max_concurrent,
                     max_prefetch_tasks=max_prefetch_tasks,

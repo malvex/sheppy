@@ -8,7 +8,7 @@ from typing import Annotated
 
 import typer
 
-from sheppy import Task
+from sheppy import MemoryBackend, Queue, Task
 from sheppy.utils.task_execution import TaskProcessor
 
 from ...utils import console
@@ -62,8 +62,11 @@ def test(
                 console.print(f"[red]Function '{function}' is not a task.[/red]")
                 return
 
+            # for the context, this is my brain at this point: https://www.youtube.com/watch?v=sqJDbe9A36c
+            hacky_queue = Queue(MemoryBackend())
+
             task_processor = TaskProcessor()
-            exception, executed_task = await task_processor.process_task(task, "cli")
+            exception, executed_task = await task_processor.process_task(task, hacky_queue, "cli")
 
             if exception:
                 raise exception

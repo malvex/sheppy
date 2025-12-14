@@ -1,11 +1,11 @@
 """
 This file contains utility functions meant for internal use only. Expect breaking changes if you use them directly.
 """
-
 import asyncio
 import inspect
+import logging
 import socket
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable, Generator
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, get_args, get_origin
 from uuid import uuid4
@@ -13,7 +13,14 @@ from uuid import uuid4
 import anyio
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
 
-from ..models import CURRENT_TASK, Task
+from ..exceptions import MiddlewareError, TaskTimeoutError
+from ..models import CURRENT_TASK, Task, TaskStatus
+from ..protocols import (
+    AsyncMiddlewareProtocol,
+    MiddlewareProtocol,
+    TaskProcessorProtocol,
+)
+from ..queue import Queue
 from .fastapi import Depends
 from .functions import reconstruct_result, resolve_function
 
@@ -24,33 +31,79 @@ def generate_unique_worker_id(prefix: str) -> str:
     return f"{prefix}-{socket.gethostname()}-{str(uuid4())[:8]}"
 
 
-class TaskTimeoutError(TimeoutError):
-    pass
+class TaskChainingMiddleware(AsyncMiddlewareProtocol):
+    def __init__(self, logger: logging.Logger):
+        self.logger = logger
+
+    async def __call__(self, task: Task, queue: "Queue") -> AsyncGenerator[None, tuple[Task, Exception | None]]:
+        task, exception = yield
+
+        # quick skip on error
+        if exception:
+            return
+
+        if isinstance(task.result, Task):
+            self.logger.info(f"Adding task {task.id} into Queue (Chained Task)")
+            await queue.add(task.result)
+
+        elif isinstance(task.result, list) and isinstance(task.result[0], Task):
+            _tasks = [item for item in task.result if isinstance(item, Task)]
+            for _task in _tasks:
+                self.logger.info(f"Adding task {_task.id} into Queue (Chained Task)")
+            await queue.add(_tasks)
 
 
-class TaskProcessor:
+class LoggingMiddleware(MiddlewareProtocol):
+    def __init__(self, logger: logging.Logger):
+        self.logger = logger
+        self.prefix = "<Worker> "
+
+    def __call__(self, task: Task, queue: "Queue") -> Generator[None, tuple[Task, Exception | None], None]:
+        self.logger.info(self.prefix + f"Processing task {task.id} ({task.spec.func})")
+        task, exception = yield
+
+        match task.status:
+            case 'completed':
+                self.logger.info(self.prefix + f"Task {task.id} completed successfully")
+
+            case 'retrying':
+                # retriable task - reschedule
+                self.logger.warning(self.prefix + f"Task {task.id} failed (attempt {task.retry_count}/{task.config.retry}), scheduling retry at {task.next_retry_at}")
+            case 'failed':
+                if task.is_retriable and not task.should_retry:
+                    # retriable task - final failure
+                    self.logger.error(self.prefix + f"Task {task.id} failed after {task.retry_count} retries: {exception}")
+                else:
+                    # non retriable task
+                    self.logger.error(self.prefix + f"Task {task.id} failed: {exception}")
+
+
+class TaskProcessor(TaskProcessorProtocol):
     def __init__(
             self,
+            /,
+            middleware: list[AsyncMiddlewareProtocol | MiddlewareProtocol] | None = None,
             dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None,
     ):
+        self.middleware = middleware or []
         self.dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] = dependency_overrides or {}
 
-    async def process_task(self, task: Task, worker_id: str) -> tuple[Exception | None, "Task"]:
-        task, _generators = await TaskProcessor.process_pre_task_middleware(task)
+    async def process_task(self, task: Task, queue: Queue, worker_id: str) -> tuple[Exception | None, Task]:
+        task, _generators = await self._preprocess(task, queue)
+        result = None
+        exception = None
 
         try:
             result = await self._execute_task_function(task)
-            exception = None
-            task = TaskProcessor.mark_completed(task, result, worker_id)
-
+            task = self.mark_completed(task, result)
         except Exception as e:
-            task = TaskProcessor.mark_failed(task, e)
-            exception = e  # temporary
+            task = self.mark_failed(task, e)
+            exception = e
 
             if task.is_retriable:
                 task = TaskProcessor.handle_retry(task, exception)
 
-        task = await TaskProcessor.process_post_task_middleware(task, _generators)
+        task = await self._postprocess(task, exception, _generators)
 
         return exception, task
 
@@ -78,65 +131,72 @@ class TaskProcessor:
 
         return await coro
 
-    @staticmethod
-    async def process_pre_task_middleware(task: Task) -> tuple[Task, list[Any]]:
-        if not task.spec.middleware:
+    async def _preprocess(self, task: Task, queue: Queue) -> tuple[Task, list[Any]]:
+        middlewares = self.middleware + (task.spec.middleware or [])
+
+        if not middlewares:
             return task, []
 
         _generators = []
 
         try:
-            for middleware_string in task.spec.middleware:
-                middleware = resolve_function(middleware_string, wrapped=False)
-                gen = middleware(task)
-                task = next(gen) or task
+            for middleware_string in middlewares:
+                middleware = resolve_function(middleware_string, wrapped=False) if isinstance(middleware_string, str) else middleware_string
+                gen = middleware(task, queue)
+                if inspect.isasyncgen(gen):
+                    task = await anext(gen) or task
+                else:
+                    task = next(gen) or task  # type: ignore
                 _generators.append(gen)
         except Exception as e:
-            raise Exception("Middleware error") from e
+            raise MiddlewareError("Pre-middleware error") from e
 
         return task, _generators
 
-    @staticmethod
-    async def process_post_task_middleware(task: Task, _generators: list[Any]) -> Task:
+    async def _postprocess(self, task: Task, exception: Exception | None, _generators: list[Any]) -> Task:
         if not _generators:
             return task
 
         try:
             for gen in _generators[::-1]:  # post task middleware goes in reverse order
                 try:
-                    task = gen.send(task) or task
+                    if inspect.isasyncgen(gen):
+                        task = await gen.asend((task, exception)) or task
+                    else:
+                        task = gen.send((task, exception)) or task
                 except StopIteration as e:
                     task = e.value or task
+                except StopAsyncIteration:
+                    pass
         except Exception as e:
-            raise Exception("Middleware error") from e
+            raise MiddlewareError("Post-middleware error") from e
 
         return task
 
     @staticmethod
-    def mark_completed(task: Task, result: Any, worker_id: str) -> Task:
-        return task.model_copy(
-            deep=True,
-            update={
-                "status": "completed",
-                # we reconstruct result here only to trigger result validation
-                # before we store task as completed
-                "result": reconstruct_result(task.spec.func, result),
-                "error": None,
-                "finished_at": datetime.now(timezone.utc),
-            },
-        )
+    def update_task_status(task: Task, status: TaskStatus) -> Task:
+        task.__dict__['status'] = status
+        return task
 
     @staticmethod
-    def mark_failed(task: Task, exception: Exception) -> Task:
-        return task.model_copy(
-            deep=True,
-            update={
-                "status": "failed",
-                "result": None,
-                "error": f"{exception.__class__.__name__}: {exception}",
-                "finished_at": datetime.now(timezone.utc),
-            },
-        )
+    def mark_completed(task: Task, result: Any, status: TaskStatus = 'completed') -> Task:
+        task.__dict__["status"] = status
+        # we reconstruct result here only to trigger result validation
+        # before we store task as completed
+        task.__dict__["result"] = reconstruct_result(task.spec.func, result)
+        task.__dict__["error"] = None
+        task.__dict__["finished_at"] = datetime.now(timezone.utc)
+
+        return task
+
+    @staticmethod
+    def mark_failed(task: Task, exception: Exception, status: TaskStatus = 'failed') -> Task:
+        task.__dict__["status"] = status
+        task.__dict__["result"] = None
+        task.__dict__["error"] = f"{exception.__class__.__name__}: {exception}"
+        task.__dict__["finished_at"] = datetime.now(timezone.utc)
+
+        return task
 
     @staticmethod
     def handle_retry(task: Task, exception: Exception) -> Task:
@@ -146,16 +206,13 @@ class TaskProcessor:
         if isinstance(exception, TaskTimeoutError) and not task.config.retry_on_timeout:
             return task
 
-        return task.model_copy(
-            deep=True,
-            update={
-                "status": "retrying",
-                "retry_count": task.retry_count + 1,
-                "last_retry_at": datetime.now(timezone.utc),
-                "next_retry_at": datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task)),
-                "finished_at": None
-            },
-        )
+        task.__dict__["status"] = "retrying"
+        task.__dict__["retry_count"] = task.retry_count + 1
+        task.__dict__["last_retry_at"] = datetime.now(timezone.utc)
+        task.__dict__["next_retry_at"] = datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task))
+        task.__dict__["finished_at"] = None
+
+        return task
 
     @staticmethod
     def calculate_retry_delay(task: Task) -> float:
@@ -193,7 +250,7 @@ class TaskProcessor:
 
         for param_name, param in list(signature.parameters.items()):
             # current Task injection (current: Task = CURRENT_TASK)
-            if task and TaskProcessor._is_task_injection(param):
+            if task and param.default is CURRENT_TASK:
                 # inject positionally for positional params to maintain correct order
                 if param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):
                     final_args.append(task)
@@ -216,11 +273,6 @@ class TaskProcessor:
                 final_kwargs[param_name] = TaskProcessor._validate(kwargs[param_name], param.annotation)
 
         return final_args, final_kwargs
-
-    @staticmethod
-    def _is_task_injection(param: inspect.Parameter) -> bool:
-        return param.default is CURRENT_TASK
-
 
     @staticmethod
     def _validate(value: Any, annotation: Any) -> Any:

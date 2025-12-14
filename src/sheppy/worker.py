@@ -2,14 +2,24 @@ import asyncio
 import contextlib
 import logging
 import signal
+from collections.abc import Callable
 from functools import partial
+from typing import Any, cast
 
 from pydantic import BaseModel
 
 from .backend.base import Backend
+from .exceptions import MiddlewareError
 from .models import Task, TaskCron
+from .protocols import (
+    AsyncMiddlewareProtocol,
+    MiddlewareProtocol,
+    TaskProcessorProtocol,
+)
 from .queue import Queue
 from .utils.task_execution import (
+    LoggingMiddleware,
+    TaskChainingMiddleware,
     TaskProcessor,
     generate_unique_worker_id,
 )
@@ -79,6 +89,9 @@ class Worker:
         enable_job_processing: bool = True,
         enable_scheduler: bool = True,
         enable_cron_manager: bool = True,
+        task_processor: TaskProcessorProtocol | None = None,
+        middleware: list[AsyncMiddlewareProtocol | MiddlewareProtocol] | None = None,
+        dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None,
     ):
         if not any([enable_job_processing, enable_scheduler, enable_cron_manager]):
             raise ValueError("At least one processing type must be enabled")
@@ -93,7 +106,14 @@ class Worker:
         self.worker_id = generate_unique_worker_id("worker")
         self.stats = WorkerStats()
 
-        self._task_processor = TaskProcessor()
+        self._task_processor: TaskProcessorProtocol = task_processor or TaskProcessor(
+            middleware=cast(list[AsyncMiddlewareProtocol | MiddlewareProtocol], [
+                LoggingMiddleware(logger),
+                TaskChainingMiddleware(logger),
+            ] + (middleware or [])),
+            dependency_overrides=dependency_overrides,
+        )
+
         self._task_semaphore = asyncio.Semaphore(max_concurrent_tasks)
         self._max_prefetch_tasks = max_prefetch_tasks
         self._shutdown_event = asyncio.Event()
@@ -321,8 +341,7 @@ class Worker:
                     break
 
                 for task in available_tasks:
-                    logger.info(WORKER_PREFIX + f"Processing task {task.id} ({task.spec.func})")
-                    task_future = asyncio.create_task(self.process_task_semaphore_wrap(queue, task))
+                    task_future = asyncio.create_task(self.process_task(task, queue))
                     self._active_tasks[queue.name][task_future] = task
 
                     if self._tasks_to_process is not None:
@@ -337,59 +356,22 @@ class Worker:
                 self._shutdown_event.set()
                 break
 
-    async def process_task_semaphore_wrap(self, queue: Queue, task: Task) -> Task:
+    async def process_task(self, task: Task, queue: Queue) -> Task:
         async with self._task_semaphore:
-            task = await self.process_task(task)
-            await self._store_result(queue, task)
+            try:
+                _, task = await self._task_processor.process_task(task, queue, self.worker_id)
+            except MiddlewareError:
+                logger.exception("Middleare exception!")
 
-            # schedule the task for retry
+            try:
+                await queue._store_result(task)
+            except Exception:
+                logger.exception(f"Failed to store result for task {task.id}")
+
             if task.error and task.should_retry and task.next_retry_at is not None:
                 await queue.retry(task, task.next_retry_at)
 
-            # basic task chaining
-            if task.status == 'completed' and task.result:
-                if isinstance(task.result, Task):
-                    logger.info(WORKER_PREFIX + f"Adding task {task.id} into Queue (Chained Task)")
-                    await queue.add(task.result)
-
-                # temporary hacky way to handle this, should be done better once this is refactored
-                elif isinstance(task.result, list) and isinstance(task.result[0], Task):
-                    _tasks = [item for item in task.result if isinstance(item, Task)]
-                    for _task in _tasks:
-                        logger.info(WORKER_PREFIX + f"Adding task {_task.id} into Queue (Chained Task)")
-                    await queue.add(_tasks)
-
             return task
-
-    async def process_task(self, task: Task) -> Task:
-
-        exception, task = await self._task_processor.process_task(task, self.worker_id)
-
-        if task.status == 'completed':
-            self.stats.processed += 1
-            logger.info(WORKER_PREFIX + f"Task {task.id} completed successfully")
-        else:
-            self.stats.failed += 1
-
-        # non retriable task
-        if task.error and not task.is_retriable:
-            logger.error(WORKER_PREFIX + f"Task {task.id} failed: {exception}")
-
-        # retriable task - final failure
-        if task.error and task.is_retriable and not task.should_retry:
-            logger.error(WORKER_PREFIX + f"Task {task.id} failed after {task.retry_count} retries: {exception}")
-
-        # retriable task - reschedule
-        if task.error and task.should_retry:
-            logger.warning(WORKER_PREFIX + f"Task {task.id} failed (attempt {task.retry_count}/{task.config.retry}), scheduling retry at {task.next_retry_at}")
-
-        return task
-
-    async def _store_result(self, queue: Queue, task: Task) -> None:
-        try:
-            await queue.backend.store_result(queue.name, task.model_dump(mode='json'))  # TODO
-        except Exception:
-            logger.exception(f"Failed to store result for task {task.id}")
 
     def __register_signal_handlers(self, loop: asyncio.AbstractEventLoop) -> None:
         CTRL_C_THRESHOLD = 3

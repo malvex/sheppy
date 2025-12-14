@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ..models import Task
+from ..queue import Queue
 from ..utils.task_execution import TaskProcessor
 from .base import Backend, BackendError
 
@@ -311,6 +312,9 @@ class MemoryBackend(Backend):
             raise BackendError("Not connected")
 
     async def _process_task(self, queue_name: str, task_data: dict[str, Any]) -> None:
+        # for the context, this is my brain at this point: https://www.youtube.com/watch?v=sqJDbe9A36c
+        hacky_queue = Queue(self, queue_name)
+
         # pop from pending
         task_id = task_data["id"]
         if task_id in self._pending[queue_name]:
@@ -318,7 +322,7 @@ class MemoryBackend(Backend):
 
         # process the task
         task = Task.model_validate(task_data)
-        _, processed_task = await self._task_processor.process_task(task, self._worker_id)
+        _, processed_task = await self._task_processor.process_task(task, hacky_queue, self._worker_id)
 
         # handle retry
         if processed_task.error and processed_task.should_retry and processed_task.next_retry_at is not None:
