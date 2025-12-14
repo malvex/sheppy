@@ -85,7 +85,7 @@ def add(
             console.print(f"[yellow]Task is still running in the background. Use 'sheppy task info {task.id}' to check status.[/yellow]")
             raise typer.Exit(1) from None
 
-        if result_task and result_task.completed:
+        if result_task and result_task.status == 'completed':
             console.print("\n[green]✓ Task completed successfully[/green]")
             console.print("\n[bold]Result:[/bold]")
             if result_task.result is None:

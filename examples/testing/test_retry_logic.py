@@ -30,11 +30,11 @@ def test_fail_once():
     assert len(processed) == 2
 
     # verify the task result
-    assert processed[0].completed is False
+    assert processed[0].status == 'failed'
     assert processed[0].error == "ValueError: task failed"
 
     # retry should succeed
-    assert processed[1].completed is True
+    assert processed[1].status == 'completed'
     assert processed[1].error is None
     assert processed[1].result == "success"
 

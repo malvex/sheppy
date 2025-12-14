@@ -20,10 +20,10 @@ def test_divide_by_zero():
     processed_tasks = q.process_all()
 
     # verify the first task result
-    assert processed_tasks[0].completed is True
+    assert processed_tasks[0].status == 'completed'
     assert processed_tasks[0].error is None
     assert processed_tasks[0].result == 0.5
 
     # verify the second task result (should fail)
-    assert processed_tasks[1].completed is False
+    assert processed_tasks[1].status == 'failed'
     assert processed_tasks[1].error == "ZeroDivisionError: division by zero"

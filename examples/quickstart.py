@@ -22,7 +22,7 @@ async def main():
     # wait for task to be processed and get the result
     processed = await queue.wait_for(t)
 
-    if processed.completed:
+    if processed.status == 'completed':
         print(f"Task {t.id} completed with result: {processed.result}")
     elif processed.error:
         print(f"Task {t.id} failed with error: {processed.error}")

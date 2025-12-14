@@ -309,7 +309,7 @@ async def test_get_all_tasks(task_fn, queue: Queue, worker: Worker):
 
     all_tasks.sort(key=lambda t: tasks_order[t.id])
     assert all_tasks[0].id == tasks[0].id
-    assert all_tasks[0].completed is True
+    assert all_tasks[0].status == 'completed'
     assert all_tasks[0] != tasks[0]
     assert all_tasks[1].id == tasks[1].id
     assert all_tasks[2].id == tasks[2].id
@@ -503,7 +503,7 @@ class TestBatchOperations:
             processed.append(await queue.get_task(t))
 
         for i, t in enumerate(processed):
-            assert t.completed
+            assert t.status == 'completed'
             assert not t.error
             assert t.result == 2 * i
 
@@ -522,7 +522,7 @@ class TestBatchOperations:
 
         t = await queue.get_task(tasks[0])
 
-        assert t.completed
+        assert t.status == 'completed'
         assert not t.error
         assert t.result == 2
 
@@ -546,7 +546,7 @@ class TestBatchOperations:
             processed.append(await queue.wait_for(t, timeout=10))
 
         for i, t in enumerate(processed):
-            assert t.completed
+            assert t.status == 'completed'
             assert not t.error
             assert t.result == 2 * i
 

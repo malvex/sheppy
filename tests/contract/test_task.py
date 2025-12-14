@@ -63,7 +63,7 @@ def test_instanced_task_defaults(task_fn):
 
     # new tasks should have the following values
     assert isinstance(task.id, UUID)
-    assert task.completed is False
+    assert task.status == 'new'
     assert task.error is None
     assert task.result is None
     assert task.created_at is not None
@@ -91,7 +91,7 @@ def test_task_is_frozen(task_fn):
     task = task_fn(1, 2)
 
     with pytest.raises(ValidationError, match="Instance is frozen"):
-        task.completed = True
+        task.status = 'completed'
 
     with pytest.raises(ValidationError, match="Instance is frozen"):
         task.error = "hello"

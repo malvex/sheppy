@@ -221,7 +221,7 @@ class TestQueueBehavior:
 
         assert queue.size() == 1
         processed = queue.process_next()
-        assert_is_failed(processed)
+        assert_is_failed(processed, status='retrying')
 
         # task got immediately requeued because it's retriable task
         assert queue.size() == 1
@@ -237,7 +237,7 @@ class TestQueueBehavior:
         assert len(processed) == 2
         assert task.id == processed[0].id == processed[1].id
 
-        assert_is_failed(processed[0])
+        assert_is_failed(processed[0], status='retrying')
         assert_is_completed(processed[1])
 
         recv_task = queue.get_task(task)
@@ -549,7 +549,7 @@ class TestRetry:
         assert len(processed) == 2
 
         assert_is_new(task)
-        assert_is_failed(processed[0])
+        assert_is_failed(processed[0], status='retrying')
         assert_is_completed(processed[1])
         assert queue.size() == 0
 

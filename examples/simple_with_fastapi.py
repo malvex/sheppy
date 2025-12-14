@@ -110,7 +110,7 @@ async def register(user_data: UserCreate,
     # optional - for demo purposes we will wait for results
     task = await task.wait_for(task)
 
-    assert task.completed
+    assert task.status == 'completed'
     assert isinstance(task.result, Status)
     assert task.result.ok == True
 

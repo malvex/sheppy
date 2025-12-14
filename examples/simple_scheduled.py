@@ -18,7 +18,7 @@ async def send_email(email: Email) -> dict[str, str]:
     return {"status": "sent"}
 
 
-queue = Queue(MemoryBackend())
+queue = Queue(MemoryBackend(instant_processing=False))
 
 
 async def run_worker():
@@ -50,12 +50,12 @@ async def main():
     # wait for results to verify welcome email was sent
     task = await queue.wait_for(task)
     assert task.result.get("status", None) == "sent"
-    assert task.completed
+    assert task.status == 'completed'
     assert not task.error
 
     # confirm scheduled task wasn't sent yet
     survey_email_task = await queue.get_task(survey_email_task)
-    assert not survey_email_task.completed
+    assert survey_email_task.status == 'scheduled'
 
     # wait for scheduled email to happen (for demo purposes)
     print("sleeping for 3 seconds...")
@@ -63,7 +63,7 @@ async def main():
 
     # verify the email was sent (for demo purposes)
     survey_email_task = await queue.get_task(survey_email_task)
-    assert survey_email_task.completed
+    assert survey_email_task.status == 'completed'
     assert not survey_email_task.error
     assert survey_email_task.result.get("status") == "sent"
 

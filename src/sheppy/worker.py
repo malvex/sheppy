@@ -347,7 +347,7 @@ class Worker:
                 await queue.retry(task, task.next_retry_at)
 
             # basic task chaining
-            if task.completed and task.result:
+            if task.status == 'completed' and task.result:
                 if isinstance(task.result, Task):
                     logger.info(WORKER_PREFIX + f"Adding task {task.id} into Queue (Chained Task)")
                     await queue.add(task.result)
@@ -365,7 +365,7 @@ class Worker:
 
         exception, task = await self._task_processor.process_task(task, self.worker_id)
 
-        if task.completed:
+        if task.status == 'completed':
             self.stats.processed += 1
             logger.info(WORKER_PREFIX + f"Task {task.id} completed successfully")
         else:

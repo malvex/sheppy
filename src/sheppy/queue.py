@@ -147,6 +147,7 @@ class Queue:
             raise TypeError("provided datetime must be offset-aware")
 
         task.__dict__["scheduled_at"] = at
+        task.__dict__["status"] = "scheduled"
 
         return await self.backend.schedule(self.name, task.model_dump(mode="json"), at)
 
@@ -187,13 +188,13 @@ class Queue:
 
             # wait indefinitely for task to complete
             updated_task = await q.wait_for(task)
-            assert updated_task.completed is True
+            assert updated_task.status == 'completed'
 
             # wait up to 5 seconds for task to complete
             try:
                 updated_task = await q.wait_for(task, timeout=5)
                 if updated_task:
-                    assert updated_task.completed is True
+                    assert updated_task.status == 'completed'
                 else:
                     print("Task not found or still pending after timeout")
             except TimeoutError:
@@ -203,7 +204,7 @@ class Queue:
             updated_tasks = await q.wait_for([task1, task2, task3], timeout=10)
 
             for task_id, task in updated_tasks.items():
-                print(f"Task {task_id} completed: {task.completed}")
+                print(f"Task {task_id} status: {task.status}")
 
             # Note: updated_tasks may contain only a subset of tasks if timeout is reached
             ```
@@ -260,7 +261,7 @@ class Queue:
         if not _task:
             return False
 
-        if not force and _task.completed:
+        if not force and _task.status == 'completed':
             raise ValueError("Task has already completed successfully, use force to retry anyways")
 
         needs_update = False  # temp hack
@@ -280,6 +281,7 @@ class Queue:
             if needs_update:
                 _task.__dict__["next_retry_at"] = at
                 _task.__dict__["scheduled_at"] = at
+                _task.__dict__["status"] = "scheduled"
 
             return await self.backend.schedule(self.name, _task.model_dump(mode="json"), at, unique=False)
 
@@ -408,6 +410,9 @@ class Queue:
         await self.__ensure_backend_is_connected()
 
         tasks_data = await self.backend.pop_scheduled(self.name, now)
+        for i in range(len(tasks_data)):
+            tasks_data[i]['status'] = "pending"
+
         tasks = [Task.model_validate(t) for t in tasks_data]
         await self.backend.append(self.name, tasks_data, unique=False)
 

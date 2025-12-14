@@ -112,7 +112,7 @@ class TestScheduledTasks:
         assert not popped
 
         task = await queue.get_task(task)
-        assert_is_new(task)
+        assert_is_new(task, status='scheduled')
 
         await worker.work(max_tasks=1)
 
@@ -156,8 +156,8 @@ class TestScheduledTasks:
 
         task2 = await queue.get_task(task2)
         task3 = await queue.get_task(task3)
-        assert_is_new(task2)
-        assert_is_new(task3)
+        assert_is_new(task2, status='scheduled')
+        assert_is_new(task3, status='scheduled')
 
         await worker.work(max_tasks=1)
         task2 = await queue.get_task(task2)
@@ -165,7 +165,7 @@ class TestScheduledTasks:
         assert task2.result == 7
 
         task3 = await queue.get_task(task3)
-        assert_is_new(task3)
+        assert_is_new(task3, status='scheduled')
 
         await worker.work(max_tasks=1)
         task3 = await queue.get_task(task3)
@@ -187,7 +187,7 @@ class TestScheduledTasks:
         assert_is_completed(immediate_task)
         assert immediate_task.result == 7
 
-        assert_is_new(scheduled_task)
+        assert_is_new(scheduled_task, status='scheduled')
 
         await worker.work(max_tasks=1)
 

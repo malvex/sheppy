@@ -330,7 +330,7 @@ class MemoryBackend(Backend):
             return
 
         # handle task chaining
-        if processed_task.completed and processed_task.result:
+        if processed_task.status == 'completed' and processed_task.result:
             if isinstance(processed_task.result, Task):
                 chained_data = processed_task.result.model_dump(mode="json")
                 await self.append(queue_name, [chained_data])

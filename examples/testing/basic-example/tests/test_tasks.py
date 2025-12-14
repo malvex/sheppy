@@ -14,6 +14,6 @@ def test_add():
     processed_task = q.process_next()
 
     # verify the task result
-    assert processed_task.completed is True
+    assert processed_task.status == 'completed'
     assert processed_task.error is None
     assert processed_task.result == 3

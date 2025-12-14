@@ -41,12 +41,14 @@ def info(
             console.print(f"[red]Error: Task {task_id} not found in queue '{queue}'[/red]")
             raise typer.Exit(1)
 
-        if task.completed:
+        if task.status == 'completed':
             status = "[green]completed[/green]"
         elif task.error:
             status = "[red]failed[/red]"
+        elif task.status == 'scheduled':
+            status = "[magenta]scheduled[/magenta]"
         else:
-            status = "pending"
+            status = task.status
 
         console.print("\n[bold cyan]Task Information[/bold cyan]")
         console.print(f"  ID: [yellow]{task.id}[/yellow]")
@@ -54,6 +56,8 @@ def info(
         console.print(f"  Status: {status}")
         console.print(f"  Queue: [cyan]{queue}[/cyan]")
         console.print(f"  Created: [dim]{task.created_at}[/dim]")
+        if task.scheduled_at:
+            console.print(f"  Scheduled: [dim]{task.scheduled_at}[/dim]")
         if task.finished_at:
             console.print(f"  Finished: [dim]{task.finished_at}[/dim]")
         if task.config.retry:  # ! FIXME

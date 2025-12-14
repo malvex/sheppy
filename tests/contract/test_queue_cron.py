@@ -71,7 +71,7 @@ async def test_process_cron(datetime_now: datetime, queue: Queue, worker: Worker
 
     completed_task = await queue.get_task(scheduled_task.id)
 
-    assert completed_task.completed is True
+    assert completed_task.status == 'completed'
     assert completed_task.scheduled_at == next_run
     assert completed_task.result == 3
 

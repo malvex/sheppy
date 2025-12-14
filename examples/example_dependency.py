@@ -22,5 +22,5 @@ def test_dependency_override():
 
     processed = q.process_next()
 
-    assert processed.completed
+    assert processed.status == 'completed'
     assert processed.result == "TESTING DATABASE"

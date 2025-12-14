@@ -27,7 +27,7 @@ class TestMemoryBackend:
         # task is processed immediately, result available
         result = await queue.get_task(t)
         assert result is not None
-        assert result.completed is True
+        assert result.status == 'completed'
         assert result.result == 3
 
     async def test_basic_sync_task(self, queue: Queue):
@@ -46,7 +46,7 @@ class TestMemoryBackend:
 
         result = await queue.get_task(t)
         assert result is not None
-        assert result.completed is False
+        assert result.status == 'failed'
         assert "intentional failure" in result.error
 
     async def test_failing_async_task(self, queue: Queue):
@@ -56,7 +56,7 @@ class TestMemoryBackend:
 
         result = await queue.get_task(t)
         assert result is not None
-        assert result.completed is False
+        assert result.status == 'failed'
         assert "async failure" in result.error
 
     async def test_retry_async_task(self, queue: Queue):
@@ -67,7 +67,7 @@ class TestMemoryBackend:
         # task should have retried and succeeded
         result = await queue.get_task(t)
         assert result is not None
-        assert result.completed is True
+        assert result.status == 'completed'
         assert result.result == "ok"
         assert result.retry_count == 1
 
@@ -78,7 +78,7 @@ class TestMemoryBackend:
 
         result = await queue.get_task(t)
         assert result is not None
-        assert result.completed is True
+        assert result.status == 'completed'
         assert result.result == "ok"
         assert result.retry_count == 1
 
@@ -90,13 +90,13 @@ class TestMemoryBackend:
         # original task completed and returned a chained task
         result = await queue.get_task(t)
         assert result is not None
-        assert result.completed is True
+        assert result.status == 'completed'
         assert isinstance(result.result, Task)
 
         # chained task should also be processed
         chained_task = await queue.get_task(result.result)
         assert chained_task is not None
-        assert chained_task.completed is True
+        assert chained_task.status == 'completed'
         assert chained_task.result == 15
 
     async def test_bulk_task_chaining(self, queue: Queue, task_chaining_bulk_fn: Callable[[], Task]):
@@ -107,7 +107,7 @@ class TestMemoryBackend:
         # original task completed and returned chained tasks
         result = await queue.get_task(t)
         assert result is not None
-        assert result.completed is True
+        assert result.status == 'completed'
         assert isinstance(result.result, list)
         assert len(result.result) == 2
 
@@ -115,8 +115,8 @@ class TestMemoryBackend:
         chained1 = await queue.get_task(result.result[0])
         chained2 = await queue.get_task(result.result[1])
 
-        assert chained1 is not None and chained1.completed is True
-        assert chained2 is not None and chained2.completed is True
+        assert chained1 is not None and chained1.status == 'completed'
+        assert chained2 is not None and chained2.status == 'completed'
         assert {chained1.result, chained2.result} == {8, 9}
 
     async def test_multiple_tasks(self, queue: Queue):
@@ -128,7 +128,7 @@ class TestMemoryBackend:
         # all tasks processed
         all_tasks = await queue.get_all_tasks()
         assert len(all_tasks) == 5
-        assert all(t.completed for t in all_tasks)
+        assert all(t.status == 'completed' for t in all_tasks)
 
     async def test_queue_size_is_zero_after_processing(self, queue: Queue):
         await queue.add(simple_async_task(1, 2))
