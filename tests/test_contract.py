@@ -4,10 +4,12 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from sheppy import Queue, Worker
-from sheppy.testqueue import assert_is_completed, assert_is_failed, assert_is_new
 from tests.dependencies import (
     TaskTestCase,
     TaskTestCases,
+    assert_is_completed,
+    assert_is_failed,
+    assert_is_new,
     simple_async_task,
     simple_sync_task,
 )

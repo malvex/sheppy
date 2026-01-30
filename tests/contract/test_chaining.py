@@ -1,7 +1,7 @@
 from collections.abc import Callable
 
 from sheppy import Queue, Task, Worker
-from sheppy.testqueue import assert_is_completed, assert_is_new
+from tests.dependencies import assert_is_completed, assert_is_new
 
 
 async def test_task_chaining(task_chaining_fn: Callable[[], Task], queue: Queue, worker: Worker) -> None:

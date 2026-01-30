@@ -1,5 +1,5 @@
 from sheppy import Queue, Worker, task
-from sheppy.testqueue import assert_is_failed
+from tests.dependencies import assert_is_failed
 
 
 @task

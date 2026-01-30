@@ -44,17 +44,3 @@ Test that retry configuration works as expected:
 ```
 
 When using `TaskQueue`, retries happen immediately with no delay, keeping tests fast while still validating retry behavior.
-
-## Assertion Helpers
-
-Sheppy provides assertion helpers for cleaner test code:
-
-- `assert_is_new(task)` - Task is new (not yet processed)
-- `assert_is_completed(task)` - Task completed successfully with a result
-- `assert_is_failed(task)` - Task failed with an error
-
-These raise clear assertion errors if the task isn't in the expected state:
-
-```python title="tests/test_assert_helper_functions.py"
---8<-- "examples/testing/test_assert_helper_functions.py"
-```
