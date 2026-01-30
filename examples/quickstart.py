@@ -3,7 +3,7 @@ from sheppy import Queue, RedisBackend, task
 
 
 @task
-async def add(x: int, y: int) -> int:
+async def calculate(x: int, y: int) -> int:
     return x + y
 
 
@@ -13,7 +13,7 @@ queue = Queue(backend)
 
 async def main():
     # create task instances (returns Task object)
-    t = add(1, 2)
+    t = calculate(1, 2)
 
     # add task to the queue
     await queue.add(t)

@@ -13,7 +13,7 @@ source .venv/bin/activate
 
 ## Your First Task
 
-We'll build a simple task that adds two numbers. Nothing fancy, just enough to understand the core workflow.
+We'll build a simple task that adds two numbers together. Nothing fancy, just enough to understand the core workflow.
 
 ### Step 0: Import Required Modules
 
@@ -31,7 +31,7 @@ Add the `@task` decorator to your function:
 --8<-- "examples/quickstart.py:5:7"
 ```
 
-The decorator transforms your function: when you call `add(2, 1)`, instead of executing immediately, it creates a `Task` instance that can be queued for later execution.
+The decorator transforms your function: when you call `calculate(2, 1)`, instead of executing immediately, it creates a `Task` instance that can be queued for later execution.
 
 !!! tip
     Tasks can be sync or async. Sheppy handles both automatically. See [Sync vs Async Tasks](#sync-vs-async-tasks) below.
@@ -58,7 +58,7 @@ Sheppy is async-first, so wrap your queue operations in an async function:
 --8<-- "examples/quickstart.py:14:20"
 ```
 
-Calling `add(2, 1)` creates a `Task` instance. Adding it to the queue makes it available for workers to process.
+Calling `calculate(2, 1)` creates a `Task` instance. Adding it to the queue makes it available for workers to process.
 
 ### Step 4: Wait for Task Completion
 
@@ -109,7 +109,7 @@ Starting worker for queue 'default'
 [03:35:21]  INFO   <Scheduler> started
             INFO   <CronManager> started
             INFO   <Worker> Processing task 074396c1-e11f-40a3-b22b-094dc89573ea
-                   (examples.quickstart:add)
+                   (examples.quickstart:calculate)
             INFO   <Worker> Task 074396c1-e11f-40a3-b22b-094dc89573ea completed
                    successfully
 ```
