@@ -5,7 +5,7 @@ from typing import Any, overload
 from uuid import UUID
 
 from .backend.memory import MemoryBackend
-from .models import Task, TaskCron, TaskStatus
+from .models import Task, TaskCron
 from .queue import Queue
 from .utils.task_execution import TaskProcessor
 
@@ -27,7 +27,6 @@ class TestQueue:
         ```python
         # tests/test_tasks.py
         from sheppy import task, TestQueue
-        from sheppy.testqueue import assert_is_new, assert_is_completed, assert_is_failed
 
 
         @task
@@ -45,8 +44,8 @@ class TestQueue:
 
             t = add(1, 2)
 
-            # use helper function to check task is new
-            assert_is_new(t)
+            # assert expected values
+            assert t.status == 'new'
 
             # add task to the queue
             success = q.add(t)
@@ -59,7 +58,7 @@ class TestQueue:
             processed_task = q.process_next()
 
             # check task is completed
-            assert_is_completed(processed_task)
+            assert processed_task.status == 'completed'
             assert processed_task.result == 3
 
             # check queue size is now zero
@@ -72,7 +71,7 @@ class TestQueue:
             t = divide(1, 0)
 
             # use helper function to check task is new
-            assert_is_new(t)
+            assert t.status == 'new'
 
             # add task to the queue
             success = q.add(t)
@@ -85,7 +84,7 @@ class TestQueue:
             processed_task = q.process_next()
 
             # check task is failed
-            assert_is_failed(processed_task)
+            assert processed_task.status == 'failed'
             assert processed_task.result is None
             assert processed_task.error == "ZeroDivisionError: division by zero"
 
@@ -426,58 +425,3 @@ class TestQueue:
             return Task.model_validate(stored_task_data)
 
         return task
-
-
-def assert_is_new(task: Task | None, status: TaskStatus = 'new') -> None:
-    """Assert that the task is new (not yet processed). Useful in tests.
-
-    Args:
-        task (Task|None): The task to check.
-
-    Raises:
-        AssertionError: If the task is not new.
-    """
-    assert task is not None
-    assert isinstance(task, Task)
-
-    assert task.status == status
-    assert task.error is None
-    assert task.result is None
-    assert task.finished_at is None
-
-
-def assert_is_completed(task: Task | None, status: TaskStatus = 'completed') -> None:
-    """Assert that the task is completed (processed successfully). Useful in tests.
-
-    Args:
-        task (Task|None): The task to check.
-
-    Raises:
-        AssertionError: If the task is not completed successfully.
-    """
-    assert task is not None
-    assert isinstance(task, Task)
-
-    assert task.status == status
-    assert task.error is None
-    assert task.finished_at is not None
-
-
-def assert_is_failed(task: Task | None, status: TaskStatus = 'failed') -> None:
-    """Assert that the task has failed (processed with error). Useful in tests.
-
-    Args:
-        task (Task|None): The task to check.
-
-    Raises:
-        AssertionError: If the task has not failed.
-    """
-    assert task is not None
-    assert isinstance(task, Task)
-
-    assert task.status == status
-    assert task.error is not None
-    assert task.result is None
-
-    if not task.should_retry:
-        assert task.finished_at is not None

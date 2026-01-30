@@ -22,9 +22,3 @@ See [Testing tasks](../getting-started/testing.md) guide for more details and ex
             - process_next
             - process_all
             - process_scheduled
-
-::: sheppy.testqueue.assert_is_new
-
-::: sheppy.testqueue.assert_is_completed
-
-::: sheppy.testqueue.assert_is_failed

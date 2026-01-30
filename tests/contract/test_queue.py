@@ -5,8 +5,14 @@ from uuid import UUID
 import pytest
 
 from sheppy import Backend, Queue, Worker
-from sheppy.testqueue import assert_is_completed, assert_is_failed, assert_is_new
-from tests.dependencies import failing_task, simple_async_task, simple_sync_task
+from tests.dependencies import (
+    assert_is_completed,
+    assert_is_failed,
+    assert_is_new,
+    failing_task,
+    simple_async_task,
+    simple_sync_task,
+)
 
 
 @pytest.fixture(params=["async_task", "sync_task"])

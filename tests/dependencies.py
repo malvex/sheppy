@@ -6,6 +6,7 @@ from typing import Any, Optional
 from pydantic import BaseModel
 
 from sheppy import CURRENT_TASK, Depends, Queue, Task, task
+from sheppy.models import TaskStatus
 
 
 class User(BaseModel):
@@ -617,3 +618,34 @@ def task_add_with_middleware_multiple(x: int, y: int) -> int:
 @task(middleware=[middleware_check_queue_exists])
 def task_middleware_check_queue_exists(x: int, y: int) -> int:
     return x + y
+
+
+def assert_is_new(task: Task | None, status: TaskStatus = 'new') -> None:
+    assert task is not None
+    assert isinstance(task, Task)
+
+    assert task.status == status
+    assert task.error is None
+    assert task.result is None
+    assert task.finished_at is None
+
+
+def assert_is_completed(task: Task | None, status: TaskStatus = 'completed') -> None:
+    assert task is not None
+    assert isinstance(task, Task)
+
+    assert task.status == status
+    assert task.error is None
+    assert task.finished_at is not None
+
+
+def assert_is_failed(task: Task | None, status: TaskStatus = 'failed') -> None:
+    assert task is not None
+    assert isinstance(task, Task)
+
+    assert task.status == status
+    assert task.error is not None
+    assert task.result is None
+
+    if not task.should_retry:
+        assert task.finished_at is not None

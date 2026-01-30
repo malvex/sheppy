@@ -5,8 +5,7 @@ from datetime import timedelta
 import pytest
 
 from sheppy import Queue, Task, Worker
-from sheppy.testqueue import assert_is_completed, assert_is_failed
-from tests.dependencies import failing_task
+from tests.dependencies import assert_is_completed, assert_is_failed, failing_task
 
 
 async def test_retry(task_fail_once_fn: Callable[[], Task], queue: Queue, worker: Worker) -> None:
