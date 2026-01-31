@@ -12,8 +12,8 @@ class Queue:
     `Queue` class provides an easy way to manage task queue.
 
     Parameters:
-        backend (sheppy.Backend): An instance of task backend (e.g. `sheppy.RedisBackend`)
-        name (str): Name of the queue
+        backend: An instance of task backend (e.g. `sheppy.RedisBackend`)
+        name: Name of the queue
     """
 
     def __init__(self, backend: Backend, name: str = "default"):
@@ -73,8 +73,7 @@ class Queue:
             task: Instance of a Task or its ID, or list of Task instances/IDs for batch mode.
 
         Returns:
-            (Task|None): Instance of a Task or None if not found.
-            (dict[UUID, Task]): *(In batch mode)* Returns Dictionary of Task IDs to Task instances.
+            Instance of a Task or None if not found.<br>In *batch mode*, returns Dictionary of Task IDs to Task instances.
         """
         await self.__ensure_backend_is_connected()
 
@@ -118,10 +117,10 @@ class Queue:
         """Schedule task to be processed after certain time.
 
         Args:
-            task (Task): Instance of a Task
-            at (datetime | timedelta): When to process the task.<br>
-                                       If timedelta is provided, it will be added to current time.<br>
-                                       *Note: datetime must be offset-aware (i.e. have timezone info).*
+            task: Instance of a Task
+            at: When to process the task.<br>
+                If timedelta is provided, it will be added to current time.<br>
+                *Note: datetime must be offset-aware (i.e. have timezone info).*
 
         Returns:
             Success boolean

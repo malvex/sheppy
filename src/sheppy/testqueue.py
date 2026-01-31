@@ -17,11 +17,11 @@ class TestQueue:
     It is designed to be used in synchronous tests and follows the same execution flow as a real queue.
 
     Args:
-        name (str): Name of the queue. Defaults to "test-queue".
+        name: Name of the queue. Defaults to "test-queue".
 
     Attributes:
-        processed_tasks (list[Task]): List of tasks that have been processed.
-        failed_tasks (list[Task]): List of tasks that have failed during processing.
+        processed_tasks: List of tasks that have been processed.
+        failed_tasks: List of tasks that have failed during processing.
 
     Example:
         ```python
@@ -182,10 +182,10 @@ class TestQueue:
         """Schedule task to be processed after certain time.
 
         Args:
-            task (Task): Instance of a Task
-            at (datetime | timedelta): When to process the task.<br>
-                                       If timedelta is provided, it will be added to current time.<br>
-                                       *Note: datetime must be offset-aware (i.e. have timezone info).*
+            task: Instance of a Task
+            at: When to process the task.<br>
+                If timedelta is provided, it will be added to current time.<br>
+                *Note: datetime must be offset-aware (i.e. have timezone info).*
 
         Returns:
             Success boolean
@@ -374,10 +374,10 @@ class TestQueue:
         """Process scheduled tasks that are due by the specified time.
 
         Args:
-            at (datetime | timedelta | None): The cutoff time to process scheduled tasks.
-                - If datetime is provided, tasks scheduled up to that time will be processed.
-                - If timedelta is provided, it will be added to the current time to determine the cutoff time.
-                - If None (default), processes tasks scheduled up to the current time.
+            at: The cutoff time to process scheduled tasks.<br>
+                - If datetime is provided, tasks scheduled up to that time will be processed.<br>
+                - If timedelta is provided, it will be added to the current time to determine the cutoff time.<br>
+                - If None (default), processes tasks scheduled up to the current time.<br>
                 *Note: datetime must be offset-aware (i.e. have timezone info).*
 
         Returns:

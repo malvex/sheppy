@@ -44,21 +44,21 @@ class Worker:
     It also handles scheduled tasks and cron jobs.
 
     Args:
-        queue_name (str | list[str]): Name of the queue or list of queue names to process tasks from.
-        backend (Backend): Instance of the backend to use for storing and retrieving tasks.
-        shutdown_timeout (float): Time in seconds to wait for active tasks to complete during shutdown. Default is 30.0 seconds.
-        max_concurrent_tasks (int): Maximum number of tasks to process concurrently. Default is 10.
-        enable_job_processing (bool): If True, enables job processing. Default is True.
-        enable_scheduler (bool): If True, enables the scheduler to enqueue scheduled tasks. Default is True.
-        enable_cron_manager (bool): If True, enables the cron manager to handle cron jobs. Default is True.
+        queue_name: Name of the queue or list of queue names to process tasks from.
+        backend: Instance of the backend to use for storing and retrieving tasks.
+        shutdown_timeout: Time in seconds to wait for active tasks to complete during shutdown. Default is 30.0 seconds.
+        max_concurrent_tasks: Maximum number of tasks to process concurrently. Default is 10.
+        enable_job_processing: If True, enables job processing. Default is True.
+        enable_scheduler: If True, enables the scheduler to enqueue scheduled tasks. Default is True.
+        enable_cron_manager: If True, enables the cron manager to handle cron jobs. Default is True.
 
     Attributes:
-        queues (list[Queue]): List of Queue instances corresponding to the specified queue names.
-        worker_id (str): Unique identifier for the worker instance.
-        stats (WorkerStats): Statistics about processed and failed tasks.
-        enable_job_processing (bool): Indicates if job processing is enabled.
-        enable_scheduler (bool): Indicates if the scheduler is enabled.
-        enable_cron_manager (bool): Indicates if the cron manager is enabled.
+        queues: List of Queue instances corresponding to the specified queue names.
+        worker_id: Unique identifier for the worker instance.
+        stats: Statistics about processed and failed tasks.
+        enable_job_processing: Indicates if job processing is enabled.
+        enable_scheduler: Indicates if the scheduler is enabled.
+        enable_cron_manager: Indicates if the cron manager is enabled.
 
     Raises:
         ValueError: If none of the processing types (job processing, scheduler, cron manager) are enabled.
@@ -140,9 +140,9 @@ class Worker:
         """Start worker to process tasks from the queue.
 
         Args:
-            max_tasks (int | None): Maximum number of tasks to process before shutting down. If None, process indefinitely.
-            oneshot (bool): If True, process tasks until the queue is empty, then shut down.
-            register_signal_handlers (bool): If True, register SIGINT and SIGTERM signal handlers for graceful shutdown. Default is True.
+            max_tasks: Maximum number of tasks to process before shutting down. If None, process indefinitely.
+            oneshot: If True, process tasks until the queue is empty, then shut down.
+            register_signal_handlers: If True, register SIGINT and SIGTERM signal handlers for graceful shutdown. Default is True.
 
         Returns:
             None
