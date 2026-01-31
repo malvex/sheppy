@@ -16,6 +16,7 @@ $ sheppy [OPTIONS] COMMAND [ARGS]...
 **Commands**:
 
 * `work`: Start a worker to process tasks from a queue.
+* `dev-server`: Start a local key-value server.
 * `task`: Task management commands
 * `queue`: Queue management commands
 * `cron`: Cron management commands
@@ -32,16 +33,36 @@ $ sheppy work [OPTIONS]
 
 **Options**:
 
-* `-q, --queue TEXT`: Name of queue to process (can be used multiple times)  [default: default]
-* `-b, --backend [redis]`: Queue backend type  [default: redis]
+* `-q, --queue TEXT`: Name of queue to process (can be used multiple times)
+* `-b, --backend [redis|local]`: Queue backend type  [default: redis]
 * `-r, --redis-url TEXT`: Redis server URL  [default: redis://127.0.0.1:6379]
+* `--local-backend-embedded-server`: Enable embedded server (local backend)
+* `--local-backend-port INTEGER`: Local backend port  [default: 17420]
 * `-c, --max-concurrent INTEGER RANGE`: Max concurrent tasks  [default: 10; x&gt;=1]
+* `--max-prefetch INTEGER RANGE`: Max prefetch tasks  [x&gt;=1]
 * `--reload`: Reload worker on file changes
 * `--oneshot`: Process pending tasks and then exit
 * `--max-tasks INTEGER RANGE`: Maximum amount of tasks to process  [x&gt;=1]
 * `--disable-job-processing`: Disable job processing
 * `--disable-scheduler`: Disable scheduler
 * `--disable-cron-manager`: Disable cron manager
+* `-l, --log-level [debug|info|warning|error]`: Logging level  [default: info]
+* `--help`: Show this message and exit.
+
+## `sheppy dev-server`
+
+Start a local key-value server.
+
+**Usage**:
+
+```console
+$ sheppy dev-server [OPTIONS]
+```
+
+**Options**:
+
+* `-H, --host TEXT`: IP to bind to  [default: 127.0.0.1]
+* `-p, --port INTEGER`: What port it should run at  [default: 17420]
 * `-l, --log-level [debug|info|warning|error]`: Logging level  [default: info]
 * `--help`: Show this message and exit.
 
@@ -82,8 +103,10 @@ $ sheppy task list [OPTIONS]
 
 * `-q, --queue TEXT`: Name of queue  [default: default]
 * `-s, --status [all|pending|scheduled|completed|failed]`: Filter by status  [default: all]
-* `-b, --backend [redis]`: Queue backend type  [default: redis]
+* `-b, --backend [redis|local]`: Queue backend type  [default: redis]
 * `-r, --redis-url TEXT`: Redis server URL  [default: redis://127.0.0.1:6379]
+* `--local-backend-embedded-server`: Enable embedded server (local backend)
+* `--local-backend-port INTEGER`: Local backend port  [default: 17420]
 * `-f, --format [table|json]`: Output format  [default: table]
 * `--help`: Show this message and exit.
 
@@ -104,8 +127,10 @@ $ sheppy task info [OPTIONS] TASK_ID
 **Options**:
 
 * `-q, --queue TEXT`: Name of queue  [default: default]
-* `-b, --backend [redis]`: Queue backend type  [default: redis]
+* `-b, --backend [redis|local]`: Queue backend type  [default: redis]
 * `-r, --redis-url TEXT`: Redis server URL  [default: redis://127.0.0.1:6379]
+* `--local-backend-embedded-server`: Enable embedded server (local backend)
+* `--local-backend-port INTEGER`: Local backend port  [default: 17420]
 * `--help`: Show this message and exit.
 
 ### `sheppy task retry`
@@ -125,8 +150,10 @@ $ sheppy task retry [OPTIONS] TASK_ID
 **Options**:
 
 * `-q, --queue TEXT`: Name of queue  [default: default]
-* `-b, --backend [redis]`: Queue backend type  [default: redis]
+* `-b, --backend [redis|local]`: Queue backend type  [default: redis]
 * `-r, --redis-url TEXT`: Redis server URL  [default: redis://127.0.0.1:6379]
+* `--local-backend-embedded-server`: Enable embedded server (local backend)
+* `--local-backend-port INTEGER`: Local backend port  [default: 17420]
 * `-f, --force`: Force retry even if task hasn&#x27;t failed
 * `--help`: Show this message and exit.
 
@@ -172,8 +199,10 @@ $ sheppy task add [OPTIONS] FUNCTION
 * `-w, --wait`: Wait for task result
 * `-t, --timeout FLOAT`: Timeout in seconds when waiting for result  [default: 0.0]
 * `-q, --queue TEXT`: Name of queue  [default: default]
-* `-b, --backend [redis]`: Queue backend type  [default: redis]
+* `-b, --backend [redis|local]`: Queue backend type  [default: redis]
 * `-r, --redis-url TEXT`: Redis server URL  [default: redis://127.0.0.1:6379]
+* `--local-backend-embedded-server`: Enable embedded server (local backend)
+* `--local-backend-port INTEGER`: Local backend port  [default: 17420]
 * `--help`: Show this message and exit.
 
 ### `sheppy task schedule`
@@ -197,8 +226,10 @@ $ sheppy task schedule [OPTIONS] FUNCTION
 * `-a, --args TEXT`: JSON array of positional arguments  [default: []]
 * `-k, --kwargs TEXT`: JSON object of keyword arguments  [default: {}]
 * `-q, --queue TEXT`: Name of queue  [default: default]
-* `-b, --backend [redis]`: Queue backend type  [default: redis]
+* `-b, --backend [redis|local]`: Queue backend type  [default: redis]
 * `-r, --redis-url TEXT`: Redis server URL  [default: redis://127.0.0.1:6379]
+* `--local-backend-embedded-server`: Enable embedded server (local backend)
+* `--local-backend-port INTEGER`: Local backend port  [default: 17420]
 * `--help`: Show this message and exit.
 
 ## `sheppy queue`
@@ -231,8 +262,10 @@ $ sheppy queue list [OPTIONS]
 
 **Options**:
 
-* `-b, --backend [redis]`: Queue backend type  [default: redis]
+* `-b, --backend [redis|local]`: Queue backend type  [default: redis]
 * `-r, --redis-url TEXT`: Redis server URL  [default: redis://127.0.0.1:6379]
+* `--local-backend-embedded-server`: Enable embedded server (local backend)
+* `--local-backend-port INTEGER`: Local backend port  [default: 17420]
 * `--help`: Show this message and exit.
 
 ## `sheppy cron`
@@ -266,6 +299,8 @@ $ sheppy cron list [OPTIONS]
 **Options**:
 
 * `-q, --queue TEXT`: Name of queue  [default: default]
-* `-b, --backend [redis]`: Queue backend type  [default: redis]
+* `-b, --backend [redis|local]`: Queue backend type  [default: redis]
 * `-r, --redis-url TEXT`: Redis server URL  [default: redis://127.0.0.1:6379]
+* `--local-backend-embedded-server`: Enable embedded server (local backend)
+* `--local-backend-port INTEGER`: Local backend port  [default: 17420]
 * `--help`: Show this message and exit.
