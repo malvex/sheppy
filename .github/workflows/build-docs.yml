@@ -28,8 +28,6 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - run: uv pip install mkdocs-material==9.6.20 'mkdocstrings[python]==0.30.1'
-
       - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
 
       - uses: actions/cache@v4
