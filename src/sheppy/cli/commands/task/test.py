@@ -9,7 +9,7 @@ from typing import Annotated
 import typer
 
 from sheppy import MemoryBackend, Queue, Task
-from sheppy.utils.task_execution import TaskProcessor
+from sheppy._utils.task_execution import TaskProcessor
 
 from ...utils import console
 

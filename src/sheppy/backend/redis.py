@@ -13,7 +13,7 @@ except ImportError as e:
         "Install it with: pip install redis"
     ) from e
 
-from ..utils.task_execution import generate_unique_worker_id
+from .._utils.task_execution import generate_unique_worker_id
 from .base import Backend, BackendError
 
 

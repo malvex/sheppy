@@ -6,9 +6,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from .._utils.task_execution import TaskProcessor
 from ..models import Task
 from ..queue import Queue
-from ..utils.task_execution import TaskProcessor
 from .base import Backend, BackendError
 
 

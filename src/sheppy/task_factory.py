@@ -9,8 +9,8 @@ from typing import (
     overload,
 )
 
+from ._utils.validation import validate_input
 from .models import Task, TaskConfig, TaskCron, TaskSpec
-from .utils.validation import validate_input
 
 P = ParamSpec('P')
 R = TypeVar('R')

@@ -9,8 +9,8 @@ from uuid import UUID
 
 from sheppy import Backend, Queue
 
+from .._utils.functions import resolve_function
 from ..models import Task, TaskCron
-from ..utils.functions import resolve_function
 from .schemas import (
     AddTaskRequest,
     CronRequest,

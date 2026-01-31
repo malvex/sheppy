@@ -8,6 +8,12 @@ from typing import Any, cast
 
 from pydantic import BaseModel
 
+from ._utils.task_execution import (
+    LoggingMiddleware,
+    TaskChainingMiddleware,
+    TaskProcessor,
+    generate_unique_worker_id,
+)
 from .backend.base import Backend
 from .exceptions import MiddlewareError
 from .models import Task, TaskCron
@@ -17,12 +23,6 @@ from .protocols import (
     TaskProcessorProtocol,
 )
 from .queue import Queue
-from .utils.task_execution import (
-    LoggingMiddleware,
-    TaskChainingMiddleware,
-    TaskProcessor,
-    generate_unique_worker_id,
-)
 
 logger = logging.getLogger(__name__)
 
