@@ -46,10 +46,10 @@ class TaskSpec(BaseModel):
     """Task specification.
 
     Attributes:
-        func (str): Fully qualified function name, e.g. `my_module.my_submodule:my_function`
-        args (tuple[Any, ...]): Positional arguments to be passed to the function.
-        kwargs (dict[str, Any]): Keyword arguments to be passed to the function.
-        middleware (list[str]|None): List of fully qualified middleware function names to be applied to the task, e.g. `['my_module.submodule:my_middleware']`. Middleware will be applied in the order they are listed.
+        func: Fully qualified function name, e.g. `my_module.my_submodule:my_function`
+        args: Positional arguments to be passed to the function.
+        kwargs: Keyword arguments to be passed to the function.
+        middleware: List of fully qualified middleware function names to be applied to the task, e.g. `['my_module.submodule:my_middleware']`. Middleware will be applied in the order they are listed.
 
     Note:
         - You should not create TaskSpec instances directly. Instead, use the `@task` decorator to define a task function, and then call that function to create a Task instance.
@@ -86,8 +86,8 @@ class TaskConfig(BaseModel):
     """Task configuration
 
     Attributes:
-        retry (int): Number of times to retry the task if it fails. Default is 0 (no retries).
-        retry_delay (float|list[float]): Delay between retries in seconds. If a single float is provided, it will be used for all retries. If a list is provided, it will be used for each retry attempt respectively (exponential backoff). Default is 1.0 seconds.
+        retry: Number of times to retry the task if it fails. Default is 0 (no retries).
+        retry_delay: Delay between retries in seconds. If a single float is provided, it will be used for all retries. If a list is provided, it will be used for each retry attempt respectively (exponential backoff). Default is 1.0 seconds.
 
     Note:
         - You should not create TaskConfig instances directly. Instead, use the `@task` decorator to define a task function, and then call that function to create a Task instance.
@@ -130,20 +130,20 @@ class Task(BaseModel):
     """A task instance created when a task function is called.
 
     Attributes:
-        id (UUID): Unique identifier for the task.
-        status (TaskStatus): Task status.
-        error (str|None): Error message if the task failed. None if the task succeeded or is not yet executed.
-        result (Any): The result of the task execution. If the task failed, this will be None.
-        spec (sheppy.models.TaskSpec): Task specification
-        config (sheppy.models.TaskConfig): Task configuration
-        created_at (datetime): Timestamp when the task was created.
-        finished_at (datetime|None): Timestamp when the task was finished. None if the task is not yet finished.
-        scheduled_at (datetime|None): Timestamp when the task is scheduled to run. None if the task is not scheduled.
-        retry_count (int): Number of times the task has been retried.
-        last_retry_at (datetime|None): Timestamp when the task was last retried. None if the task has never been retried.
-        next_retry_at (datetime|None): Timestamp when the task is scheduled to be retried next. None if the task is not scheduled for retry.
-        is_retriable (bool): Returns True if the task is configured to be retriable.
-        should_retry (bool): Returns True if the task should be retried based on its retry configuration and current retry count.
+        id: Unique identifier for the task.
+        status: Task status.
+        error: Error message if the task failed. None if the task succeeded or is not yet executed.
+        result: The result of the task execution. If the task failed, this will be None.
+        spec: Task specification
+        config: Task configuration
+        created_at: Timestamp when the task was created.
+        finished_at: Timestamp when the task was finished. None if the task is not yet finished.
+        scheduled_at: Timestamp when the task is scheduled to run. None if the task is not scheduled.
+        retry_count: Number of times the task has been retried.
+        last_retry_at: Timestamp when the task was last retried. None if the task has never been retried.
+        next_retry_at: Timestamp when the task is scheduled to be retried next. None if the task is not scheduled for retry.
+        is_retriable: Returns True if the task is configured to be retriable.
+        should_retry: Returns True if the task should be retried based on its retry configuration and current retry count.
 
     Note:
         - You should not create Task instances directly. Instead, use the `@task` decorator to define a task function, and then call that function to create a Task instance.
@@ -249,10 +249,10 @@ class TaskCron(BaseModel):
     """A cron definition that creates tasks on a schedule.
 
     Attributes:
-        id (UUID): Unique identifier for the cron definition.
-        expression (str): Cron expression defining the schedule, e.g. "*/5 * * * *" for every 5 minutes.
-        spec (sheppy.models.TaskSpec): Task specification
-        config (sheppy.models.TaskConfig): Task configuration
+        id: Unique identifier for the cron definition.
+        expression: Cron expression defining the schedule, e.g. "*/5 * * * *" for every 5 minutes.
+        spec: Task specification
+        config: Task configuration
 
     Note:
         - You should not create TaskCron instances directly. Instead, use the `add_cron` method of the Queue class to create a cron definition.
@@ -339,7 +339,7 @@ class TaskCron(BaseModel):
         """Get the next scheduled run time based on the cron expression.
 
         Args:
-            start (datetime|None): The starting point to calculate the next run time. If None, the current UTC time is used.
+            start: The starting point to calculate the next run time. If None, the current UTC time is used.
 
         Returns:
             datetime: The next scheduled run time.
@@ -354,7 +354,7 @@ class TaskCron(BaseModel):
         The task ID is deterministic based on the cron definition and the scheduled time to prevent duplicates.
 
         Args:
-            start (datetime): The scheduled time for the task.
+            start: The scheduled time for the task.
 
         Returns:
             Task: A new Task instance scheduled to run at the specified time.
