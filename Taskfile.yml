@@ -58,10 +58,6 @@ tasks:
     desc: Switch Python to version 3.14
     cmd: uv venv --python 3.14 --clear && uv sync --dev
 
-  docs-install:
-    desc: Install dependencies for docs
-    cmd: uv pip install mkdocs-material==9.6.20 'mkdocstrings[python]==0.30.1'
-
   docs-build:
     desc: Build docs
     cmd: uv run mkdocs build
