@@ -1,5 +1,1 @@
-from .apirouter import create_router
-
-__all__ = [
-    "create_router",
-]
+from .apirouter import create_router as create_router
