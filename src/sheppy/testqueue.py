@@ -4,10 +4,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, overload
 from uuid import UUID
 
+from ._utils.task_execution import TaskProcessor
 from .backend.memory import MemoryBackend
 from .models import Task, TaskCron
 from .queue import Queue
-from .utils.task_execution import TaskProcessor
 
 
 class TestQueue:

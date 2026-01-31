@@ -19,7 +19,7 @@ from pydantic import (
     model_validator,
 )
 
-from .utils.functions import reconstruct_result
+from ._utils.functions import reconstruct_result
 
 P = ParamSpec('P')
 R = TypeVar('R')

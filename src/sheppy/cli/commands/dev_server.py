@@ -4,7 +4,7 @@ import logging
 import typer
 from rich.logging import RichHandler
 
-from sheppy.localkv.server import start_server
+from sheppy._localkv.server import start_server
 
 from ..utils import LogLevel, console
 

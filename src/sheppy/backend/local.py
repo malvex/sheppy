@@ -4,8 +4,8 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from ..localkv.client import KVClient
-from ..localkv.server import handle_client
+from .._localkv.client import KVClient
+from .._localkv.server import handle_client
 from .base import Backend, BackendError
 
 
