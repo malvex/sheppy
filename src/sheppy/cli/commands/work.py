@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sys
+from typing import Annotated
 
 import typer
 from rich.logging import RichHandler
@@ -13,25 +14,28 @@ from ..utils import BackendType, LogLevel, console, get_backend
 
 
 def work(
-    queue: list[str] = typer.Option(["default"], "--queue", "-q", help="Name of queue to process (can be used multiple times)"),
-    backend: BackendType = typer.Option(BackendType.redis, "--backend", "-b", help="Queue backend type"),
-    redis_url: str = typer.Option("redis://127.0.0.1:6379", "--redis-url", "-r", help="Redis server URL"),
-    local_backend_embedded_server: bool = typer.Option(False, "--local-backend-embedded-server", help="Enable embedded server (local backend)"),
-    local_backend_port: int = typer.Option("17420", "--local-backend-port", help="Local backend port"),
-    max_concurrent: int = typer.Option(10, "--max-concurrent", "-c", help="Max concurrent tasks", min=1),
-    max_prefetch: int | None = typer.Option(None, "--max-prefetch", help="Max prefetch tasks", min=1),
-    autoreload: bool = typer.Option(False, "--reload", help="Reload worker on file changes"),
-    oneshot: bool = typer.Option(False, "--oneshot", help="Process pending tasks and then exit"),
-    max_tasks: int | None = typer.Option(None, "--max-tasks", help="Maximum amount of tasks to process", min=1),
-    disable_job_processing: bool = typer.Option(False, "--disable-job-processing", help="Disable job processing"),
-    disable_scheduler: bool = typer.Option(False, "--disable-scheduler", help="Disable scheduler"),
-    disable_cron_manager: bool = typer.Option(False, "--disable-cron-manager", help="Disable cron manager"),
-    log_level: LogLevel = typer.Option(LogLevel.info, "--log-level", "-l", help="Logging level"),
+    queue: Annotated[list[str] | None, typer.Option("--queue", "-q", help="Name of queue to process (can be used multiple times)")] = None,
+    backend: Annotated[BackendType, typer.Option("--backend", "-b", help="Queue backend type")] = BackendType.redis,
+    redis_url: Annotated[str, typer.Option("--redis-url", "-r", help="Redis server URL")] = "redis://127.0.0.1:6379",
+    local_backend_embedded_server: Annotated[bool, typer.Option("--local-backend-embedded-server", help="Enable embedded server (local backend)")] = False,
+    local_backend_port: Annotated[int, typer.Option("--local-backend-port", help="Local backend port")] = 17420,
+    max_concurrent: Annotated[int, typer.Option("--max-concurrent", "-c", help="Max concurrent tasks", min=1)] = 10,
+    max_prefetch: Annotated[int | None, typer.Option("--max-prefetch", help="Max prefetch tasks", min=1)] = None,
+    autoreload: Annotated[bool, typer.Option("--reload", help="Reload worker on file changes")] = False,
+    oneshot: Annotated[bool, typer.Option("--oneshot", help="Process pending tasks and then exit")] = False,
+    max_tasks: Annotated[int | None, typer.Option("--max-tasks", help="Maximum amount of tasks to process", min=1)] = None,
+    disable_job_processing: Annotated[bool, typer.Option("--disable-job-processing", help="Disable job processing")] = False,
+    disable_scheduler: Annotated[bool, typer.Option("--disable-scheduler", help="Disable scheduler")] = False,
+    disable_cron_manager: Annotated[bool, typer.Option("--disable-cron-manager", help="Disable cron manager")] = False,
+    log_level: Annotated[LogLevel, typer.Option("--log-level", "-l", help="Logging level")] = LogLevel.info,
 ) -> None:
     """Start a worker to process tasks from a queue."""
 
     if all([disable_job_processing, disable_scheduler, disable_cron_manager]):
         raise ValueError("At least one processing type must be enabled")
+
+    if queue is None:
+        queue = ["default"]
 
     # deduplicate queues to prevent unexpected behavior
     queues = []
