@@ -21,8 +21,8 @@ def add(
     queue: Annotated[str, typer.Option("--queue", "-q", help="Name of queue")] = "default",
     backend: Annotated[BackendType, typer.Option("--backend", "-b", help="Queue backend type")] = BackendType.redis,
     redis_url: Annotated[str, typer.Option("--redis-url", "-r", help="Redis server URL")] = "redis://127.0.0.1:6379",
-    local_backend_embedded_server: bool = typer.Option(False, "--local-backend-embedded-server", help="Enable embedded server (local backend)"),
-    local_backend_port: int = typer.Option("17420", "--local-backend-port", help="Local backend port"),
+    local_backend_embedded_server: Annotated[bool, typer.Option("--local-backend-embedded-server", help="Enable embedded server (local backend)")] = False,
+    local_backend_port: Annotated[int, typer.Option("--local-backend-port", help="Local backend port")] = 17420,
 ) -> None:
     """Add a new task to a queue."""
 

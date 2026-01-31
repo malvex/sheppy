@@ -1,3 +1,5 @@
+from typing import Annotated
+
 import typer
 from rich import print as rprint
 
@@ -25,7 +27,7 @@ def version_callback(value: bool) -> None:
 
 @app.callback()
 def callback(
-    version: bool = typer.Option(None, "--version", help="Show the version and exit.", callback=version_callback),
+    version: Annotated[bool, typer.Option("--version", help="Show the version and exit.", callback=version_callback)] = False,
 ) -> None:
     """
     Sheppy - Modern Task Queue

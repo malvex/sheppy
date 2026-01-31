@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Annotated
 
 import typer
 from rich.logging import RichHandler
@@ -10,9 +11,9 @@ from ..utils import LogLevel, console
 
 
 def dev_server(
-    host: str = typer.Option("127.0.0.1", "--host", "-H", help="IP to bind to"),
-    port: int = typer.Option(17420, "--port", "-p", help="What port it should run at"),
-    log_level: LogLevel = typer.Option(LogLevel.info, "--log-level", "-l", help="Logging level"),
+    host: Annotated[str, typer.Option("--host", "-H", help="IP to bind to")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", "-p", help="What port it should run at")] = 17420,
+    log_level: Annotated[LogLevel, typer.Option("--log-level", "-l", help="Logging level")] = LogLevel.info,
 ) -> None:
     """Start a local key-value server."""
 
