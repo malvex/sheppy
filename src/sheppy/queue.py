@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import overload
+from urllib.parse import urlparse
 from uuid import UUID
 
 from .backend.base import Backend
@@ -7,18 +8,55 @@ from .models import Task, TaskCron
 from .task_factory import TaskFactory
 
 
+def _create_backend_from_url(url: str) -> Backend:
+    """Create a backend instance from a URL string."""
+    try:
+        parsed = urlparse(url)
+    except Exception as e:
+        raise ValueError(f"Invalid backend URL: {url}") from e
+
+    if not parsed.scheme:
+        raise ValueError(f"Invalid backend URL: {url}")
+
+    scheme = parsed.scheme.lower()
+
+    if scheme in ("redis", "rediss"):
+        # circular import
+        from .backend.redis import RedisBackend  # noqa: PLC0415
+        return RedisBackend(url=url)
+
+    if scheme == "local":
+        from .backend.local import LocalBackend  # noqa: PLC0415
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or 17420
+        return LocalBackend(host=host, port=port)
+
+    if scheme == "memory":
+        from .backend.memory import MemoryBackend  # noqa: PLC0415
+        return MemoryBackend()
+
+    raise ValueError(f"Unsupported backend protocol: {scheme}")
+
+
 class Queue:
     """
     `Queue` class provides an easy way to manage task queue.
 
     Parameters:
-        backend: An instance of task backend (e.g. `sheppy.RedisBackend`)
+        backend: An instance of task backend (e.g. `sheppy.RedisBackend`),<br>
+                 or a URL string to automatically infer a backend:<br>
+                 - `redis://host:port` or `rediss://host:port` for RedisBackend<br>
+                 - `local://host:port` for LocalBackend<br>
+                 - `memory://` for MemoryBackend
         name: Name of the queue
     """
 
-    def __init__(self, backend: Backend, name: str = "default"):
+    def __init__(self, backend: Backend | str, name: str = "default"):
         self.name = name
-        self.backend = backend
+        if isinstance(backend, str):
+            self.backend = _create_backend_from_url(backend)
+        else:
+            self.backend = backend
 
     @overload
     async def add(self, task: Task) -> bool: ...
