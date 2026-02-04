@@ -3,6 +3,7 @@ from typing import overload
 from urllib.parse import urlparse
 from uuid import UUID
 
+from ._config import config
 from .backend.base import Backend
 from .models import Task, TaskCron
 from .task_factory import TaskFactory
@@ -47,12 +48,20 @@ class Queue:
                  or a URL string to automatically infer a backend:<br>
                  - `redis://host:port` or `rediss://host:port` for RedisBackend<br>
                  - `local://host:port` for LocalBackend<br>
-                 - `memory://` for MemoryBackend
-        name: Name of the queue
+                 - `memory://` for MemoryBackend<br>
+                 If not provided, uses `SHEPPY_BACKEND_URL` environment variable.
+        name: Name of the queue. Defaults to `SHEPPY_QUEUE` env var or "default".
     """
 
-    def __init__(self, backend: Backend | str, name: str = "default"):
-        self.name = name
+    def __init__(self, backend: Backend | str | None = None, name: str | None = None):
+        self.name = name if name is not None else config.queue
+
+        if backend is None:
+            # done like this to make mypy happy
+            backend = config.backend_url
+            if backend is None:
+                raise ValueError("No backend provided. Either pass a backend instance/URL or set SHEPPY_BACKEND_URL environment variable.")
+
         if isinstance(backend, str):
             self.backend = _create_backend_from_url(backend)
         else:
