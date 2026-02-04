@@ -45,9 +45,13 @@ class Worker:
 
     Args:
         queue_name: Name of the queue or list of queue names to process tasks from.
+                    Defaults to SHEPPY_QUEUE env var (supports comma-separated) or "default".
         backend: Instance of the backend to use for storing and retrieving tasks.
-        shutdown_timeout: Time in seconds to wait for active tasks to complete during shutdown. Default is 30.0 seconds.
-        max_concurrent_tasks: Maximum number of tasks to process concurrently. Default is 10.
+                 If not provided, uses SHEPPY_BACKEND_URL environment variable.
+        shutdown_timeout: Time in seconds to wait for active tasks to complete during shutdown.
+                          Defaults to SHEPPY_SHUTDOWN_TIMEOUT env var or 30.0 seconds.
+        max_concurrent_tasks: Maximum number of tasks to process concurrently.
+                              Defaults to SHEPPY_MAX_CONCURRENT_TASKS env var or 10.
         enable_job_processing: If True, enables job processing. Default is True.
         enable_scheduler: If True, enables the scheduler to enqueue scheduled tasks. Default is True.
         enable_cron_manager: If True, enables the cron manager to handle cron jobs. Default is True.

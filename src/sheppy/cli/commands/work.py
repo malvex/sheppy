@@ -9,17 +9,16 @@ from rich.logging import RichHandler
 from watchfiles import run_process
 
 from sheppy import Backend, Worker
+from sheppy._config import LogLevelType, config
+from sheppy.queue import _create_backend_from_url
 
-from ..utils import BackendType, LogLevel, console, get_backend
+from ..utils import LogLevel, console
 
 
 def work(
-    queue: Annotated[list[str] | None, typer.Option("--queue", "-q", help="Name of queue to process (can be used multiple times)")] = None,
-    backend: Annotated[BackendType, typer.Option("--backend", "-b", help="Queue backend type")] = BackendType.redis,
-    redis_url: Annotated[str, typer.Option("--redis-url", "-r", help="Redis server URL")] = "redis://127.0.0.1:6379",
-    local_backend_embedded_server: Annotated[bool, typer.Option("--local-backend-embedded-server", help="Enable embedded server (local backend)")] = False,
-    local_backend_port: Annotated[int, typer.Option("--local-backend-port", help="Local backend port")] = 17420,
-    max_concurrent: Annotated[int, typer.Option("--max-concurrent", "-c", help="Max concurrent tasks", min=1)] = 10,
+    queue: Annotated[list[str], typer.Option("--queue", "-q", help="Queue name(s). Env: SHEPPY_QUEUE")] = config.queue_list,
+    backend_url: Annotated[str | None, typer.Option("--backend-url", "-u", help="Backend URL. Env: SHEPPY_BACKEND_URL")] = config.backend_url,
+    max_concurrent: Annotated[int, typer.Option("--max-concurrent", "-c", help="Max concurrent tasks. Env: SHEPPY_MAX_CONCURRENT_TASKS", min=1)] = config.max_concurrent_tasks,
     max_prefetch: Annotated[int | None, typer.Option("--max-prefetch", help="Max prefetch tasks", min=1)] = None,
     autoreload: Annotated[bool, typer.Option("--reload", help="Reload worker on file changes")] = False,
     oneshot: Annotated[bool, typer.Option("--oneshot", help="Process pending tasks and then exit")] = False,
@@ -27,15 +26,19 @@ def work(
     disable_job_processing: Annotated[bool, typer.Option("--disable-job-processing", help="Disable job processing")] = False,
     disable_scheduler: Annotated[bool, typer.Option("--disable-scheduler", help="Disable scheduler")] = False,
     disable_cron_manager: Annotated[bool, typer.Option("--disable-cron-manager", help="Disable cron manager")] = False,
-    log_level: Annotated[LogLevel, typer.Option("--log-level", "-l", help="Logging level")] = LogLevel.info,
+    log_level: Annotated[LogLevelType, typer.Option("--log-level", "-l", help="Logging level. Env: SHEPPY_LOG_LEVEL")] = config.log_level,
+    shutdown_timeout: Annotated[float, typer.Option("--shutdown-timeout", help="Shutdown timeout in seconds. Env: SHEPPY_SHUTDOWN_TIMEOUT")] = config.shutdown_timeout,
 ) -> None:
     """Start a worker to process tasks from a queue."""
 
     if all([disable_job_processing, disable_scheduler, disable_cron_manager]):
         raise ValueError("At least one processing type must be enabled")
 
-    if queue is None:
-        queue = ["default"]
+    if backend_url is None:
+        backend_url = "redis://127.0.0.1:6379"
+    backend_instance = _create_backend_from_url(backend_url)
+
+    _log_level = LogLevel(log_level)
 
     # deduplicate queues to prevent unexpected behavior
     queues = []
@@ -50,12 +53,6 @@ def work(
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
 
-    backend_instance = get_backend(backend, redis_url, local_backend_port, local_backend_embedded_server)
-
-    _bs = ""
-    if backend == BackendType.redis:
-        _bs = f" [gray0]\\[{redis_url}][/gray0]"
-
     _s = "s" if len(queues) > 1 else ""
     queue_s = "[/bold]', '[bold]".join(queues)
 
@@ -63,7 +60,7 @@ def work(
     _mt = f" [yellow]\\[max_tasks: {max_tasks}]" if max_tasks and not autoreload else ""
 
     console.print(f"[cyan]Starting worker for queue{_s} '[bold]{queue_s}[/bold]'[/cyan]{_os}{_mt}")
-    console.print(f"  Backend: [yellow]{backend.value}[/yellow]{_bs}")
+    console.print(f"  Backend: [yellow]{type(backend_instance).__name__}[/yellow] [gray0]\\[{backend_url}][/gray0]")
     console.print(f"  Job processing: [yellow]{not disable_job_processing}[/yellow]"
                   f"  Scheduler: [yellow]{not disable_scheduler}[/yellow]"
                   f"  Cron Manager: [yellow]{not disable_cron_manager}[/yellow]")
@@ -77,17 +74,17 @@ def work(
             console.print("[yellow]Warning: --oneshot is not compatible with --reload, ignoring[/yellow]")
 
         run_process('.', target=_start_worker,
-                    args=(queues, backend_instance, max_concurrent, max_prefetch, log_level,
-                          disable_job_processing, disable_scheduler, disable_cron_manager),
+                    args=(queues, backend_instance, max_concurrent, max_prefetch, _log_level,
+                          shutdown_timeout, disable_job_processing, disable_scheduler, disable_cron_manager),
                     callback=lambda _: console.print("Detected file changes, reloading worker..."))
     else:
-        _start_worker(queues, backend_instance, max_concurrent, max_prefetch, log_level,
-                      disable_job_processing, disable_scheduler, disable_cron_manager,
+        _start_worker(queues, backend_instance, max_concurrent, max_prefetch, _log_level,
+                      shutdown_timeout, disable_job_processing, disable_scheduler, disable_cron_manager,
                       oneshot, max_tasks)
 
 
 def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, max_prefetch_tasks: int | None,
-                  log_level: LogLevel,
+                  log_level: LogLevel, shutdown_timeout: float,
                   disable_job_processing: bool, disable_scheduler: bool, disable_cron_manager: bool,
                   oneshot: bool = False, max_tasks: int | None = None,
                   ) -> None:
@@ -109,6 +106,7 @@ def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, max_
 
     worker = Worker(queues, backend=backend, max_concurrent_tasks=max_concurrent,
                     max_prefetch_tasks=max_prefetch_tasks,
+                    shutdown_timeout=shutdown_timeout,
                     enable_job_processing=not disable_job_processing,
                     enable_scheduler=not disable_scheduler,
                     enable_cron_manager=not disable_cron_manager)

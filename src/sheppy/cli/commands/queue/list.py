@@ -4,19 +4,21 @@ from typing import Annotated
 import typer
 from rich.table import Table
 
-from ...utils import BackendType, console, get_backend
+from sheppy._config import config
+from sheppy.queue import _create_backend_from_url
+
+from ...utils import console
 
 
 def list_queues(
-    backend: Annotated[BackendType, typer.Option("--backend", "-b", help="Queue backend type")] = BackendType.redis,
-    redis_url: Annotated[str, typer.Option("--redis-url", "-r", help="Redis server URL")] = "redis://127.0.0.1:6379",
-    local_backend_embedded_server: Annotated[bool, typer.Option("--local-backend-embedded-server", help="Enable embedded server (local backend)")] = False,
-    local_backend_port: Annotated[int, typer.Option("--local-backend-port", help="Local backend port")] = 17420,
+    backend_url: Annotated[str | None, typer.Option("--backend-url", "-u", help="Backend URL. Env: SHEPPY_BACKEND_URL")] = config.backend_url,
 ) -> None:
     """List all queues with their pending task counts."""
 
-    async def _list() -> None:
-        backend_instance = get_backend(backend, redis_url, local_backend_port, local_backend_embedded_server)
+    async def _list(backend_url: str | None) -> None:
+        if backend_url is None:
+            backend_url = "redis://127.0.0.1:6379"
+        backend_instance = _create_backend_from_url(backend_url)
 
         await backend_instance.connect()
         queues = await backend_instance.list_queues()
@@ -40,4 +42,4 @@ def list_queues(
             console.print(f"\n[dim]Total: {len(queues)} queues, {total_pending} pending tasks[/dim]")
 
 
-    asyncio.run(_list())
+    asyncio.run(_list(backend_url))

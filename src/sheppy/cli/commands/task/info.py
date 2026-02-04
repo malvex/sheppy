@@ -7,17 +7,16 @@ from uuid import UUID
 import typer
 
 from sheppy import Queue
+from sheppy._config import config
+from sheppy.queue import _create_backend_from_url
 
-from ...utils import BackendType, console, get_backend
+from ...utils import console
 
 
 def info(
     task_id: Annotated[str, typer.Argument(help="Task ID to get info for")],
-    queue: Annotated[str, typer.Option("--queue", "-q", help="Name of queue")] = "default",
-    backend: Annotated[BackendType, typer.Option("--backend", "-b", help="Queue backend type")] = BackendType.redis,
-    redis_url: Annotated[str, typer.Option("--redis-url", "-r", help="Redis server URL")] = "redis://127.0.0.1:6379",
-    local_backend_embedded_server: Annotated[bool, typer.Option("--local-backend-embedded-server", help="Enable embedded server (local backend)")] = False,
-    local_backend_port: Annotated[int, typer.Option("--local-backend-port", help="Local backend port")] = 17420,
+    queue: Annotated[str, typer.Option("--queue", "-q", help="Queue name. Env: SHEPPY_QUEUE")] = config.queue_list[0],
+    backend_url: Annotated[str | None, typer.Option("--backend-url", "-u", help="Backend URL. Env: SHEPPY_BACKEND_URL")] = config.backend_url,
 ) -> None:
     """Get detailed information about a specific task."""
 
@@ -25,8 +24,10 @@ def info(
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
 
-    async def _info() -> None:
-        backend_instance = get_backend(backend, redis_url, local_backend_port, local_backend_embedded_server)
+    async def _info(backend_url: str | None) -> None:
+        if backend_url is None:
+            backend_url = "redis://127.0.0.1:6379"
+        backend_instance = _create_backend_from_url(backend_url)
         q = Queue(backend_instance, queue)
 
         try:
@@ -81,4 +82,4 @@ def info(
             console.print("\n[bold red]Error:[/bold red]")
             console.print(f"  {task.error}")
 
-    asyncio.run(_info())
+    asyncio.run(_info(backend_url))
