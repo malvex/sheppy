@@ -175,3 +175,22 @@ def task_chaining_bulk_fn(request):
         return sync_task_chaining_bulk
 
     raise NotImplementedError
+
+
+async def async_task_no_decorator(x: int, y: int) -> int:
+    return x + y
+
+
+def sync_task_no_decorator(x: int, y: int) -> int:
+    return x + y
+
+
+@pytest.fixture(params=["async_task", "sync_task"])
+def task_no_decorator_fn(request):
+    if request.param == "async_task":
+        return async_task_no_decorator
+
+    if request.param == "sync_task":
+        return sync_task_no_decorator
+
+    raise NotImplementedError
