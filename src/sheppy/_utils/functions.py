@@ -21,7 +21,7 @@ def resolve_function(func: str, wrapped: bool = True) -> Callable[..., Any]:
         module_name, function_name = func.split(':')
         module = importlib.import_module(module_name)
         fn = getattr(module, function_name)
-        result = fn.__wrapped__ if wrapped else fn
+        result = fn.__wrapped__ if wrapped and hasattr(fn, "__wrapped__") else fn
         return cast(Callable[..., Any], result)
 
     except (ValueError, ImportError, AttributeError) as e:
@@ -33,7 +33,7 @@ def resolve_function(func: str, wrapped: bool = True) -> Callable[..., Any]:
 
         if module_name and function_name and module_name == cache_main_module and "__main__" in sys.modules:  # noqa: SIM102
             if fn := getattr(sys.modules["__main__"], function_name, None):
-                result = fn.__wrapped__ if wrapped else fn
+                result = fn.__wrapped__ if wrapped and hasattr(fn, "__wrapped__") else fn
                 return cast(Callable[..., Any], result)
 
         raise ValueError(f"Cannot resolve function: {func}") from e

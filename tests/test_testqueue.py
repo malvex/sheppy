@@ -1,9 +1,12 @@
+import asyncio
+import inspect
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from sheppy import Task, TestQueue
+from sheppy import task as task_decorator
 from tests.dependencies import (
     TaskTestCase,
     TaskTestCases,
@@ -691,3 +694,25 @@ class TestChaining:
         assert processed[1].result == 8
         assert processed[2].result == 12
         assert processed[3].result == 10
+
+
+class TestNoDecorator:
+    def test_no_decorator(self, task_no_decorator_fn):
+        queue = TestQueue()
+        my_task = task_decorator(task_no_decorator_fn)(3, 4)
+        assert isinstance(my_task, Task)
+
+        assert queue.add(my_task) is True
+
+        assert queue.size() == 1
+        processed = queue.process_next()
+        assert queue.size() == 0
+
+        assert processed.status == 'completed'
+        assert processed.result == 7
+
+        # sanity check the direct call works fine
+        if inspect.iscoroutinefunction(task_no_decorator_fn):
+            assert asyncio.run(task_no_decorator_fn(4, 5)) == 9
+        else:
+            assert task_no_decorator_fn(4, 5) == 9

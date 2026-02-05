@@ -1,9 +1,10 @@
 import asyncio
+import inspect
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from sheppy import Queue, Worker
+from sheppy import Queue, Task, Worker, task
 from tests.dependencies import (
     TaskTestCase,
     TaskTestCases,
@@ -257,25 +258,25 @@ class TestCronOperations:
             (simple_sync_task(1, 2), '*/5 * * * *'),  # different function
         ]
 
-        for task, schedule in crons:
+        for t, schedule in crons:
             for i in range(5):
                 # Only first run should be successful, because cron doesn't exist yet.
                 # Exactly same cron definitions (same task, same input, same cron schedule)
                 # should not be added (would be duplicated crons)
                 should_succeed = True if i == 0 else False  # noqa: SIM210
 
-                success = await queue.add_cron(task, schedule)
+                success = await queue.add_cron(t, schedule)
                 assert success is should_succeed
 
         all_crons = await queue.get_crons()
         assert len(all_crons) == 4
 
-        for task, schedule in crons:
+        for t, schedule in crons:
             for i in range(5):
                 # same for deleting them - only first should be successful
                 should_succeed = True if i == 0 else False  # noqa: SIM210
 
-                success = await queue.delete_cron(task, schedule)
+                success = await queue.delete_cron(t, schedule)
                 assert success is should_succeed
 
         all_crons = await queue.get_crons()
@@ -284,3 +285,26 @@ class TestCronOperations:
     async def test_delete_nonexistent_cron(self, queue: Queue):
         success = await queue.delete_cron(simple_async_task(5, 6), "1 * * * *")
         assert not success
+
+
+class TestNoDecorator:
+    async def test_no_decorator(self, queue: Queue, worker: Worker, task_no_decorator_fn):
+        my_task = task(task_no_decorator_fn)(3, 4)
+        assert isinstance(my_task, Task)
+
+        assert await queue.add(my_task) is True
+
+        assert await queue.size() == 1
+        await worker.work(max_tasks=1)
+        assert await queue.size() == 0
+
+        result = await queue.get_task(my_task)
+
+        assert result.status == 'completed'
+        assert result.result == 7
+
+        # sanity check the direct call works fine
+        if inspect.iscoroutinefunction(task_no_decorator_fn):
+            assert await task_no_decorator_fn(4, 5) == 9
+        else:
+            assert task_no_decorator_fn(4, 5) == 9
