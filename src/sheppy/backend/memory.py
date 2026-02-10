@@ -30,6 +30,7 @@ class MemoryBackend(Backend):
         self._pending: dict[str, list[str]] = defaultdict(list)
         self._scheduled: dict[str, list[ScheduledTask]] = defaultdict(list)
         self._crons: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+        self._workflows: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)  # {QUEUE_NAME: {WORKFLOW_ID: workflow_data}}
 
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)  # for thread-safety
         self._connected = False
@@ -306,6 +307,65 @@ class MemoryBackend(Backend):
 
         async with self._locks[queue_name]:
             return list(self._crons[queue_name].values())
+
+    async def store_workflow(self, queue_name: str, workflow_data: dict[str, Any]) -> bool:
+        self._check_connected()
+
+        async with self._locks[queue_name]:
+            self._workflows[queue_name][workflow_data["id"]] = workflow_data
+            return True
+
+    async def get_workflows(self, queue_name: str, workflow_ids: list[str]) -> dict[str, dict[str, Any]]:
+        self._check_connected()
+
+        async with self._locks[queue_name]:
+            results = {}
+            for wf_id in workflow_ids:
+                result = self._workflows[queue_name].get(wf_id)
+                if result:
+                    results[wf_id] = result
+            return results
+
+    async def get_all_workflows(self, queue_name: str) -> list[dict[str, Any]]:
+        self._check_connected()
+
+        async with self._locks[queue_name]:
+            return list(self._workflows[queue_name].values())
+
+    async def get_pending_workflows(self, queue_name: str) -> list[dict[str, Any]]:
+        self._check_connected()
+
+        async with self._locks[queue_name]:
+            return [
+                wf for wf in self._workflows[queue_name].values()
+                if not wf.get("completed") and not wf.get("error")
+            ]
+
+    async def delete_workflow(self, queue_name: str, workflow_id: str) -> bool:
+        self._check_connected()
+
+        async with self._locks[queue_name]:
+            if workflow_id in self._workflows[queue_name]:
+                del self._workflows[queue_name][workflow_id]
+                return True
+            return False
+
+    async def mark_workflow_task_complete(self, queue_name: str, workflow_id: str, task_id: str) -> int:
+        self._check_connected()
+
+        async with self._locks[queue_name]:
+            workflow = self._workflows[queue_name].get(workflow_id)
+            if not workflow:
+                return -1
+
+            pending_ids = workflow.get("pending_task_ids", [])
+            if task_id not in pending_ids:
+                return -1
+
+            pending_ids = [tid for tid in pending_ids if tid != task_id]
+            workflow["pending_task_ids"] = pending_ids
+
+            return len(pending_ids)
 
     def _check_connected(self) -> None:
         if not self.is_connected:

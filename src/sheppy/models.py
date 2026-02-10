@@ -144,6 +144,7 @@ class Task(BaseModel):
         next_retry_at: Timestamp when the task is scheduled to be retried next. None if the task is not scheduled for retry.
         is_retriable: Returns True if the task is configured to be retriable.
         should_retry: Returns True if the task should be retried based on its retry configuration and current retry count.
+        workflow_id: ID of the workflow this task belongs to (if created within a workflow).
 
     Note:
         - You should not create Task instances directly. Instead, use the `@task` decorator to define a task function, and then call that function to create a Task instance.
@@ -193,6 +194,10 @@ class Task(BaseModel):
     """datetime|None: Timestamp when the task was last retried. None if the task has never been retried."""
     next_retry_at: AwareDatetime | None = None
     """datetime|None: Timestamp when the task is scheduled to be retried next. None if the task is not scheduled for retry."""
+
+    workflow_id: UUID | None = None
+    """UUID|None: ID of the workflow this task belongs to (if created within a workflow)."""
+
     # caller: str | None = None
     # worker: str | None = None
 

@@ -375,7 +375,42 @@ class Worker:
             if task.error and task.should_retry and task.next_retry_at is not None:
                 await queue.retry(task, task.next_retry_at)
 
+            if (task.status == 'completed' or task.error) and task.workflow_id:
+                # workflow processing - resume workflow if this task belongs to one
+                await self._resume_workflow_for_task(queue, task)
+
             return task
+
+    async def _resume_workflow_for_task(self, queue: Queue, task: Task) -> None:
+        if task.workflow_id is None:  # for mypy
+            return
+
+        try:
+            remaining = await queue._mark_workflow_task_complete(task.workflow_id, task.id)
+
+            if remaining < 0:
+                # logger.debug(WORKER_PREFIX + f"Workflow {workflow_id} not found or already processed")
+                return
+
+            if remaining > 0:
+                logger.debug(WORKER_PREFIX + f"Workflow {task.workflow_id} has {remaining} tasks remaining")
+                return
+
+            logger.info(WORKER_PREFIX + f"All tasks complete for workflow {task.workflow_id}, resuming")
+
+            result = await queue.resume_workflow(task.workflow_id)
+
+            if result.workflow.completed:
+                logger.info(WORKER_PREFIX + f"Workflow {task.workflow_id} completed with result: {result.workflow.final_result}")
+
+            elif result.workflow.error:
+                logger.error(WORKER_PREFIX + f"Workflow {task.workflow_id} failed: {result.workflow.error}")
+
+            elif result.pending_tasks:
+                logger.info(WORKER_PREFIX + f"Workflow {task.workflow_id} waiting for {len(result.pending_tasks)} more tasks")
+
+        except Exception as e:
+            logger.exception(WORKER_PREFIX + f"Failed to resume workflow for task {task.id}: {e}")
 
     def __register_signal_handlers(self, loop: asyncio.AbstractEventLoop) -> None:
         CTRL_C_THRESHOLD = 3

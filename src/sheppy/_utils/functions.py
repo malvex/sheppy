@@ -13,6 +13,22 @@ from pydantic import PydanticSchemaGenerationError, TypeAdapter
 cache_main_module: str | None = None
 
 
+def stringify_function(func: Callable[..., Any]) -> str:
+    _module = func.__module__
+    # special case if the task is in the main python file that is executed
+    if _module == "__main__":
+        global cache_main_module
+        if not cache_main_module:
+            # this handles "python -m app.main" because with "-m" sys.argv[0] is absolute path
+            _main_path = os.path.relpath(sys.argv[0])[:-3]
+            # replace handles situations when user runs "python app/main.py"
+            cache_main_module = _main_path.replace(os.sep, ".")
+
+        _module = cache_main_module
+
+    return f"{_module}:{func.__name__}"
+
+
 def resolve_function(func: str, wrapped: bool = True) -> Callable[..., Any]:
     module_name = None
     function_name = None
