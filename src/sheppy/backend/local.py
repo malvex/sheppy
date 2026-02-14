@@ -82,6 +82,15 @@ class LocalBackend(Backend):
     def _queue_prefix(self, queue_name: str) -> str:
         return f"sheppy:{queue_name}:"
 
+    def _workflow_key(self, queue_name: str, workflow_id: str) -> str:
+        return f"sheppy:{queue_name}:workflow:{workflow_id}"
+
+    def _workflow_prefix(self, queue_name: str) -> str:
+        return f"sheppy:{queue_name}:workflow:"
+
+    def _workflow_pending_key(self, queue_name: str, workflow_id: str) -> str:
+        return f"sheppy:{queue_name}:workflow:{workflow_id}:pending"
+
     async def append(self, queue_name: str, tasks: list[dict[str, Any]], unique: bool = True) -> list[bool]:
         success = []
 
@@ -292,3 +301,76 @@ class LocalBackend(Backend):
 
         values = await self.client.get(cron_keys)
         return [json.loads(v) for v in values.values() if v]
+
+    async def store_workflow(self, queue_name: str, workflow_data: dict[str, Any]) -> bool:
+        workflow_id = workflow_data["id"]
+        key = self._workflow_key(queue_name, workflow_id)
+        pending_key = self._workflow_pending_key(queue_name, workflow_id)
+
+        await self.client.set({key: json.dumps(workflow_data)})
+
+        await self.client.delete([pending_key])
+        pending_ids = workflow_data.get("pending_task_ids", [])
+        for task_id in pending_ids:
+            await self.client.list_push(pending_key, task_id)
+
+        return True
+
+    async def get_workflows(self, queue_name: str, workflow_ids: list[str]) -> dict[str, dict[str, Any]]:
+        if not workflow_ids:
+            return {}
+
+        keys = [self._workflow_key(queue_name, wf_id) for wf_id in workflow_ids]
+        values = await self.client.get(keys)
+
+        result = {}
+        for wf_json in values.values():
+            if wf_json:
+                wf = json.loads(wf_json)
+                result[wf["id"]] = wf
+        return result
+
+    async def get_all_workflows(self, queue_name: str) -> list[dict[str, Any]]:
+        workflow_keys = await self.client.keys(self._workflow_prefix(queue_name))
+        if not workflow_keys:
+            return []
+
+        workflow_keys = [k for k in workflow_keys if ":pending" not in k]
+        if not workflow_keys:
+            return []
+
+        values = await self.client.get(workflow_keys)
+        return [json.loads(v) for v in values.values() if v]
+
+    async def get_pending_workflows(self, queue_name: str) -> list[dict[str, Any]]:
+        all_workflows = await self.get_all_workflows(queue_name)
+        return [wf for wf in all_workflows if not wf.get("completed") and not wf.get("error")]
+
+    async def delete_workflow(self, queue_name: str, workflow_id: str) -> bool:
+        key = self._workflow_key(queue_name, workflow_id)
+        pending_key = self._workflow_pending_key(queue_name, workflow_id)
+        count = await self.client.delete([key, pending_key])
+        return count > 0
+
+    async def mark_workflow_task_complete(self, queue_name: str, workflow_id: str, task_id: str) -> int:
+        pending_key = self._workflow_pending_key(queue_name, workflow_id)
+
+        pending_ids = await self.client.list_get(pending_key)
+
+        if task_id not in pending_ids:
+            return -1
+
+        await self.client.list_remove(pending_key, task_id)
+
+        remaining = await self.client.list_len(pending_key)
+
+        workflow_key = self._workflow_key(queue_name, workflow_id)
+        workflow_values = await self.client.get([workflow_key])
+        if workflow_key in workflow_values and workflow_values[workflow_key] is not None:
+            mypy_pls = workflow_values[workflow_key]
+            assert mypy_pls is not None
+            workflow = json.loads(mypy_pls)
+            workflow["pending_task_ids"] = [tid for tid in workflow.get("pending_task_ids", []) if tid != task_id]
+            await self.client.set({workflow_key: json.dumps(workflow)})
+
+        return remaining

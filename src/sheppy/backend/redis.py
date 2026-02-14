@@ -23,7 +23,7 @@ class RedisBackend(Backend):
         self,
         url: str = "redis://127.0.0.1:6379",
         consumer_group: str = "workers",
-        ttl: int | None = 24 * 60 * 60,  # 24 hours
+        ttl: int | None = 30 * 24 * 60 * 60,  # 30 days
         **kwargs: Any
     ):
         self.url = url
@@ -75,8 +75,24 @@ class RedisBackend(Backend):
         return f"sheppy:scheduled:{queue_name}"
 
     def _cron_tasks_key(self, queue_name: str) -> str:
-        """Cron tasks (key prefix)"""
+        """Cron tasks (hset)"""
         return f"sheppy:cron:{queue_name}"
+
+    def _workflows_key(self, queue_name: str) -> str:
+        """Workflow metadata (hset)"""
+        return f"sheppy:workflows:{queue_name}"
+
+    def _workflow_pending_key(self, queue_name: str, workflow_id: str) -> str:
+        """Pending task IDs for a workflow (set)"""
+        return f"sheppy:workflows:{queue_name}:{workflow_id}:pending"
+
+    def _workflow_pending_index_key(self, queue_name: str) -> str:
+        """Index of pending workflow IDs (set)"""
+        return f"sheppy:workflows:{queue_name}:_pending"
+
+    def _queues_registry_key(self) -> str:
+        """Registry of all queue names and their metadata (hset)"""
+        return "sheppy:_queues"
 
     def _pending_tasks_key(self, queue_name: str) -> str:
         """Queued tasks to be processed (stream)"""
@@ -85,6 +101,10 @@ class RedisBackend(Backend):
     def _finished_tasks_key(self, queue_name: str) -> str:
         """Notifications about finished tasks (stream)"""
         return f"sheppy:finished:{queue_name}"
+
+    def _completed_counter_key(self, queue_name: str) -> str:
+        """Cumulative count of completed tasks (string/integer)"""
+        return f"sheppy:completed:{queue_name}"
 
     def _worker_metadata_key(self, queue_name: str) -> str:
         """Worker Metadata (key prefix)"""
@@ -125,6 +145,8 @@ class RedisBackend(Backend):
 
         try:
             async with self.client.pipeline(transaction=False) as pipe:
+                pipe.hsetnx(self._queues_registry_key(), queue_name, "{}")
+
                 for t in to_queue:
                     _task_data = json.dumps(t)
 
@@ -199,17 +221,16 @@ class RedisBackend(Backend):
 
         await self._ensure_consumer_group(pending_tasks_key)
 
-        keys = await self.client.keys(f"{tasks_metadata_key}:*")
-        if not keys:
-            return 0
-
-        count = await self.client.delete(*keys)
+        count = 0
+        async for key in self.client.scan_iter(match=f"{tasks_metadata_key}:*", count=10000):
+            await self.client.delete(key)
+            count += 1
 
         await self.client.xtrim(pending_tasks_key, maxlen=0)
         await self.client.delete(scheduled_key)
-        # await self.client.delete(tasks_metadata_key)
+        await self.client.hdel(self._queues_registry_key(), queue_name)  # type: ignore[misc]
 
-        return int(count)
+        return count
 
     async def get_tasks(self, queue_name: str, task_ids: list[str]) -> dict[str,dict[str, Any]]:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
@@ -232,14 +253,14 @@ class RedisBackend(Backend):
                 return False
 
         try:
-            _task_data = json.dumps(task_data)
-
             if not unique:
-                await self.client.set(f"{tasks_metadata_key}:{task_data['id']}", _task_data)
+                await self.client.set(f"{tasks_metadata_key}:{task_data['id']}", json.dumps(task_data))
 
-            # add to sorted set with timestamp as score
             score = at.timestamp()
-            await self.client.zadd(scheduled_key, {_task_data: score})
+            async with self.client.pipeline(transaction=False) as pipe:
+                pipe.zadd(scheduled_key, {task_data['id']: score})
+                pipe.hsetnx(self._queues_registry_key(), queue_name, "{}")
+                await pipe.execute()
 
             return True
         except Exception as e:
@@ -247,22 +268,28 @@ class RedisBackend(Backend):
 
     async def pop_scheduled(self, queue_name: str, now: datetime | None = None) -> list[dict[str, Any]]:
         scheduled_key = self._scheduled_tasks_key(queue_name)
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
 
         score = now.timestamp() if now else time()
 
-        task_jsons = await self.client.zrangebyscore(scheduled_key, 0, score)
+        task_id_entries = await self.client.zrangebyscore(scheduled_key, 0, score)
 
-        tasks = []
-        for task_json in task_jsons:
-            removed = await self.client.zrem(scheduled_key, task_json)
+        claimed_ids = []
+        for entry in task_id_entries:
+            removed = await self.client.zrem(scheduled_key, entry)
 
             if removed <= 0:
                 # some other worker already got this task at the same time, skip
                 continue
 
-            tasks.append(json.loads(task_json))
+            task_id = entry.decode() if isinstance(entry, bytes) else entry
+            claimed_ids.append(task_id)
 
-        return tasks
+        if not claimed_ids:
+            return []
+
+        task_jsons = await self.client.mget([f"{tasks_metadata_key}:{tid}" for tid in claimed_ids])
+        return [json.loads(tj) for tj in task_jsons if tj]
 
     async def store_result(self, queue_name: str, task_data: dict[str, Any]) -> bool:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
@@ -288,13 +315,15 @@ class RedisBackend(Backend):
                 # add to finished stream for get_result notifications
                 if task_data["finished_at"] is not None:  # only send notification on finished task (for retriable tasks we continue to wait)
                     pipe.xadd(finished_tasks_key, {"task_id": task_data["id"]}, minid=min_id)
+                    pipe.incr(self._completed_counter_key(queue_name))
                 # ack and delete the task from the stream (cleanup)
                 if message_id:
                     pipe.xack(pending_tasks_key, self.consumer_group, message_id)
                     pipe.xdel(pending_tasks_key, message_id)
 
-                await (pipe.execute())
+                await pipe.execute()
 
+            self._pending_messages.pop(task_data["id"], None)
             return True
         except Exception as e:
             raise BackendError(f"Failed to store task result: {e}") from e
@@ -302,27 +331,28 @@ class RedisBackend(Backend):
     async def get_stats(self, queue_name: str) -> dict[str, int]:
         scheduled_tasks_key = self._scheduled_tasks_key(queue_name)
         pending_tasks_key = self._pending_tasks_key(queue_name)
-        finished_tasks_key = self._finished_tasks_key(queue_name)
 
         pending = await self.client.xlen(pending_tasks_key)
-        completed = await self.client.xlen(finished_tasks_key)
+        completed = await self.client.get(self._completed_counter_key(queue_name))
 
         return {
             "pending": pending,
-            "completed": completed,
+            "completed": int(completed) if completed else 0,
             "scheduled": await self.client.zcard(scheduled_tasks_key),
         }
 
     async def get_all_tasks(self, queue_name: str) -> list[dict[str, Any]]:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
 
-        keys = await self.client.keys(f"{tasks_metadata_key}:*")
+        keys = []
+        async for key in self.client.scan_iter(match=f"{tasks_metadata_key}:*", count=10000):
+            keys.append(key)
+
         if not keys:
             return []
 
         all_tasks_data = await self.client.mget(keys)
-
-        return [json.loads(task_json) for task_json in all_tasks_data]
+        return [json.loads(task_json) for task_json in all_tasks_data if task_json]
 
     async def get_results(self, queue_name: str, task_ids: list[str], timeout: float | None = None) -> dict[str,dict[str, Any]]:
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
@@ -356,11 +386,11 @@ class RedisBackend(Backend):
             return results
 
         # endless wait if timeout == 0
-        deadline = None if timeout == 0 else asyncio.get_event_loop().time() + timeout
+        deadline = None if timeout == 0 else asyncio.get_running_loop().time() + timeout
 
         while True:
             if deadline:
-                remaining = deadline - asyncio.get_event_loop().time()
+                remaining = deadline - asyncio.get_running_loop().time()
                 if remaining <= 0:
                     raise TimeoutError(f"Did not complete within {timeout} seconds")
             else:
@@ -369,7 +399,7 @@ class RedisBackend(Backend):
             messages = await self.client.xread(
                 {finished_tasks_key: last_id},
                 block=int(remaining * 1000),
-                count=100
+                count=1000
             )
 
             if not messages:
@@ -407,14 +437,11 @@ class RedisBackend(Backend):
             pass
 
     async def list_queues(self) -> dict[str, int]:
-
-        queue_names = set()
-
-        for key in await self.client.keys("sheppy:*:*"):
-            queue_names.add(key.decode().split(":")[2])
+        queue_names = await self.client.hkeys(self._queues_registry_key())  # type: ignore[misc]
 
         queues = {}
-        for queue_name in sorted(queue_names):
+        for raw_name in sorted(queue_names):
+            queue_name = raw_name.decode() if isinstance(raw_name, bytes) else raw_name
             try:
                 pending_count = await self.client.xlen(self._pending_tasks_key(queue_name))
                 queues[queue_name] = int(pending_count)
@@ -425,28 +452,130 @@ class RedisBackend(Backend):
 
     async def get_scheduled(self, queue_name: str) -> list[dict[str, Any]]:
         scheduled_key = self._scheduled_tasks_key(queue_name)
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
 
-        task_jsons = await self.client.zrange(scheduled_key, 0, -1, withscores=True)
+        task_ids = await self.client.zrange(scheduled_key, 0, -1)
 
-        tasks = []
-        for task_json, _score in task_jsons:
-            tasks.append(json.loads(task_json))
-
-        return tasks
-
-    async def add_cron(self, queue_name: str, deterministic_id: str, task_cron: dict[str, Any]) -> bool:
-        cron_tasks_key = self._cron_tasks_key(queue_name)
-        return bool(await self.client.set(f"{cron_tasks_key}:{deterministic_id}", json.dumps(task_cron), nx=True))
-
-    async def delete_cron(self, queue_name: str, deterministic_id: str) -> bool:
-        cron_tasks_key = self._cron_tasks_key(queue_name)
-        return bool(await self.client.delete(f"{cron_tasks_key}:{deterministic_id}"))
-
-    async def get_crons(self, queue_name: str) -> list[dict[str, Any]]:
-        cron_tasks_key = self._cron_tasks_key(queue_name)
-        cron_tasks = await self.client.keys(f"{cron_tasks_key}:*")
-
-        if not cron_tasks:
+        if not task_ids:
             return []
 
-        return [json.loads(d) for d in await self.client.mget(cron_tasks) if d is not None]
+        keys = [
+            f"{tasks_metadata_key}:{(tid.decode() if isinstance(tid, bytes) else tid)}"
+            for tid in task_ids
+        ]
+        task_jsons = await self.client.mget(keys)
+        return [json.loads(tj) for tj in task_jsons if tj]
+
+    async def add_cron(self, queue_name: str, deterministic_id: str, task_cron: dict[str, Any]) -> bool:
+        cron_key = self._cron_tasks_key(queue_name)
+        return bool(await self.client.hsetnx(cron_key, deterministic_id, json.dumps(task_cron)))  # type: ignore[misc]
+
+    async def delete_cron(self, queue_name: str, deterministic_id: str) -> bool:
+        cron_key = self._cron_tasks_key(queue_name)
+        return bool(await self.client.hdel(cron_key, deterministic_id))  # type: ignore[misc]
+
+    async def get_crons(self, queue_name: str) -> list[dict[str, Any]]:
+        cron_key = self._cron_tasks_key(queue_name)
+        cron_data = await self.client.hvals(cron_key)  # type: ignore[misc]
+        return [json.loads(d) for d in cron_data]
+
+    async def store_workflow(self, queue_name: str, workflow_data: dict[str, Any]) -> bool:
+        workflows_key = self._workflows_key(queue_name)
+        workflow_id = workflow_data['id']
+        pending_key = self._workflow_pending_key(queue_name, workflow_id)
+        pending_index_key = self._workflow_pending_index_key(queue_name)
+        pending_ids = workflow_data.get('pending_task_ids', [])
+
+        try:
+            async with self.client.pipeline(transaction=True) as pipe:
+                pipe.hset(workflows_key, workflow_id, json.dumps(workflow_data))
+                if self.ttl:
+                    pipe.hexpire(workflows_key, self.ttl, workflow_id)
+
+                if workflow_data.get('completed') or workflow_data.get('error'):
+                    pipe.delete(pending_key)
+                    pipe.srem(pending_index_key, workflow_id)
+                elif pending_ids:
+                    pipe.sadd(pending_key, *pending_ids)
+                    pipe.sadd(pending_index_key, workflow_id)
+                    if self.ttl:
+                        pipe.expire(pending_key, self.ttl)
+
+                await pipe.execute()
+            return True
+        except Exception as e:
+            raise BackendError(f"Failed to store workflow: {e}") from e
+
+    async def get_workflows(self, queue_name: str, workflow_ids: list[str]) -> dict[str, dict[str, Any]]:
+        workflows_key = self._workflows_key(queue_name)
+
+        if not workflow_ids:
+            return {}
+
+        try:
+            data = await self.client.hmget(workflows_key, workflow_ids)  # type: ignore[misc]
+            result = {}
+            for wf_json in data:
+                if wf_json:
+                    wf = json.loads(wf_json)
+                    result[wf["id"]] = wf
+            return result
+        except Exception as e:
+            raise BackendError(f"Failed to get workflows: {e}") from e
+
+    async def get_all_workflows(self, queue_name: str) -> list[dict[str, Any]]:
+        workflows_key = self._workflows_key(queue_name)
+
+        try:
+            all_data = await self.client.hvals(workflows_key)  # type: ignore[misc]
+            return [json.loads(wf_json) for wf_json in all_data if wf_json]
+        except Exception as e:
+            raise BackendError(f"Failed to get all workflows: {e}") from e
+
+    async def get_pending_workflows(self, queue_name: str) -> list[dict[str, Any]]:
+        workflows_key = self._workflows_key(queue_name)
+        pending_index_key = self._workflow_pending_index_key(queue_name)
+
+        try:
+            workflow_ids = await self.client.smembers(pending_index_key)  # type: ignore[misc]
+            if not workflow_ids:
+                return []
+
+            ids = [wid.decode() if isinstance(wid, bytes) else wid for wid in workflow_ids]
+            data = await self.client.hmget(workflows_key, ids)  # type: ignore[misc]
+            return [json.loads(wf_json) for wf_json in data if wf_json]
+        except Exception as e:
+            raise BackendError(f"Failed to get pending workflows: {e}") from e
+
+    async def delete_workflow(self, queue_name: str, workflow_id: str) -> bool:
+        workflows_key = self._workflows_key(queue_name)
+        pending_key = self._workflow_pending_key(queue_name, workflow_id)
+        pending_index_key = self._workflow_pending_index_key(queue_name)
+        try:
+            async with self.client.pipeline(transaction=True) as pipe:
+                pipe.hdel(workflows_key, workflow_id)
+                pipe.delete(pending_key)
+                pipe.srem(pending_index_key, workflow_id)
+                results = await pipe.execute()
+            return int(results[0]) > 0
+        except Exception as e:
+            raise BackendError(f"Failed to delete workflow: {e}") from e
+
+    async def mark_workflow_task_complete(self, queue_name: str, workflow_id: str, task_id: str) -> int:
+        pending_key = self._workflow_pending_key(queue_name, workflow_id)
+
+        try:
+            async with self.client.pipeline() as pipe:
+                pipe.srem(pending_key, task_id)
+                pipe.scard(pending_key)
+                results = await pipe.execute()
+
+            removed_count = results[0]  # 1 if removed, 0 if not found
+            remaining_count = results[1]
+
+            if removed_count == 0:
+                return -1  # task not in pending set
+
+            return int(remaining_count)
+        except Exception as e:
+            raise BackendError(f"Failed to mark workflow task complete: {e}") from e

@@ -66,7 +66,16 @@ def handle_command(cmd: str, args: dict[str, Any]) -> dict[str, Any]:
             return {"ok": True, "created": True}
 
         case "delete":
-            count = sum(1 for k in args["keys"] if store.kv.pop(k, None) is not None)
+            count = 0
+            for k in args["keys"]:
+                if store.kv.pop(k, None) is not None:
+                    count += 1
+                if k in store.lists:
+                    del store.lists[k]
+                    count += 1
+                if k in store.sorted_list:
+                    del store.sorted_list[k]
+                    count += 1
             return {"ok": True, "count": count}
 
         case "keys":
@@ -97,6 +106,14 @@ def handle_command(cmd: str, args: dict[str, Any]) -> dict[str, Any]:
 
         case "list_len":
             return {"ok": True, "count": len(store.lists[args["key"]])}
+
+        case "list_remove":
+            lst = store.lists[args["key"]]
+            value = args["value"]
+            if value in lst:
+                lst.remove(value)
+                return {"ok": True, "removed": True}
+            return {"ok": True, "removed": False}
 
         # sorted list
         case "sorted_push":

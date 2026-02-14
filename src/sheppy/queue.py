@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 from ._config import config
+from ._workflow import Workflow, WorkflowResult, WorkflowRunner
 from .backend.base import Backend
 from .models import Task, TaskCron
 from .task_factory import TaskFactory
@@ -491,3 +492,94 @@ class Queue:
         task_ids = list({str(t.id if isinstance(t, Task) else t) for t in task})
 
         return task_ids, batch_mode
+
+    async def add_workflow(self, workflow: Workflow) -> WorkflowResult:
+        await self.__ensure_backend_is_connected()
+
+        runner = WorkflowRunner(workflow)
+        result = runner.run()
+
+        await self.backend.store_workflow(self.name, result.workflow.model_dump(mode='json'))
+
+        if result.pending_tasks:
+            await self.add(result.pending_tasks)
+
+        return result
+
+    async def resume_workflow(self, workflow: Workflow | UUID | str, task_results: dict[UUID, Task] | None = None) -> WorkflowResult:
+        await self.__ensure_backend_is_connected()
+
+        if isinstance(workflow, (UUID, str)):
+            w_id = str(workflow)
+            wf_data = await self.backend.get_workflows(self.name, [w_id])
+            if not wf_data or not wf_data[w_id]:
+                raise ValueError(f"Workflow not found: {workflow}")
+            workflow = Workflow.model_validate(wf_data[w_id])
+
+        if task_results is None:
+            incomplete_ids = workflow.get_incomplete_task_ids()
+            if incomplete_ids:
+                task_results_dict = await self.get_task(incomplete_ids)  # type: ignore
+                task_results = {
+                    tid: task for tid, task in task_results_dict.items()
+                    if task.status == 'completed' or task.error
+                }
+            else:
+                task_results = {}
+
+        runner = WorkflowRunner(workflow, task_results=task_results)
+        result = runner.run()
+
+        await self.backend.store_workflow(self.name, result.workflow.model_dump(mode='json'))
+
+        if result.pending_tasks:
+            await self.add(result.pending_tasks)
+
+        return result
+
+    @overload
+    async def get_workflow(self, workflow: Workflow | UUID | str) -> Workflow | None: ...
+
+    @overload
+    async def get_workflow(self, workflow: list[Workflow | UUID | str]) -> dict[UUID, Workflow]: ...
+
+    async def get_workflow(self, workflow: Workflow | UUID | str | list[Workflow | UUID | str]) -> dict[UUID, Workflow] | Workflow | None:
+        await self.__ensure_backend_is_connected()
+
+        batch_mode = isinstance(workflow, list)
+        if not batch_mode:
+            workflow = [workflow]  # type: ignore
+
+        workflow_ids = [str(w.id if isinstance(w, Workflow) else w) for w in workflow]  # type: ignore
+
+        results = await self.backend.get_workflows(self.name, workflow_ids)
+
+        if batch_mode:
+            return {UUID(wf_id): Workflow.model_validate(wf) for wf_id, wf in results.items()}
+
+        if workflow_ids[0] in results:
+            return Workflow.model_validate(results[workflow_ids[0]])
+        return None
+
+    async def get_all_workflows(self) -> list[Workflow]:
+        await self.__ensure_backend_is_connected()
+
+        workflows_data = await self.backend.get_all_workflows(self.name)
+        return [Workflow.model_validate(wf) for wf in workflows_data]
+
+    async def get_pending_workflows(self) -> list[Workflow]:
+        await self.__ensure_backend_is_connected()
+
+        workflows_data = await self.backend.get_pending_workflows(self.name)
+        return [Workflow.model_validate(wf) for wf in workflows_data]
+
+    async def delete_workflow(self, workflow: Workflow | UUID | str) -> bool:
+        await self.__ensure_backend_is_connected()
+
+        workflow_id = str(workflow.id if isinstance(workflow, Workflow) else workflow)
+        return await self.backend.delete_workflow(self.name, workflow_id)
+
+    async def _mark_workflow_task_complete(self, workflow_id: UUID | str, task_id: UUID | str) -> int:
+        await self.__ensure_backend_is_connected()
+
+        return await self.backend.mark_workflow_task_complete(self.name, str(workflow_id), str(task_id))

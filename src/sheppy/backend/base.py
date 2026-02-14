@@ -89,3 +89,27 @@ class Backend(ABC):
     @abstractmethod
     async def get_crons(self, queue_name: str) -> list[dict[str, Any]]:
         pass
+
+    @abstractmethod
+    async def store_workflow(self, queue_name: str, workflow_data: dict[str, Any]) -> bool:
+        pass
+
+    @abstractmethod
+    async def get_workflows(self, queue_name: str, workflow_ids: list[str]) -> dict[str, dict[str, Any]]:
+        pass
+
+    @abstractmethod
+    async def get_all_workflows(self, queue_name: str) -> list[dict[str, Any]]:
+        pass
+
+    @abstractmethod
+    async def get_pending_workflows(self, queue_name: str) -> list[dict[str, Any]]:
+        pass
+
+    @abstractmethod
+    async def delete_workflow(self, queue_name: str, workflow_id: str) -> bool:
+        pass
+
+    @abstractmethod
+    async def mark_workflow_task_complete(self, queue_name: str, workflow_id: str, task_id: str) -> int:
+        pass

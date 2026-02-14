@@ -5,6 +5,7 @@ from typing import Any, overload
 from uuid import UUID
 
 from ._utils.task_execution import TaskProcessor
+from ._workflow import Workflow, WorkflowResult
 from .backend.memory import MemoryBackend
 from .models import Task, TaskCron
 from .queue import Queue
@@ -425,3 +426,42 @@ class TestQueue:
             return Task.model_validate(stored_task_data)
 
         return task
+
+    def add_workflow(self, workflow: Workflow) -> WorkflowResult:
+        return asyncio.run(self._queue.add_workflow(workflow))
+
+    def resume_workflow(self, workflow: Workflow | UUID | str, task_results: dict[UUID, Task] | None = None) -> WorkflowResult:
+        return asyncio.run(self._queue.resume_workflow(workflow, task_results))
+
+    @overload
+    def get_workflow(self, workflow: Workflow | UUID | str) -> Workflow | None: ...
+
+    @overload
+    def get_workflow(self, workflow: list[Workflow | UUID | str]) -> dict[UUID, Workflow]: ...
+
+    def get_workflow(self, workflow: Workflow | UUID | str | list[Workflow | UUID | str]) -> Workflow | None | dict[UUID, Workflow]:
+        return asyncio.run(self._queue.get_workflow(workflow))
+
+    def get_all_workflows(self) -> list[Workflow]:
+        return asyncio.run(self._queue.get_all_workflows())
+
+    def get_pending_workflows(self) -> list[Workflow]:
+        return asyncio.run(self._queue.get_pending_workflows())
+
+    def delete_workflow(self, workflow: Workflow | UUID | str) -> bool:
+        return asyncio.run(self._queue.delete_workflow(workflow))
+
+    def process_workflow(self, workflow: Workflow) -> WorkflowResult:
+        result = self.add_workflow(workflow)
+
+        while not result.workflow.completed and result.workflow.error is None:
+            if not result.pending_tasks:
+                break
+
+            # Process all pending tasks
+            self.process_all()
+
+            # Resume workflow
+            result = self.resume_workflow(result.workflow)
+
+        return result
