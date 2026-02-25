@@ -4,6 +4,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from time import time
 from typing import Any
 
 from .._utils.task_execution import TaskProcessor
@@ -32,6 +33,7 @@ class MemoryBackend(Backend):
         self._crons: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
         self._workflows: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)  # {QUEUE_NAME: {WORKFLOW_ID: workflow_data}}
 
+        self._rate_limits: dict[str, list[float]] = defaultdict(list)
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)  # for thread-safety
         self._connected = False
 
@@ -147,6 +149,10 @@ class MemoryBackend(Backend):
             self._scheduled[queue_name].clear()
             self._crons[queue_name].clear()
 
+            rl_keys = [k for k in self._rate_limits if k.startswith(f"{queue_name}:")]
+            for k in rl_keys:
+                del self._rate_limits[k]
+
             return queue_size + queue_cron_size
 
     async def get_tasks(self, queue_name: str, task_ids: list[str]) -> dict[str,dict[str, Any]]:
@@ -221,7 +227,7 @@ class MemoryBackend(Backend):
 
         while True:
             async with self._locks[queue_name]:
-                for task_id in task_ids:
+                for task_id in remaining_ids[:]:
                     task_data = self._task_metadata[queue_name].get(task_id, {})
 
                     if task_data.get("finished_at"):
@@ -366,6 +372,50 @@ class MemoryBackend(Backend):
             workflow["pending_task_ids"] = pending_ids
 
             return len(pending_ids)
+
+    async def acquire_rate_limit(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str, strategy: str = "sliding_window") -> float | None:
+        self._check_connected()
+
+        if strategy == "fixed_window":
+            return await self._acquire_fixed_window(queue_name, key, max_rate, rate_period)
+
+        return await self._acquire_sliding_window(queue_name, key, max_rate, rate_period)
+
+    async def _acquire_sliding_window(self, queue_name: str, key: str, max_rate: int, rate_period: float) -> float | None:
+        bucket_key = f"{queue_name}:{key}"
+
+        async with self._locks[bucket_key]:
+            now = time()
+            cutoff = now - rate_period
+            entries = self._rate_limits[bucket_key]
+
+            self._rate_limits[bucket_key] = [t for t in entries if t > cutoff]
+            entries = self._rate_limits[bucket_key]
+
+            if len(entries) < max_rate:
+                entries.append(now)
+                return None
+
+            oldest = min(entries)
+            return max(oldest + rate_period - now, 0.01)
+
+    async def _acquire_fixed_window(self, queue_name: str, key: str, max_rate: int, rate_period: float) -> float | None:
+        bucket_key = f"{queue_name}:{key}:fw"
+
+        async with self._locks[bucket_key]:
+            now = time()
+            entries = self._rate_limits[bucket_key]
+
+            # window expired - reset
+            if entries and now - entries[0] >= rate_period:
+                entries.clear()
+
+            if len(entries) < max_rate:
+                entries.append(now)
+                return None
+
+            remaining = entries[0] + rate_period - now
+            return max(remaining, 0.01)
 
     def _check_connected(self) -> None:
         if not self.is_connected:

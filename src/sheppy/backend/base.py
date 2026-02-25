@@ -113,3 +113,7 @@ class Backend(ABC):
     @abstractmethod
     async def mark_workflow_task_complete(self, queue_name: str, workflow_id: str, task_id: str) -> int:
         pass
+
+    @abstractmethod
+    async def acquire_rate_limit(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str, strategy: str = "sliding_window") -> float | None:
+        pass

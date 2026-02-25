@@ -443,7 +443,34 @@ class Queue:
             raise ValueError("Pop limit must be greater than zero.")
 
         tasks_data = await self.backend.pop(self.name, limit, timeout)
-        return [Task.model_validate(t) for t in tasks_data]
+        tasks = []
+
+        for task_data in tasks_data:
+            task = Task.model_validate(task_data)
+
+            if task.config.rate_limit:
+                rl = task.config.rate_limit
+                key = rl.get("key", task.spec.func)
+
+                wait = await self.backend.acquire_rate_limit(
+                    self.name,
+                    key,
+                    rl["max_rate"],
+                    rl["rate_period"],
+                    strategy=rl.get("strategy", "sliding_window"),
+                    task_id=str(task.id),
+                )
+
+                if wait is not None:
+                    scheduled_at = datetime.now(timezone.utc) + timedelta(seconds=wait)
+                    task.__dict__["status"] = "scheduled"
+                    task.__dict__["scheduled_at"] = scheduled_at
+                    await self.backend.schedule(self.name, task.model_dump(mode='json'), scheduled_at, unique=False)
+                    continue
+
+            tasks.append(task)
+
+        return tasks
 
     async def _store_result(self, task: Task) -> bool:
         """Store task result. Internal method used by workers.

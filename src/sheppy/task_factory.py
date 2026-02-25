@@ -10,7 +10,7 @@ from typing import (
 from ._utils.functions import stringify_function
 from ._utils.validation import validate_input
 from ._workflow import get_workflow_context
-from .models import Task, TaskConfig, TaskCron, TaskSpec
+from .models import RateLimit, Task, TaskConfig, TaskCron, TaskSpec
 
 P = ParamSpec('P')
 R = TypeVar('R')
@@ -33,6 +33,7 @@ class TaskFactory:
                     middleware: list[Callable[..., Any]] | None,
                     timeout: float | None,
                     retry_on_timeout: bool | None,
+                    rate_limit: RateLimit | None = None,
                     ) -> Task:
 
         task_config: dict[str, Any] = {
@@ -45,6 +46,9 @@ class TaskFactory:
             task_config["timeout"] = timeout
         if retry_on_timeout is not None:
             task_config["retry_on_timeout"] = retry_on_timeout
+
+        if rate_limit is not None:
+            task_config["rate_limit"] = dict(rate_limit)
 
         func_string = stringify_function(func)
 
@@ -94,6 +98,7 @@ def task(
     middleware: list[Callable[..., Any]] | None = None,
     timeout: float | None = None,
     retry_on_timeout: bool | None = None,
+    rate_limit: RateLimit | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, Task]]:
     ...
 
@@ -110,12 +115,13 @@ def task(
     middleware: list[Callable[..., Any]] | None = None,
     timeout: float | None = None,
     retry_on_timeout: bool | None = None,
+    rate_limit: RateLimit | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, Task]] | Callable[P, Task]:
     def decorator(func: Callable[P, R]) -> Callable[P, Task]:
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> Task:
 
-            return TaskFactory.create_task(func, tuple(args), kwargs, retry, retry_delay, middleware, timeout, retry_on_timeout)
+            return TaskFactory.create_task(func, tuple(args), kwargs, retry, retry_delay, middleware, timeout, retry_on_timeout, rate_limit)
 
         return wrapper
 

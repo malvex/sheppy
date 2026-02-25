@@ -57,7 +57,9 @@ async def worker_backend(backend: Backend) -> AsyncGenerator[Backend, None]:
         await worker_backend.disconnect()
 
     elif isinstance(backend, LocalBackend):
-        # embedded backend: same instance (server is embedded)
+        # ensure embedded server is running before worker tries to connect
+        if not backend.is_connected:
+            await backend.connect()
         worker_backend = LocalBackend(port=17421)
         yield worker_backend
         await worker_backend.disconnect()
