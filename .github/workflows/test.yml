@@ -15,7 +15,7 @@ jobs:
 
     services:
       redis:
-        image: redis:6
+        image: redis:7.4-bookworm
         ports:
           - 6379:6379
         options: >-
@@ -47,7 +47,7 @@ jobs:
 
     services:
       redis:
-        image: redis:8
+        image: redis:7.4-bookworm
         ports:
           - 6379:6379
         options: >-
