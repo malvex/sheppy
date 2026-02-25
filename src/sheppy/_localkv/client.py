@@ -102,6 +102,10 @@ class KVClient:
         r = await self._call("list_len", key=key)
         return r["count"]  # type:ignore[no-any-return]
 
+    async def list_remove(self, key: str, value: str) -> bool:
+        r = await self._call("list_remove", key=key, value=value)
+        return r["removed"]  # type:ignore[no-any-return]
+
     # sorted list
     async def sorted_push(self, key: str, position: float, value: str) -> None:
         await self._call("sorted_push", key=key, position=position, value=value)

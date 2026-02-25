@@ -1,5 +1,3 @@
-import os
-import sys
 from collections.abc import Callable
 from functools import wraps
 from typing import (
@@ -9,7 +7,9 @@ from typing import (
     overload,
 )
 
+from ._utils.functions import stringify_function
 from ._utils.validation import validate_input
+from ._workflow import get_workflow_context
 from .models import Task, TaskConfig, TaskCron, TaskSpec
 
 P = ParamSpec('P')
@@ -23,22 +23,6 @@ class TaskFactory:
 
     def __init__(self) -> None:
         pass
-
-    @staticmethod
-    def _stringify_function(func: Callable[..., Any]) -> str:
-        _module = func.__module__
-        # special case if the task is in the main python file that is executed
-        if _module == "__main__":
-            global cache_main_module
-            if not cache_main_module:
-                # this handles "python -m app.main" because with "-m" sys.argv[0] is absolute path
-                _main_path = os.path.relpath(sys.argv[0])[:-3]
-                # replace handles situations when user runs "python app/main.py"
-                cache_main_module = _main_path.replace(os.sep, ".")
-
-            _module = cache_main_module
-
-        return f"{_module}:{func.__name__}"
 
     @staticmethod
     def create_task(func: Callable[..., Any],
@@ -62,7 +46,7 @@ class TaskFactory:
         if retry_on_timeout is not None:
             task_config["retry_on_timeout"] = retry_on_timeout
 
-        func_string = TaskFactory._stringify_function(func)
+        func_string = stringify_function(func)
 
         args, kwargs = validate_input(func, tuple(args or ()), dict(kwargs or {}))
 
@@ -70,9 +54,17 @@ class TaskFactory:
         if middleware:
             for m in middleware:
                 # todo: should probably also validate them here
-                stringified_middlewares.append(TaskFactory._stringify_function(m))
+                stringified_middlewares.append(stringify_function(m))
+
+        task_kwargs: dict[str, Any] = {}
+
+        ctx = get_workflow_context()
+        if ctx is not None:
+            task_kwargs["id"] = ctx.next_task_id()
+            task_kwargs["workflow_id"] = ctx.workflow_id
 
         _task = Task(
+            **task_kwargs,
             spec=TaskSpec(
                 func=func_string,
                 args=args,

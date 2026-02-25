@@ -1,4 +1,6 @@
 from ._utils.fastapi import Depends as Depends
+from ._workflow import Workflow as Workflow
+from ._workflow import workflow as workflow
 from .backend import Backend as Backend
 from .backend import BackendError as BackendError
 from .backend import LocalBackend as LocalBackend
