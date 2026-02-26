@@ -110,6 +110,12 @@ class RedisBackend(Backend):
         """Worker Metadata (key prefix)"""
         return f"sheppy:workers:{queue_name}"
 
+    def _rate_limit_key(self, queue_name: str) -> str:
+        return f"sheppy:ratelimit:{queue_name}"
+
+    def _sliding_window_key(self, queue_name: str, key: str) -> str:
+        return f"sheppy:ratelimit:{queue_name}:sw:{key}"
+
     @property
     def client(self) -> redis.Redis:
         if not self._client:
@@ -229,6 +235,10 @@ class RedisBackend(Backend):
         await self.client.xtrim(pending_tasks_key, maxlen=0)
         await self.client.delete(scheduled_key)
         await self.client.hdel(self._queues_registry_key(), queue_name)  # type: ignore[misc]
+        await self.client.delete(self._rate_limit_key(queue_name))
+        sw_keys = [key async for key in self.client.scan_iter(match=self._sliding_window_key(queue_name, '*'), count=10000)]
+        if sw_keys:
+            await self.client.delete(*sw_keys)
 
         return count
 
@@ -423,6 +433,60 @@ class RedisBackend(Backend):
                         if not remaining_ids:
                             return results
 
+    async def acquire_rate_limit(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str, strategy: str = "sliding_window") -> float | None:
+        if strategy == "fixed_window":
+            return await self._acquire_fixed_window(queue_name, key, max_rate, rate_period)
+
+        return await self._acquire_sliding_window(queue_name, key, max_rate, rate_period, task_id)
+
+    async def _acquire_fixed_window(self, queue_name: str, key: str, max_rate: int, rate_period: float) -> float | None:
+        rl_key = self._rate_limit_key(queue_name)
+        ttl_ms = int(rate_period * 1000)
+
+        async with self.client.pipeline(transaction=False) as pipe:
+            pipe.hincrby(rl_key, key, 1)
+            pipe.hpexpire(rl_key, ttl_ms, key, nx=True)
+            pipe.hpttl(rl_key, key)
+            results = await pipe.execute()
+
+        count = results[0]
+
+        if count <= max_rate:
+            return None
+
+        # over limit - undo increment, return remaining TTL
+        await self.client.hincrby(rl_key, key, -1)  # type: ignore[misc]
+        pttl_result = results[2]
+        remaining_ms = pttl_result[0] if pttl_result and pttl_result[0] > 0 else ttl_ms
+        return remaining_ms / 1000.0
+
+    async def _acquire_sliding_window(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str) -> float | None:
+        rl_key = self._sliding_window_key(queue_name, key)
+        now = time()
+        window_start = now - rate_period
+
+        async with self.client.pipeline(transaction=False) as pipe:
+            pipe.zremrangebyscore(rl_key, 0, window_start)
+            pipe.zcard(rl_key)
+            pipe.zadd(rl_key, {task_id: now})
+            pipe.expire(rl_key, int(rate_period) + 1)
+            results = await pipe.execute()
+
+        current_count = results[1]
+
+        if current_count < max_rate:
+            return None
+
+        # over limit - remove the entry we just added
+        await self.client.zrem(rl_key, task_id)
+
+        # calculate wait time from oldest entry in the window
+        oldest = await self.client.zrange(rl_key, 0, 0, withscores=True)
+        if oldest:
+            wait = float(oldest[0][1]) + rate_period - now
+            return max(wait, 0.01)
+
+        return rate_period
 
     async def _ensure_consumer_group(self, stream_key: str) -> None:
         if stream_key in self._initialized_groups:

@@ -18,6 +18,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from typing_extensions import NotRequired, TypedDict
 
 from ._utils.functions import reconstruct_result
 
@@ -40,6 +41,16 @@ def cron_expression_validator(value: str) -> str:
 CronExpression = Annotated[str, AfterValidator(cron_expression_validator)]
 TaskStatus = Literal['new', 'scheduled', 'pending', 'processing', 'retrying',
                      'completed', 'failed', 'cancelled', 'unknown']
+
+
+RateLimitStrategy = Literal["sliding_window", "fixed_window"]
+
+
+class RateLimit(TypedDict):
+    max_rate: int
+    rate_period: float  # time window for the rate limit in seconds
+    key: NotRequired[str]  # defaults to task name, can be set to group rate limits across tasks
+    strategy: NotRequired[RateLimitStrategy]  # defaults to "sliding_window"
 
 
 class TaskSpec(BaseModel):
@@ -116,7 +127,7 @@ class TaskConfig(BaseModel):
 
     timeout: float | None = None  # seconds
     retry_on_timeout: bool = False
-    # tags: dict[str, str] = Field(default_factory=dict)
+    rate_limit: RateLimit | None = None
 
     @field_validator('retry_delay')
     @classmethod

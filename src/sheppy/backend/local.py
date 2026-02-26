@@ -1,7 +1,9 @@
 import asyncio
 import contextlib
 import json
+from collections import defaultdict
 from datetime import datetime, timezone
+from time import time
 from typing import Any
 
 from .._localkv.client import KVClient
@@ -17,6 +19,7 @@ class LocalBackend(Backend):
         self._embedded = embedded
         self._server: asyncio.Server | None = None
         self._server_task: asyncio.Task[None] | None = None
+        self._rl_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._client = KVClient(host, port)
 
     async def connect(self) -> None:
@@ -90,6 +93,9 @@ class LocalBackend(Backend):
 
     def _workflow_pending_key(self, queue_name: str, workflow_id: str) -> str:
         return f"sheppy:{queue_name}:workflow:{workflow_id}:pending"
+
+    def _rate_limit_key(self, queue_name: str, key: str) -> str:
+        return f"sheppy:{queue_name}:ratelimit:{key}"
 
     async def append(self, queue_name: str, tasks: list[dict[str, Any]], unique: bool = True) -> list[bool]:
         success = []
@@ -351,6 +357,57 @@ class LocalBackend(Backend):
         pending_key = self._workflow_pending_key(queue_name, workflow_id)
         count = await self.client.delete([key, pending_key])
         return count > 0
+
+    async def acquire_rate_limit(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str, strategy: str = "sliding_window") -> float | None:
+        if strategy == "fixed_window":
+            return await self._acquire_fixed_window(queue_name, key, max_rate, rate_period, task_id)
+
+        return await self._acquire_sliding_window(queue_name, key, max_rate, rate_period, task_id)
+
+    async def _acquire_sliding_window(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str) -> float | None:
+        rl_key = self._rate_limit_key(queue_name, key)
+
+        async with self._rl_locks[rl_key]:
+            now = time()
+            cutoff = now - rate_period
+
+            # prune expired entries
+            await self.client.sorted_pop(rl_key, cutoff)
+
+            count = await self.client.sorted_len(rl_key)
+
+            if count < max_rate:
+                await self.client.sorted_push(rl_key, now, task_id)
+                return None
+
+            # over limit - find oldest to calculate wait time
+            entries = await self.client.sorted_get(rl_key)
+            if entries:
+                oldest_score = entries[0][0]
+                return max(oldest_score + rate_period - now, 0.01)
+
+            return rate_period
+
+    async def _acquire_fixed_window(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str) -> float | None:
+        rl_key = self._rate_limit_key(queue_name, key)
+        fw_key = f"{rl_key}:fw"
+
+        async with self._rl_locks[rl_key]:
+            now = time()
+
+            entries = await self.client.sorted_get(fw_key)
+
+            # window expired - reset
+            if entries and now - entries[0][0] >= rate_period:
+                await self.client.sorted_pop(fw_key, float('inf'))
+                entries = []
+
+            if len(entries) < max_rate:
+                await self.client.sorted_push(fw_key, now, task_id)
+                return None
+
+            remaining = entries[0][0] + rate_period - now
+            return max(remaining, 0.01)
 
     async def mark_workflow_task_complete(self, queue_name: str, workflow_id: str, task_id: str) -> int:
         pending_key = self._workflow_pending_key(queue_name, workflow_id)
