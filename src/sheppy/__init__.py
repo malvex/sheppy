@@ -13,4 +13,4 @@ from .task_factory import task as task
 from .testqueue import TestQueue as TestQueue
 from .worker import Worker as Worker
 
-__version__ = "0.0.5"
+__version__ = "0.0.6"

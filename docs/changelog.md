@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.6
+
+* chore: bump minimal typer version to 0.19.0. PR [#44](https://github.com/malvex/sheppy/pull/44) by [@malvex](https://github.com/malvex)
+* feat: implement workflow support. PR [#45](https://github.com/malvex/sheppy/pull/45) by [@malvex](https://github.com/malvex)
+* feat: rate limits. PR [#47](https://github.com/malvex/sheppy/pull/47) by [@malvex](https://github.com/malvex)
+
 ## 0.0.5
 
 * chore: speed up tests. PR [#26](https://github.com/malvex/sheppy/pull/26) by [@malvex](https://github.com/malvex)
