@@ -3,9 +3,7 @@ from typing import (
     Annotated,
     Any,
     Literal,
-    NotRequired,
     ParamSpec,
-    TypedDict,
     TypeVar,
 )
 from uuid import UUID, uuid4, uuid5
@@ -20,6 +18,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from typing_extensions import NotRequired, TypedDict
 
 from ._utils.functions import reconstruct_result
 
