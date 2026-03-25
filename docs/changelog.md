@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.7
+
+* fix: acknowledge rate limited tasks. PR [#53](https://github.com/malvex/sheppy/pull/53) by [@malvex](https://github.com/malvex)
+* feat: add slot-based staggering for rate-limited task scheduling. PR [#53](https://github.com/malvex/sheppy/pull/53) by [@malvex](https://github.com/malvex)
+
 ## 0.0.6
 
 * chore: bump minimal typer version to 0.19.0. PR [#44](https://github.com/malvex/sheppy/pull/44) by [@malvex](https://github.com/malvex)
