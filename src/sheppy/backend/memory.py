@@ -373,6 +373,9 @@ class MemoryBackend(Backend):
 
             return len(pending_ids)
 
+    async def acknowledge(self, queue_name: str, task_ids: list[str]) -> None:
+        pass
+
     async def acquire_rate_limit(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str, strategy: str = "sliding_window") -> float | None:
         self._check_connected()
 
