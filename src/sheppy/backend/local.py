@@ -358,6 +358,9 @@ class LocalBackend(Backend):
         count = await self.client.delete([key, pending_key])
         return count > 0
 
+    async def acknowledge(self, queue_name: str, task_ids: list[str]) -> None:
+        pass
+
     async def acquire_rate_limit(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str, strategy: str = "sliding_window") -> float | None:
         if strategy == "fixed_window":
             return await self._acquire_fixed_window(queue_name, key, max_rate, rate_period, task_id)

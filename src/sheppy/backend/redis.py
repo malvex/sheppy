@@ -433,6 +433,19 @@ class RedisBackend(Backend):
                         if not remaining_ids:
                             return results
 
+    async def acknowledge(self, queue_name: str, task_ids: list[str]) -> None:
+        pending_tasks_key = self._pending_tasks_key(queue_name)
+
+        async with self.client.pipeline(transaction=False) as pipe:
+            for task_id in task_ids:
+                entry = self._pending_messages.pop(task_id, None)
+                if entry is None:
+                    continue
+                _, message_id = entry
+                pipe.xack(pending_tasks_key, self.consumer_group, message_id)
+                pipe.xdel(pending_tasks_key, message_id)
+            await pipe.execute()
+
     async def acquire_rate_limit(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str, strategy: str = "sliding_window") -> float | None:
         if strategy == "fixed_window":
             return await self._acquire_fixed_window(queue_name, key, max_rate, rate_period)

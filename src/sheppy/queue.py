@@ -445,6 +445,8 @@ class Queue:
         tasks_data = await self.backend.pop(self.name, limit, timeout)
         tasks = []
 
+        rate_limited_ids = []
+
         for task_data in tasks_data:
             task = Task.model_validate(task_data)
 
@@ -466,9 +468,13 @@ class Queue:
                     task.__dict__["status"] = "scheduled"
                     task.__dict__["scheduled_at"] = scheduled_at
                     await self.backend.schedule(self.name, task.model_dump(mode='json'), scheduled_at, unique=False)
+                    rate_limited_ids.append(str(task.id))
                     continue
 
             tasks.append(task)
+
+        if rate_limited_ids:
+            await self.backend.acknowledge(self.name, rate_limited_ids)
 
         return tasks
 
