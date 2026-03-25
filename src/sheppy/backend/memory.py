@@ -34,6 +34,7 @@ class MemoryBackend(Backend):
         self._workflows: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)  # {QUEUE_NAME: {WORKFLOW_ID: workflow_data}}
 
         self._rate_limits: dict[str, list[float]] = defaultdict(list)
+        self._rate_limit_slots: dict[str, float] = {}
         self._locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)  # for thread-safety
         self._connected = False
 
@@ -152,6 +153,10 @@ class MemoryBackend(Backend):
             rl_keys = [k for k in self._rate_limits if k.startswith(f"{queue_name}:")]
             for k in rl_keys:
                 del self._rate_limits[k]
+
+            slot_keys = [k for k in self._rate_limit_slots if k.startswith(f"{queue_name}:")]
+            for k in slot_keys:
+                del self._rate_limit_slots[k]
 
             return queue_size + queue_cron_size
 
@@ -384,6 +389,17 @@ class MemoryBackend(Backend):
 
         return await self._acquire_sliding_window(queue_name, key, max_rate, rate_period)
 
+    def _assign_rate_limit_slot(self, queue_name: str, key: str, max_rate: int, rate_period: float, base_wait: float) -> float:
+        slot_key = f"{queue_name}:{key}"
+        interval = rate_period / max_rate
+        now = time()
+
+        last_slot = self._rate_limit_slots.get(slot_key, 0.0)
+        next_slot = max(now + base_wait, last_slot + interval)
+        self._rate_limit_slots[slot_key] = next_slot
+
+        return max(next_slot - now, 0.01)
+
     async def _acquire_sliding_window(self, queue_name: str, key: str, max_rate: int, rate_period: float) -> float | None:
         bucket_key = f"{queue_name}:{key}"
 
@@ -400,7 +416,9 @@ class MemoryBackend(Backend):
                 return None
 
             oldest = min(entries)
-            return max(oldest + rate_period - now, 0.01)
+            base_wait = max(oldest + rate_period - now, 0.01)
+
+            return self._assign_rate_limit_slot(queue_name, key, max_rate, rate_period, base_wait)
 
     async def _acquire_fixed_window(self, queue_name: str, key: str, max_rate: int, rate_period: float) -> float | None:
         bucket_key = f"{queue_name}:{key}:fw"
@@ -418,7 +436,9 @@ class MemoryBackend(Backend):
                 return None
 
             remaining = entries[0] + rate_period - now
-            return max(remaining, 0.01)
+            base_wait = max(remaining, 0.01)
+
+            return self._assign_rate_limit_slot(queue_name, key, max_rate, rate_period, base_wait)
 
     def _check_connected(self) -> None:
         if not self.is_connected:

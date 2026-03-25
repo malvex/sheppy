@@ -20,6 +20,7 @@ class LocalBackend(Backend):
         self._server: asyncio.Server | None = None
         self._server_task: asyncio.Task[None] | None = None
         self._rl_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._rate_limit_slots: dict[str, float] = {}
         self._client = KVClient(host, port)
 
     async def connect(self) -> None:
@@ -163,6 +164,11 @@ class LocalBackend(Backend):
         prefix = self._queue_prefix(queue_name)
         count = await self.client.len(self._task_prefix(queue_name))
         await self.client.clear(prefix)
+
+        slot_keys = [k for k in self._rate_limit_slots if k.startswith(f"{queue_name}:")]
+        for k in slot_keys:
+            del self._rate_limit_slots[k]
+
         return count
 
     async def get_tasks(self, queue_name: str, task_ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -367,6 +373,17 @@ class LocalBackend(Backend):
 
         return await self._acquire_sliding_window(queue_name, key, max_rate, rate_period, task_id)
 
+    def _assign_rate_limit_slot(self, queue_name: str, key: str, max_rate: int, rate_period: float, base_wait: float) -> float:
+        slot_key = f"{queue_name}:{key}"
+        interval = rate_period / max_rate
+        now = time()
+
+        last_slot = self._rate_limit_slots.get(slot_key, 0.0)
+        next_slot = max(now + base_wait, last_slot + interval)
+        self._rate_limit_slots[slot_key] = next_slot
+
+        return max(next_slot - now, 0.01)
+
     async def _acquire_sliding_window(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str) -> float | None:
         rl_key = self._rate_limit_key(queue_name, key)
 
@@ -386,10 +403,11 @@ class LocalBackend(Backend):
             # over limit - find oldest to calculate wait time
             entries = await self.client.sorted_get(rl_key)
             if entries:
-                oldest_score = entries[0][0]
-                return max(oldest_score + rate_period - now, 0.01)
+                base_wait = max(entries[0][0] + rate_period - now, 0.01)
+            else:
+                base_wait = rate_period
 
-            return rate_period
+            return self._assign_rate_limit_slot(queue_name, key, max_rate, rate_period, base_wait)
 
     async def _acquire_fixed_window(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str) -> float | None:
         rl_key = self._rate_limit_key(queue_name, key)
@@ -410,7 +428,9 @@ class LocalBackend(Backend):
                 return None
 
             remaining = entries[0][0] + rate_period - now
-            return max(remaining, 0.01)
+            base_wait = max(remaining, 0.01)
+
+            return self._assign_rate_limit_slot(queue_name, key, max_rate, rate_period, base_wait)
 
     async def mark_workflow_task_complete(self, queue_name: str, workflow_id: str, task_id: str) -> int:
         pending_key = self._workflow_pending_key(queue_name, workflow_id)

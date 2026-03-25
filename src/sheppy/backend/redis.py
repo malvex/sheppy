@@ -116,6 +116,9 @@ class RedisBackend(Backend):
     def _sliding_window_key(self, queue_name: str, key: str) -> str:
         return f"sheppy:ratelimit:{queue_name}:sw:{key}"
 
+    def _rate_limit_slot_key(self, queue_name: str, key: str) -> str:
+        return f"sheppy:ratelimit:{queue_name}:slot:{key}"
+
     @property
     def client(self) -> redis.Redis:
         if not self._client:
@@ -239,6 +242,9 @@ class RedisBackend(Backend):
         sw_keys = [key async for key in self.client.scan_iter(match=self._sliding_window_key(queue_name, '*'), count=10000)]
         if sw_keys:
             await self.client.delete(*sw_keys)
+        slot_keys = [key async for key in self.client.scan_iter(match=self._rate_limit_slot_key(queue_name, '*'), count=10000)]
+        if slot_keys:
+            await self.client.delete(*slot_keys)
 
         return count
 
@@ -452,6 +458,22 @@ class RedisBackend(Backend):
 
         return await self._acquire_sliding_window(queue_name, key, max_rate, rate_period, task_id)
 
+    async def _assign_rate_limit_slot(self, queue_name: str, key: str, max_rate: int, rate_period: float, base_wait: float) -> float:
+        slot_key = self._rate_limit_slot_key(queue_name, key)
+        interval = rate_period / max_rate
+        now = time()
+
+        raw = await self.client.get(slot_key)
+        last_slot = float(raw) if raw else 0.0
+
+        next_slot = max(now + base_wait, last_slot + interval)
+        wait = next_slot - now
+
+        ttl = int(wait) + int(rate_period) + 2
+        await self.client.set(slot_key, str(next_slot), ex=ttl)
+
+        return max(wait, 0.01)
+
     async def _acquire_fixed_window(self, queue_name: str, key: str, max_rate: int, rate_period: float) -> float | None:
         rl_key = self._rate_limit_key(queue_name)
         ttl_ms = int(rate_period * 1000)
@@ -467,11 +489,13 @@ class RedisBackend(Backend):
         if count <= max_rate:
             return None
 
-        # over limit - undo increment, return remaining TTL
+        # over limit - undo increment
         await self.client.hincrby(rl_key, key, -1)  # type: ignore[misc]
         pttl_result = results[2]
         remaining_ms = pttl_result[0] if pttl_result and pttl_result[0] > 0 else ttl_ms
-        return remaining_ms / 1000.0
+        base_wait = remaining_ms / 1000.0
+
+        return await self._assign_rate_limit_slot(queue_name, key, max_rate, rate_period, base_wait)
 
     async def _acquire_sliding_window(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str) -> float | None:
         rl_key = self._sliding_window_key(queue_name, key)
@@ -493,13 +517,14 @@ class RedisBackend(Backend):
         # over limit - remove the entry we just added
         await self.client.zrem(rl_key, task_id)
 
-        # calculate wait time from oldest entry in the window
+        # calculate base wait time from oldest entry in the window
         oldest = await self.client.zrange(rl_key, 0, 0, withscores=True)
         if oldest:
-            wait = float(oldest[0][1]) + rate_period - now
-            return max(wait, 0.01)
+            base_wait = max(float(oldest[0][1]) + rate_period - now, 0.01)
+        else:
+            base_wait = rate_period
 
-        return rate_period
+        return await self._assign_rate_limit_slot(queue_name, key, max_rate, rate_period, base_wait)
 
     async def _ensure_consumer_group(self, stream_key: str) -> None:
         if stream_key in self._initialized_groups:
