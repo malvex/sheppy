@@ -6,7 +6,6 @@ import pytest_asyncio
 
 from sheppy import CURRENT_TASK, Queue, Task, Worker, task
 from sheppy.backend import Backend, MemoryBackend, RedisBackend
-from sheppy.backend.local import LocalBackend
 
 TEST_QUEUE_NAME = "pytest"
 
@@ -16,7 +15,7 @@ def datetime_now():
     return datetime.now(timezone.utc)
 
 
-@pytest_asyncio.fixture(params=["memory", "redis", "local"])
+@pytest_asyncio.fixture(params=["memory", "redis"])
 async def backend(request: pytest.FixtureRequest) -> AsyncGenerator[Backend, None]:
 
     if request.param == "memory":
@@ -30,19 +29,10 @@ async def backend(request: pytest.FixtureRequest) -> AsyncGenerator[Backend, Non
         await backend._client.flushdb()
         await backend.disconnect()
 
-    elif request.param == "local":
-        backend = LocalBackend(port=17421, embedded=True)
-        await backend.connect()
-        await backend._client.clear()
-        await backend.disconnect()
-
     else:
         raise NotImplementedError(f"backend {request.param} doesn't exist")
 
     yield backend
-
-    if request.param == "local" and backend.is_connected:
-        await backend.disconnect()
 
 
 @pytest_asyncio.fixture
@@ -53,14 +43,6 @@ async def worker_backend(backend: Backend) -> AsyncGenerator[Backend, None]:
 
     elif isinstance(backend, RedisBackend):
         worker_backend = RedisBackend(url=backend.url, consumer_group=backend.consumer_group)
-        yield worker_backend
-        await worker_backend.disconnect()
-
-    elif isinstance(backend, LocalBackend):
-        # ensure embedded server is running before worker tries to connect
-        if not backend.is_connected:
-            await backend.connect()
-        worker_backend = LocalBackend(port=17421)
         yield worker_backend
         await worker_backend.disconnect()
 

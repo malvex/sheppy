@@ -27,12 +27,6 @@ def _create_backend_from_url(url: str) -> Backend:
         from .backend.redis import RedisBackend  # noqa: PLC0415
         return RedisBackend(url=url)
 
-    if scheme == "local":
-        from .backend.local import LocalBackend  # noqa: PLC0415
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or 17420
-        return LocalBackend(host=host, port=port)
-
     if scheme == "memory":
         from .backend.memory import MemoryBackend  # noqa: PLC0415
         return MemoryBackend()
@@ -48,7 +42,6 @@ class Queue:
         backend: An instance of task backend (e.g. `sheppy.RedisBackend`),<br>
                  or a URL string to automatically infer a backend:<br>
                  - `redis://host:port` or `rediss://host:port` for RedisBackend<br>
-                 - `local://host:port` for LocalBackend<br>
                  - `memory://` for MemoryBackend<br>
                  If not provided, uses `SHEPPY_BACKEND_URL` environment variable.
         name: Name of the queue. Defaults to `SHEPPY_QUEUE` env var or "default".

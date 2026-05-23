@@ -1,7 +1,7 @@
 import pytest
 
 from sheppy import Queue
-from sheppy.backend import LocalBackend, MemoryBackend, RedisBackend
+from sheppy.backend import MemoryBackend, RedisBackend
 
 
 class TestBackendInference:
@@ -24,18 +24,6 @@ class TestBackendInference:
         queue = Queue("rediss://localhost:6379")
         assert isinstance(queue.backend, RedisBackend)
         assert queue.backend.url == "rediss://localhost:6379"
-
-    def test_local_url(self):
-        queue = Queue("local://127.0.0.1:17420")
-        assert isinstance(queue.backend, LocalBackend)
-        assert queue.backend._host == "127.0.0.1"
-        assert queue.backend._port == 17420
-
-    def test_local_url_default_port(self):
-        queue = Queue("local://127.0.0.1")
-        assert isinstance(queue.backend, LocalBackend)
-        assert queue.backend._host == "127.0.0.1"
-        assert queue.backend._port == 17420
 
     def test_memory_url(self):
         queue = Queue("memory://")
