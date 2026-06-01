@@ -35,6 +35,8 @@ class WorkerStats(BaseModel):
 WORKER_PREFIX = "<Worker> "
 SCHEDULER_PREFIX = "<Scheduler> "
 CRON_MANAGER_PREFIX = "<CronManager> "
+RECLAIM_PREFIX = "<Reclaim> "
+HEARTBEAT_PREFIX = "<Heartbeat> "
 
 
 class Worker:
@@ -121,6 +123,7 @@ class Worker:
         self._task_semaphore = asyncio.Semaphore(max_concurrent_tasks)
         self._max_prefetch_tasks = max_prefetch_tasks
         self._shutdown_event = asyncio.Event()
+        self._worker_stopped_event = asyncio.Event()
         self._ctrl_c_counter = 0
 
         self._blocking_timeout = 5
@@ -136,9 +139,17 @@ class Worker:
         self._work_queue_tasks: list[asyncio.Task[None]] = []
         self._scheduler_task: asyncio.Task[None] | None = None
         self._cron_manager_task: asyncio.Task[None] | None = None
+        self._heartbeat_task: asyncio.Task[None] | None = None
+        self._reclaim_task: asyncio.Task[None] | None = None
 
         self._tasks_to_process: int | None = None
         self._empty_queues: list[str] = []
+
+        self.enable_heartbeat = enable_job_processing
+        self.enable_reclaim = enable_job_processing
+        self.heartbeat_timeout = 300.0
+        self.heartbeat_interval = 30.0
+        self.reclaim_interval = 60.0
 
     async def work(self, max_tasks: int | None = None, oneshot: bool = False, register_signal_handlers: bool = True) -> None:
         """Start worker to process tasks from the queue.
@@ -188,10 +199,19 @@ class Worker:
             for queue in self.queues:
                 self._work_queue_tasks.append(asyncio.create_task(self._run_worker_loop(queue, oneshot)))
 
+        # start heartbeat
+        if self.enable_heartbeat:
+            self._heartbeat_task = asyncio.create_task(self._run_heartbeat(self.heartbeat_interval))
+
+        # start reclaim
+        if self.enable_reclaim:
+            self._reclaim_task = asyncio.create_task(self._run_reclaim(self.reclaim_interval))
+
         # blocking wait for created asyncio tasks
         _futures = self._work_queue_tasks
         _futures += [self._scheduler_task] if self._scheduler_task else []
         _futures += [self._cron_manager_task] if self._cron_manager_task else []
+        _futures += [self._reclaim_task] if self._reclaim_task else []
         await asyncio.gather(*_futures, return_exceptions=True)
         self._shutdown_event.set()
 
@@ -209,18 +229,16 @@ class Worker:
             except asyncio.TimeoutError:
                 logger.warning("Some tasks did not complete within shutdown timeout")
 
-                # ! FIXME - what should we do here with the existing tasks? (maybe DLQ?)
-
                 for task_future in remaining_tasks:
                     if not task_future.done():
                         task_future.cancel()
 
-                        # ! FIXME - should we try reqeueue here or just store state?
-                        # task = remaining_tasks[task_future]
-                        # try:
-                        #     await queue.add(task)
-                        # except Exception as e:
-                        #     logger.error(f"Failed to requeue task {task.id}: {e}")
+        self._worker_stopped_event.set()
+        if self._heartbeat_task:
+            try:
+                await asyncio.wait_for(self._heartbeat_task, timeout=1.0)
+            except asyncio.TimeoutError:
+                self._heartbeat_task.cancel()
 
         # unregister signals
         if register_signal_handlers:
@@ -288,6 +306,71 @@ class Worker:
                 await asyncio.wait_for(self._shutdown_event.wait(), timeout=poll_interval)
 
         logger.info(CRON_MANAGER_PREFIX + "stopped")
+
+    async def _run_heartbeat(self, interval: float) -> None:
+        logger.debug(HEARTBEAT_PREFIX + "started")
+
+        while not self._worker_stopped_event.is_set():
+            try:
+                for queue_name, tasks_dict in self._active_tasks.items():
+                    task_ids = [str(task.id) for t, task in tasks_dict.items() if not t.done()]
+                    if task_ids:
+                        logger.debug(HEARTBEAT_PREFIX + f"Sending heartbeat for queue {queue_name}, task_ids: {str(task_ids)}")
+                        try:
+                            await self._backend.heartbeat(queue_name, task_ids)
+                        except Exception:
+                            logger.exception(HEARTBEAT_PREFIX + f"Heartbeat failed for queue {queue_name}")
+
+            except asyncio.CancelledError:
+                logger.debug(HEARTBEAT_PREFIX + "cancelled")
+                break
+
+            except Exception as e:
+                logger.exception(HEARTBEAT_PREFIX + f"failed with error: {e}")
+
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(self._worker_stopped_event.wait(), timeout=interval)
+
+        logger.debug(HEARTBEAT_PREFIX + "stopped")
+
+    async def _run_reclaim(self, interval: float) -> None:
+        logger.debug(RECLAIM_PREFIX + "started")
+
+        min_idle_ms = int(self.heartbeat_timeout * 1000)
+
+        while not self._shutdown_event.is_set():
+            try:
+                for queue in self.queues:
+                    stale_tasks = await self._backend.get_stale_messages(queue.name, min_idle_ms)
+
+                    if not stale_tasks:
+                        continue
+
+                    for task_data in stale_tasks:
+                        try:
+                            task = await self._task_processor.handle_stale_task(Task.model_validate(task_data), queue)
+                        except Exception:
+                            logger.exception("Failed to handle stale task")
+
+                        if task.config.retry_on_crash:
+                            if task.retry_count < task.config.retry:
+                                logger.warning(RECLAIM_PREFIX + f"Found stale task {task.id}, (attempt {task.retry_count}/{task.config.retry}), scheduling retry at {task.next_retry_at}")
+                            else:
+                                logger.warning(RECLAIM_PREFIX + f"Found stale task {task.id}, marking as crashed (exceeded {task.config.retry} retries)")
+                        else:
+                            logger.warning(RECLAIM_PREFIX + f"Found stale task {task.id}, marking as crashed")
+
+            except asyncio.CancelledError:
+                logger.debug(RECLAIM_PREFIX + "cancelled")
+                break
+
+            except Exception as e:
+                logger.exception(RECLAIM_PREFIX + f"failed with error: {e}")
+
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(self._shutdown_event.wait(), timeout=interval)
+
+        logger.debug(RECLAIM_PREFIX + "stopped")
 
     async def _run_worker_loop(self, queue: Queue, oneshot: bool = False) -> None:
         while not self._shutdown_event.is_set():
@@ -389,7 +472,7 @@ class Worker:
             remaining = await queue._mark_workflow_task_complete(task.workflow_id, task.id)
 
             if remaining < 0:
-                # logger.debug(WORKER_PREFIX + f"Workflow {workflow_id} not found or already processed")
+                logger.debug(WORKER_PREFIX + f"Workflow {task.workflow_id} not found or already processed")
                 return
 
             if remaining > 0:
@@ -425,6 +508,8 @@ class Worker:
                           for k, v in inner_dict.items()]
                     _futures += [self._scheduler_task] if self._scheduler_task else []
                     _futures += [self._cron_manager_task] if self._cron_manager_task else []
+                    _futures += [self._heartbeat_task] if self._heartbeat_task else []
+                    _futures += [self._reclaim_task] if self._reclaim_task else []
                     for future in _futures:
                         future.cancel()
                     # we cancelled active tasks, so clear all dicts as well

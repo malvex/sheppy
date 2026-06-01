@@ -53,6 +53,10 @@ def list_tasks(
         for task in all_backend_tasks:
             if task.status == 'completed':
                 queue_status = "[green]completed[/green]"
+            elif task.status == 'crashed':
+                queue_status = "[bold][red]crashed[/red][/bold]"
+            elif task.status == 'retrying':  # FIXME: doesn't work
+                queue_status = "[yellow]retrying[/yellow]"
             elif task.error:
                 queue_status = "[red]failed[/red]"
             #elif str(task.id) in all_scheduled_task_ids:
