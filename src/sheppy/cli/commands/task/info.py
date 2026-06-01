@@ -44,6 +44,8 @@ def info(
 
         if task.status == 'completed':
             status = "[green]completed[/green]"
+        elif task.status == 'crashed':
+            status = "[bold][red]crashed[/red][/bold]"
         elif task.error:
             status = "[red]failed[/red]"
         elif task.status == 'scheduled':

@@ -681,3 +681,60 @@ class RedisBackend(Backend):
             return int(remaining_count)
         except Exception as e:
             raise BackendError(f"Failed to mark workflow task complete: {e}") from e
+
+    async def get_stale_messages(self, queue_name: str, min_idle_ms: int) -> list[dict[str, Any]]:
+        pending_tasks_key = self._pending_tasks_key(queue_name)
+        await self._ensure_consumer_group(pending_tasks_key)
+
+        try:
+            stale_messages = await self.client.xautoclaim(
+                pending_tasks_key,
+                self.consumer_group,
+                self.consumer_name,
+                min_idle_time=min_idle_ms,  # in ms
+                count=1000,
+            )
+        except Exception as e:
+            raise BackendError(f"Failed to get stale tasks: {e}") from e
+
+        if not stale_messages or not stale_messages[1]:
+            # no stale tasks
+            return []
+
+        stale_tasks = []
+
+        for message in stale_messages[1]:
+            message_id, fields = message
+            task_data = json.loads(fields[b"data"])
+            self._pending_messages[task_data["id"]] = (queue_name, message_id.decode())
+            stale_tasks.append(task_data)
+
+        return stale_tasks
+
+    async def heartbeat(self, queue_name: str, task_ids: list[str]) -> None:
+        pending_tasks_key = self._pending_tasks_key(queue_name)
+
+        message_ids = []
+        for task_id in task_ids:
+            entry = self._pending_messages.get(task_id) # task_id -> (queue_name, message_id)
+            if entry is None:
+                continue
+            stored_queue, message_id = entry
+            if stored_queue == queue_name:
+                message_ids.append(message_id)
+
+        if not message_ids:
+            return
+
+        try:  # noqa: SIM105 (temporary)
+            await self.client.xclaim(
+                pending_tasks_key,
+                self.consumer_group,
+                self.consumer_name,
+                0,
+                message_ids,  # type: ignore[arg-type]
+                justid=True,
+            )
+        except Exception:
+            #! FIXME: BackendError?
+            pass

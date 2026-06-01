@@ -173,6 +173,23 @@ class TaskProcessor(TaskProcessorProtocol):
 
         return task
 
+    async def handle_stale_task(self, task: Task, queue: "Queue") -> Task:
+        task = self.mark_crashed(task)
+
+        _retry = False
+        if task.config.retry_on_crash and task.retry_count < task.config.retry:
+            task = self.handle_retry(task, exception=None)
+            _retry = True
+
+        await queue._store_result(task)
+
+        if _retry:
+            # result needs to be first stored before we retry the task
+            # because queue.retry() will always get latest data from backend
+            await queue.retry(task, task.next_retry_at)
+
+        return task
+
     @staticmethod
     def update_task_status(task: Task, status: TaskStatus) -> Task:
         task.__dict__['status'] = status
@@ -199,7 +216,16 @@ class TaskProcessor(TaskProcessorProtocol):
         return task
 
     @staticmethod
-    def handle_retry(task: Task, exception: Exception) -> Task:
+    def mark_crashed(task: Task, error: str = "Worker crashed during execution", status: TaskStatus = 'crashed') -> Task:
+        task.__dict__["status"] = status
+        task.__dict__["result"] = None
+        task.__dict__["error"] = error
+        task.__dict__["finished_at"] = datetime.now(timezone.utc)
+
+        return task
+
+    @staticmethod
+    def handle_retry(task: Task, exception: Exception | None) -> Task:
         if not task.should_retry:
             return task
 

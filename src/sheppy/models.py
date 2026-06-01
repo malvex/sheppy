@@ -40,7 +40,7 @@ def cron_expression_validator(value: str) -> str:
 
 CronExpression = Annotated[str, AfterValidator(cron_expression_validator)]
 TaskStatus = Literal['new', 'scheduled', 'pending', 'processing', 'retrying',
-                     'completed', 'failed', 'cancelled', 'unknown']
+                     'completed', 'failed', 'crashed', 'cancelled', 'unknown']
 
 
 RateLimitStrategy = Literal["sliding_window", "fixed_window"]
@@ -127,6 +127,7 @@ class TaskConfig(BaseModel):
 
     timeout: float | None = None  # seconds
     retry_on_timeout: bool = False
+    retry_on_crash: bool = False
     rate_limit: RateLimit | None = None
 
     @field_validator('retry_delay')

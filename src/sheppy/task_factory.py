@@ -33,6 +33,7 @@ class TaskFactory:
                     middleware: list[Callable[..., Any]] | None,
                     timeout: float | None,
                     retry_on_timeout: bool | None,
+                    retry_on_crash: bool | None,
                     rate_limit: RateLimit | None = None,
                     ) -> Task:
 
@@ -46,6 +47,8 @@ class TaskFactory:
             task_config["timeout"] = timeout
         if retry_on_timeout is not None:
             task_config["retry_on_timeout"] = retry_on_timeout
+        if retry_on_crash is not None:
+            task_config["retry_on_crash"] = retry_on_crash
 
         if rate_limit is not None:
             task_config["rate_limit"] = dict(rate_limit)
@@ -98,6 +101,7 @@ def task(
     middleware: list[Callable[..., Any]] | None = None,
     timeout: float | None = None,
     retry_on_timeout: bool | None = None,
+    retry_on_crash: bool | None = None,
     rate_limit: RateLimit | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, Task]]:
     ...
@@ -115,13 +119,25 @@ def task(
     middleware: list[Callable[..., Any]] | None = None,
     timeout: float | None = None,
     retry_on_timeout: bool | None = None,
+    retry_on_crash: bool | None = None,
     rate_limit: RateLimit | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, Task]] | Callable[P, Task]:
     def decorator(func: Callable[P, R]) -> Callable[P, Task]:
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> Task:
 
-            return TaskFactory.create_task(func, tuple(args), kwargs, retry, retry_delay, middleware, timeout, retry_on_timeout, rate_limit)
+            return TaskFactory.create_task(
+                func,
+                tuple(args),
+                kwargs,
+                retry,
+                retry_delay,
+                middleware,
+                timeout,
+                retry_on_timeout,
+                retry_on_crash,
+                rate_limit
+            )
 
         return wrapper
 

@@ -121,3 +121,11 @@ class Backend(ABC):
     @abstractmethod
     async def acquire_rate_limit(self, queue_name: str, key: str, max_rate: int, rate_period: float, task_id: str, strategy: str = "sliding_window") -> float | None:
         pass
+
+    @abstractmethod
+    async def get_stale_messages(self, queue_name: str, min_idle_ms: int) -> list[dict[str, Any]]:
+        pass
+
+    @abstractmethod
+    async def heartbeat(self, queue_name: str, task_ids: list[str]) -> None:
+        pass
