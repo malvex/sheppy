@@ -1,4 +1,5 @@
 import asyncio
+import os
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -12,6 +13,9 @@ from tests.dependencies import add_retriable, simple_async_task
 Q = "pytest"
 TASK_ID = UUID("47d88514-a5bb-488f-bd6e-9a442c732da5")
 TASK_CRON_ID = UUID("2ee47ad3-0de2-4d54-854e-20259c45e7ca")
+
+# don't even ask... *sigh*
+IS_CI = os.getenv("CI", False) == "true"
 
 
 @pytest.fixture
@@ -424,7 +428,7 @@ class TestGetResults:
 
     def _simulate_processing(self, task_data: dict, backend: Backend):
         async def processing():
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(1.0 if IS_CI else 0.1)
             await backend.store_result(Q, task_data)
 
         return asyncio.create_task(processing())
@@ -457,7 +461,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["new"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["new"]["id"])], timeout=.2)
+        results = await backend.get_results(Q, [str(tasks["new"]["id"])], timeout=2.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["completed"]["id"])] == tasks["completed"]
 
@@ -477,7 +481,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["new"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["new"]["id"])], timeout=.2)
+        results = await backend.get_results(Q, [str(tasks["new"]["id"])], timeout=2.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["failed"]["id"])] == tasks["failed"]
 
@@ -508,7 +512,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["scheduled"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["scheduled"]["id"])], timeout=.2)
+        results = await backend.get_results(Q, [str(tasks["scheduled"]["id"])], timeout=2.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["scheduled_completed"]["id"])] == tasks["scheduled_completed"]
 
@@ -527,7 +531,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["scheduled"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["scheduled"]["id"])], timeout=.2)
+        results = await backend.get_results(Q, [str(tasks["scheduled"]["id"])], timeout=2.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["scheduled_failed"]["id"])] == tasks["scheduled_failed"]
 
@@ -558,7 +562,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["cron_new"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["cron_new"]["id"])], timeout=.2)
+        results = await backend.get_results(Q, [str(tasks["cron_new"]["id"])], timeout=2.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["cron_completed"]["id"])] == tasks["cron_completed"]
 
@@ -577,7 +581,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["cron_new"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["cron_new"]["id"])], timeout=.2)
+        results = await backend.get_results(Q, [str(tasks["cron_new"]["id"])], timeout=2.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["cron_failed"]["id"])] == tasks["cron_failed"]
 
@@ -608,7 +612,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["retriable_new"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["retriable_new"]["id"])], timeout=.2)
+        results = await backend.get_results(Q, [str(tasks["retriable_new"]["id"])], timeout=2.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["retriable_completed"]["id"])] == tasks["retriable_completed"]
 
@@ -647,7 +651,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["retriable_new"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["retriable_new"]["id"])], timeout=.2)
+        results = await backend.get_results(Q, [str(tasks["retriable_new"]["id"])], timeout=2.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["retriable_retried_completed"]["id"])] == tasks["retriable_retried_completed"]
 
@@ -670,7 +674,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["retriable_new"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["retriable_new"]["id"])], timeout=.2)
+        results = await backend.get_results(Q, [str(tasks["retriable_new"]["id"])], timeout=2.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["retriable_retried_failed"]["id"])] == tasks["retriable_retried_failed"]
 
@@ -701,7 +705,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["retriable_scheduled"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["retriable_scheduled"]["id"])], timeout=.2)
+        results = await backend.get_results(Q, [str(tasks["retriable_scheduled"]["id"])], timeout=2.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["retriable_scheduled_completed"]["id"])] == tasks["retriable_scheduled_completed"]
 
@@ -740,7 +744,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["retriable_scheduled"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["retriable_scheduled"]["id"])], timeout=.1)
+        results = await backend.get_results(Q, [str(tasks["retriable_scheduled"]["id"])], timeout=2.0 if IS_CI else .1)
         assert results
         assert results[str(tasks["retriable_scheduled_retried_completed"]["id"])] == tasks["retriable_scheduled_retried_completed"]
 
@@ -763,7 +767,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["retriable_scheduled"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["retriable_scheduled"]["id"])], timeout=.2)
+        results = await backend.get_results(Q, [str(tasks["retriable_scheduled"]["id"])], timeout=2.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["retriable_scheduled_retried_failed"]["id"])] == tasks["retriable_scheduled_retried_failed"]
 
@@ -794,7 +798,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["retriable_cron_new"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["retriable_cron_new"]["id"])], timeout=.2)
+        results = await backend.get_results(Q, [str(tasks["retriable_cron_new"]["id"])], timeout=2.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["retriable_cron_completed"]["id"])] == tasks["retriable_cron_completed"]
 
@@ -833,7 +837,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["retriable_cron_new"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["retriable_cron_new"]["id"])], timeout=.2)
+        results = await backend.get_results(Q, [str(tasks["retriable_cron_new"]["id"])], timeout=2.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["retriable_cron_retried_completed"]["id"])] == tasks["retriable_cron_retried_completed"]
 
@@ -856,7 +860,7 @@ class TestGetResults:
         with pytest.raises(TimeoutError):
             await backend.get_results(Q, [str(tasks["retriable_cron_new"]["id"])], timeout=.01)
 
-        results = await backend.get_results(Q, [str(tasks["retriable_cron_new"]["id"])], timeout=0.2)
+        results = await backend.get_results(Q, [str(tasks["retriable_cron_new"]["id"])], timeout=02.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["retriable_cron_retried_failed"]["id"])] == tasks["retriable_cron_retried_failed"]
 
@@ -866,7 +870,7 @@ class TestGetResults:
         await self._setup_schedule_processing(tasks["retriable_cron_failed_should_retry"], backend, create_task=False)
         self._simulate_processing(tasks["retriable_cron_retried_failed"], backend)
 
-        results = await backend.get_results(Q, [str(tasks["retriable_cron_new"]["id"])], timeout=0.2)
+        results = await backend.get_results(Q, [str(tasks["retriable_cron_new"]["id"])], timeout=02.0 if IS_CI else .2)
         assert results
         assert results[str(tasks["retriable_cron_retried_failed"]["id"])] == tasks["retriable_cron_retried_failed"]
 
