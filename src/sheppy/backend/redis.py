@@ -531,12 +531,14 @@ class RedisBackend(Backend):
             return
 
         try:
-            self._initialized_groups.add(stream_key)
             # id="0" = start from beginning to include existing messages
             await self.client.xgroup_create(stream_key, self.consumer_group, id="0", mkstream=True)
         except redis.ResponseError:
             # group already exists, ignore
             pass
+        else:
+            # only set as initiated when we actually finished xgroup_create call
+            self._initialized_groups.add(stream_key)
 
     async def list_queues(self) -> dict[str, int]:
         queue_names = await self.client.hkeys(self._queues_registry_key())  # type: ignore[misc]
