@@ -8,6 +8,7 @@ from .backend import RedisBackend as RedisBackend
 from .models import CURRENT_TASK as CURRENT_TASK
 from .models import Task as Task
 from .queue import Queue as Queue
+from ._sync_queue import SyncQueue as SyncQueue
 from .task_factory import task as task
 from .testqueue import TestQueue as TestQueue
 from .worker import Worker as Worker
