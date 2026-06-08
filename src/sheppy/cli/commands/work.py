@@ -6,7 +6,6 @@ from typing import Annotated
 
 import typer
 from rich.logging import RichHandler
-from watchfiles import run_process
 
 from sheppy import Backend, Worker
 from sheppy._config import LogLevelType, config
@@ -20,7 +19,6 @@ def work(
     backend_url: Annotated[str | None, typer.Option("--backend-url", "-u", help="Backend URL. Env: SHEPPY_BACKEND_URL")] = config.backend_url,
     max_concurrent: Annotated[int, typer.Option("--max-concurrent", "-c", help="Max concurrent tasks. Env: SHEPPY_MAX_CONCURRENT_TASKS", min=1)] = config.max_concurrent_tasks,
     max_prefetch: Annotated[int | None, typer.Option("--max-prefetch", help="Max prefetch tasks", min=1)] = None,
-    autoreload: Annotated[bool, typer.Option("--reload", help="Reload worker on file changes")] = False,
     oneshot: Annotated[bool, typer.Option("--oneshot", help="Process pending tasks and then exit")] = False,
     max_tasks: Annotated[int | None, typer.Option("--max-tasks", help="Maximum amount of tasks to process", min=1)] = None,
     disable_job_processing: Annotated[bool, typer.Option("--disable-job-processing", help="Disable job processing")] = False,
@@ -56,8 +54,8 @@ def work(
     _s = "s" if len(queues) > 1 else ""
     queue_s = "[/bold]', '[bold]".join(queues)
 
-    _os = " [yellow]\\[oneshot]" if oneshot and not autoreload else ""
-    _mt = f" [yellow]\\[max_tasks: {max_tasks}]" if max_tasks and not autoreload else ""
+    _os = " [yellow]\\[oneshot]" if oneshot else ""
+    _mt = f" [yellow]\\[max_tasks: {max_tasks}]" if max_tasks else ""
 
     console.print(f"[cyan]Starting worker for queue{_s} '[bold]{queue_s}[/bold]'[/cyan]{_os}{_mt}")
     console.print(f"  Backend: [yellow]{type(backend_instance).__name__}[/yellow] [gray0]\\[{backend_url}][/gray0]")
@@ -67,20 +65,9 @@ def work(
     console.print(f"  Max concurrent tasks: [yellow]{max_concurrent}[/yellow]")
     console.print()
 
-    if autoreload:
-        if max_tasks:
-            console.print("[yellow]Warning: --max-tasks is not compatible with --reload, ignoring[/yellow]")
-        if oneshot:
-            console.print("[yellow]Warning: --oneshot is not compatible with --reload, ignoring[/yellow]")
-
-        run_process('.', target=_start_worker,
-                    args=(queues, backend_instance, max_concurrent, max_prefetch, _log_level,
-                          shutdown_timeout, disable_job_processing, disable_scheduler, disable_cron_manager),
-                    callback=lambda _: console.print("Detected file changes, reloading worker..."))
-    else:
-        _start_worker(queues, backend_instance, max_concurrent, max_prefetch, _log_level,
-                      shutdown_timeout, disable_job_processing, disable_scheduler, disable_cron_manager,
-                      oneshot, max_tasks)
+    _start_worker(queues, backend_instance, max_concurrent, max_prefetch, _log_level,
+                  shutdown_timeout, disable_job_processing, disable_scheduler, disable_cron_manager,
+                  oneshot, max_tasks)
 
 
 def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, max_prefetch_tasks: int | None,
