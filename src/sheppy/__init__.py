@@ -1,3 +1,4 @@
+# isort: off
 from ._utils.fastapi import Depends as Depends
 from ._workflow import Workflow as Workflow
 from ._workflow import workflow as workflow
@@ -12,5 +13,6 @@ from ._sync_queue import SyncQueue as SyncQueue
 from .task_factory import task as task
 from .testqueue import TestQueue as TestQueue
 from .worker import Worker as Worker
+# isort: on
 
 __version__ = "0.0.7"
