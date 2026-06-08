@@ -1,64 +1,18 @@
-import asyncio
-import multiprocessing
+import os
 import time
 from collections.abc import Generator
 
 import pytest
 
-from sheppy import SyncQueue, Worker
-from sheppy.queue import _create_backend_from_url
+from sheppy import SyncQueue
 from tests.dependencies import assert_is_completed, simple_async_task, simple_sync_task
+from tests.utils import WorkerInstanceProcess
 
+IS_CI = os.getenv("CI", False) == "true"
 
-#! FIXME, temp duplicated
-def _start_process_worker(queue: str | list[str], backend_string: str, shutdown_timeout: float | None = None):
-    worker = Worker(queue, _create_backend_from_url(backend_string))
-    worker.heartbeat_timeout = 0.2
-    worker.heartbeat_interval = 0.1
-    worker.reclaim_interval = 0.1
-    worker._blocking_timeout = 0.001
-    worker._scheduler_polling_interval = 0.001
-    worker._cron_polling_interval = 0.001
-
-    if shutdown_timeout is not None:
-        worker.shutdown_timeout = shutdown_timeout
-
-    return asyncio.run(worker.work())
-
-
-class WorkerInstanceProcess:
-    def __init__(self, queue: str | list[str], backend: str):
-        self._queue = queue
-        self._backend = backend
-        self._process: multiprocessing.Process | None = None
-
-    @property
-    def is_alive(self):
-        return self._process.is_alive() if self._process else False
-
-    def start(self):
-        self._process = multiprocessing.Process(target=_start_process_worker, args=(self._queue, self._backend), daemon=True)
-        self._process.start()
-
-    def kill(self):
-        self._process.kill()
-        self._process.join()
-
-    def graceful_shutdown(self):
-        # hack to make this work for python 3.13 and lower
-        # I should just check python version but I can't remember how to do it
-        # and it doesn't really matter as sigint is handled exactly the same as sigterm
-        if hasattr(self._process, "interrupt"):
-            self._process.interrupt()
-        else:
-            self._process.terminate()
-
-    def terminate(self):
-        self._process.terminate()
-
-
+BACKEND_STR = "redis://127.0.0.1:6379/6"
 QUEUE = "pytest"
-BACKEND_STR = "redis://127.0.0.1:6379/5"
+
 
 @pytest.fixture
 def worker() -> Generator[None, None, WorkerInstanceProcess]:
@@ -117,7 +71,7 @@ class TestSyncQueue:
 
         end = time.perf_counter()
 
-        assert end - start < 1.0
+        assert end - start < (2.0 if IS_CI else 1.0)
 
     # def test_context_manager(self, worker: WorkerInstanceProcess):
 

@@ -6,6 +6,7 @@ import pytest_asyncio
 
 from sheppy import CURRENT_TASK, Queue, Task, Worker, task
 from sheppy.backend import Backend, MemoryBackend, RedisBackend
+from tests.utils import WorkerInstanceProcess
 
 TEST_QUEUE_NAME = "pytest"
 
@@ -65,6 +66,33 @@ async def worker(worker_backend: Backend) -> Worker:
 @pytest_asyncio.fixture
 async def queue(backend: Backend) -> Queue:
     return Queue(backend, TEST_QUEUE_NAME)
+
+
+BACKEND_STR = "redis://127.0.0.1:6379/5"
+
+
+@pytest_asyncio.fixture(scope="function")
+async def queue2():
+    queue = Queue(BACKEND_STR, TEST_QUEUE_NAME)
+    await queue.clear()
+    yield queue
+    await queue.clear()
+
+
+@pytest.fixture
+def worker_process_factory():
+    procs: list[WorkerInstanceProcess] = []
+
+    def _factory(queue: str | list[str] = TEST_QUEUE_NAME, backend: str = BACKEND_STR) -> WorkerInstanceProcess:
+        proc = WorkerInstanceProcess(queue, backend)
+        proc.start()
+        procs.append(proc)
+        return proc
+
+    yield _factory
+
+    for proc in procs:
+        proc.kill()
 
 
 @task(retry=2, retry_delay=0.01)
