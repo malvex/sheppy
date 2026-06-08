@@ -10,7 +10,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, get_args, get_origin
 from uuid import uuid4
 
-import anyio
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
 
 from ..exceptions import MiddlewareError, TaskTimeoutError
@@ -121,7 +120,7 @@ class TaskProcessor(TaskProcessorProtocol):
             coro = func(*final_args, **final_kwargs)
         else:
             # sync task
-            coro = anyio.to_thread.run_sync(lambda: func(*final_args, **final_kwargs))
+            coro = asyncio.to_thread(lambda: func(*final_args, **final_kwargs))
 
         if task.config.timeout is not None:
             try:
@@ -324,9 +323,9 @@ class TaskProcessor(TaskProcessorProtocol):
             return await func(**kwargs).__anext__()
 
         if inspect.isgeneratorfunction(func):
-            return await anyio.to_thread.run_sync(next, func(**kwargs))
+            return await asyncio.to_thread(next, func(**kwargs))
 
-        return await anyio.to_thread.run_sync(lambda: func(**kwargs))
+        return await asyncio.to_thread(lambda: func(**kwargs))
 
     @staticmethod
     def get_depends_from_param(param: inspect.Parameter) -> Any | None:
