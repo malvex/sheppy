@@ -14,7 +14,8 @@ except ImportError as e:
     ) from e
 
 from .._utils.task_execution import generate_unique_worker_id
-from .base import Backend, BackendError
+from ..models import TTLValue
+from .base import Backend, BackendError, resolve_metadata_ttl
 
 
 class RedisBackend(Backend):
@@ -24,12 +25,14 @@ class RedisBackend(Backend):
         url: str = "redis://127.0.0.1:6379",
         consumer_group: str = "workers",
         ttl: int | None = 30 * 24 * 60 * 60,  # 30 days
+        error_ttl: TTLValue = "inherit",
         **kwargs: Any
     ):
         self.url = url
         self.consumer_group = consumer_group
         self.consumer_name = generate_unique_worker_id("consumer")
         self.ttl = ttl
+        self.error_ttl = error_ttl
         self.redis_kwargs = kwargs
 
         self._client: redis.Redis | None = None
@@ -131,7 +134,7 @@ class RedisBackend(Backend):
         try:
             async with self.client.pipeline() as pipe:
                 for task in tasks:
-                    pipe.set(f"{tasks_metadata_key}:{task['id']}", json.dumps(task), ex=self.ttl, nx=True)
+                    pipe.set(f"{tasks_metadata_key}:{task['id']}", json.dumps(task), nx=True)
                 res = await pipe.execute()
         except Exception as e:
             raise BackendError(f"Failed to create tasks: {e}") from e
@@ -327,7 +330,7 @@ class RedisBackend(Backend):
 
             async with self.client.pipeline(transaction=True) as pipe:
                 # update task metadata with the results
-                pipe.set(f"{tasks_metadata_key}:{task_data['id']}", json.dumps(task_data), ex=self.ttl)
+                pipe.set(f"{tasks_metadata_key}:{task_data['id']}", json.dumps(task_data), ex=resolve_metadata_ttl(task_data, ttl=self.ttl, error_ttl=self.error_ttl))
                 # add to finished stream for get_result notifications
                 if task_data["finished_at"] is not None:  # only send notification on finished task (for retriable tasks we continue to wait)
                     pipe.xadd(finished_tasks_key, {"task_id": task_data["id"]}, minid=min_id)

@@ -2,9 +2,28 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any
 
+from ..models import TTLValue
+
 
 class BackendError(Exception):
     pass
+
+
+def resolve_metadata_ttl(task_data: dict[str, Any], *, ttl: int | None, error_ttl: TTLValue) -> int | None:
+    if task_data.get("finished_at") is None:
+        return None
+
+    config = task_data.get("config") or {}
+    task_ttl: TTLValue = config.get("ttl", "inherit")
+    task_error_ttl: TTLValue = config.get("error_ttl", "inherit")
+
+    if task_data.get("status") in ("failed", "crashed"):
+        for candidate in (task_error_ttl, task_ttl, error_ttl, ttl):
+            if not isinstance(candidate, str):  # skip "inherit"
+                return candidate
+        return None
+
+    return task_ttl if not isinstance(task_ttl, str) else ttl
 
 
 class Backend(ABC):

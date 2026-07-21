@@ -42,6 +42,7 @@ CronExpression = Annotated[str, AfterValidator(cron_expression_validator)]
 TaskStatus = Literal['new', 'scheduled', 'pending', 'processing', 'retrying',
                      'completed', 'failed', 'crashed', 'cancelled', 'unknown']
 
+TTLValue = Annotated[int, Field(gt=0)] | None | Literal["inherit"]
 
 RateLimitStrategy = Literal["sliding_window", "fixed_window"]
 
@@ -99,6 +100,8 @@ class TaskConfig(BaseModel):
     Attributes:
         retry: Number of times to retry the task if it fails. Default is 0 (no retries).
         retry_delay: Delay between retries in seconds. If a single float is provided, it will be used for all retries. If a list is provided, it will be used for each retry attempt respectively (exponential backoff). Default is 1.0 seconds.
+        ttl: TTL for the task in seconds, applied once the task finishes. None disables expiry; "inherit" (default) falls back to the backend's `ttl` setting.
+        error_ttl: TTL for the task in seconds applied when the task fails. None disables expiry; "inherit" (default) falls back to `ttl`.
 
     Note:
         - You should not create TaskConfig instances directly. Instead, use the `@task` decorator to define a task function, and then call that function to create a Task instance.
@@ -129,6 +132,11 @@ class TaskConfig(BaseModel):
     retry_on_timeout: bool = False
     retry_on_crash: bool = False
     rate_limit: RateLimit | None = None
+
+    ttl: TTLValue = "inherit"
+    """int|None: TTL for the task in seconds, applied once the task finishes. None disables expiry; "inherit" (default) falls back to the backend's `ttl` setting."""
+    error_ttl: TTLValue = "inherit"
+    """int|None: TTL for the task in seconds applied when the task fails. None disables expiry; "inherit" (default) falls back to `ttl`."""
 
     @field_validator('retry_delay')
     @classmethod
