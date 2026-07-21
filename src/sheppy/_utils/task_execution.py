@@ -7,7 +7,7 @@ import logging
 import socket
 from collections.abc import AsyncGenerator, Callable, Generator
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any, get_args, get_origin
+from typing import Annotated, Any, cast, get_args, get_origin
 from uuid import uuid4
 
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
@@ -22,6 +22,10 @@ from ..protocols import (
 from ..queue import Queue
 from .fastapi import Depends
 from .functions import reconstruct_result, resolve_function
+
+SyncMiddlewareGenerator = Generator[Task | None, tuple[Task, Exception | None], Task | None]
+AsyncMiddlewareGenerator = AsyncGenerator[Task | None, tuple[Task, Exception | None]]
+MiddlewareGenerator = SyncMiddlewareGenerator | AsyncMiddlewareGenerator
 
 cache_signature: dict[Callable[..., Any], inspect.Signature] = {}
 
@@ -130,29 +134,29 @@ class TaskProcessor(TaskProcessorProtocol):
 
         return await coro
 
-    async def _preprocess(self, task: Task, queue: Queue) -> tuple[Task, list[Any]]:
+    async def _preprocess(self, task: Task, queue: Queue) -> tuple[Task, list[MiddlewareGenerator]]:
         middlewares = self.middleware + (task.spec.middleware or [])
 
         if not middlewares:
             return task, []
 
-        _generators = []
+        _generators: list[MiddlewareGenerator] = []
 
         try:
             for middleware_string in middlewares:
                 middleware = resolve_function(middleware_string, wrapped=False) if isinstance(middleware_string, str) else middleware_string
-                gen = middleware(task, queue)
+                gen: MiddlewareGenerator = middleware(task, queue)
                 if inspect.isasyncgen(gen):
-                    task = await anext(gen) or task
+                    task = await cast(AsyncMiddlewareGenerator, gen).__anext__() or task
                 else:
-                    task = next(gen) or task  # type: ignore
+                    task = next(cast(SyncMiddlewareGenerator, gen)) or task
                 _generators.append(gen)
         except Exception as e:
             raise MiddlewareError("Pre-middleware error") from e
 
         return task, _generators
 
-    async def _postprocess(self, task: Task, exception: Exception | None, _generators: list[Any]) -> Task:
+    async def _postprocess(self, task: Task, exception: Exception | None, _generators: list[MiddlewareGenerator]) -> Task:
         if not _generators:
             return task
 
@@ -160,9 +164,9 @@ class TaskProcessor(TaskProcessorProtocol):
             for gen in _generators[::-1]:  # post task middleware goes in reverse order
                 try:
                     if inspect.isasyncgen(gen):
-                        task = await gen.asend((task, exception)) or task
+                        task = await cast(AsyncMiddlewareGenerator, gen).asend((task, exception)) or task
                     else:
-                        task = gen.send((task, exception)) or task
+                        task = cast(SyncMiddlewareGenerator, gen).send((task, exception)) or task
                 except StopIteration as e:
                     task = e.value or task
                 except StopAsyncIteration:
