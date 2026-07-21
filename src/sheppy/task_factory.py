@@ -2,6 +2,7 @@ from collections.abc import Callable
 from functools import wraps
 from typing import (
     Any,
+    Literal,
     ParamSpec,
     TypeVar,
     overload,
@@ -10,7 +11,7 @@ from typing import (
 from ._utils.functions import stringify_function
 from ._utils.validation import validate_input
 from ._workflow import get_workflow_context
-from .models import RateLimit, Task, TaskConfig, TaskCron, TaskSpec
+from .models import RateLimit, Task, TaskConfig, TaskCron, TaskSpec, TTLValue
 
 P = ParamSpec('P')
 R = TypeVar('R')
@@ -35,6 +36,8 @@ class TaskFactory:
                     retry_on_timeout: bool | None,
                     retry_on_crash: bool | None,
                     rate_limit: RateLimit | None = None,
+                    ttl: TTLValue = "inherit",
+                    error_ttl: TTLValue = "inherit",
                     ) -> Task:
 
         task_config: dict[str, Any] = {
@@ -52,6 +55,11 @@ class TaskFactory:
 
         if rate_limit is not None:
             task_config["rate_limit"] = dict(rate_limit)
+
+        if ttl != "inherit":
+            task_config["ttl"] = ttl
+        if error_ttl != "inherit":
+            task_config["error_ttl"] = error_ttl
 
         func_string = stringify_function(func)
 
@@ -103,6 +111,8 @@ def task(
     retry_on_timeout: bool | None = None,
     retry_on_crash: bool | None = None,
     rate_limit: RateLimit | None = None,
+    ttl: int | None | Literal["inherit"] = "inherit",
+    error_ttl: int | None | Literal["inherit"] = "inherit",
 ) -> Callable[[Callable[P, R]], Callable[P, Task]]:
     ...
 
@@ -121,6 +131,8 @@ def task(
     retry_on_timeout: bool | None = None,
     retry_on_crash: bool | None = None,
     rate_limit: RateLimit | None = None,
+    ttl: int | None | Literal["inherit"] = "inherit",
+    error_ttl: int | None | Literal["inherit"] = "inherit",
 ) -> Callable[[Callable[P, R]], Callable[P, Task]] | Callable[P, Task]:
     def decorator(func: Callable[P, R]) -> Callable[P, Task]:
         @wraps(func)
@@ -136,7 +148,9 @@ def task(
                 timeout,
                 retry_on_timeout,
                 retry_on_crash,
-                rate_limit
+                rate_limit,
+                ttl,
+                error_ttl
             )
 
         return wrapper

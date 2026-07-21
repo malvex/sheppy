@@ -8,9 +8,9 @@ from time import time
 from typing import Any
 
 from .._utils.task_execution import TaskProcessor
-from ..models import Task
+from ..models import Task, TTLValue
 from ..queue import Queue
-from .base import Backend, BackendError
+from .base import Backend, BackendError, resolve_metadata_ttl
 
 
 @dataclass(order=True)
@@ -25,9 +25,12 @@ class MemoryBackend(Backend):
                  *,
                  instant_processing: bool = True,
                  dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None,
+                 ttl: int | None = None,
+                 error_ttl: TTLValue = "inherit",
                  ) -> None:
 
         self._task_metadata: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)  # {QUEUE_NAME: {TASK_ID: task_data}}
+        self._task_expiry: dict[str, dict[str, float]] = defaultdict(dict)  # {QUEUE_NAME: {TASK_ID: expires_at}}
         self._pending: dict[str, list[str]] = defaultdict(list)
         self._scheduled: dict[str, list[ScheduledTask]] = defaultdict(list)
         self._crons: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
@@ -41,6 +44,8 @@ class MemoryBackend(Backend):
         self._instant_processing = instant_processing
         self._task_processor = TaskProcessor(dependency_overrides=dependency_overrides)
         self._worker_id = "MemoryBackend"
+        self.ttl = ttl
+        self.error_ttl = error_ttl
 
     async def connect(self) -> None:
         self._connected = True
@@ -52,6 +57,23 @@ class MemoryBackend(Backend):
     def is_connected(self) -> bool:
         return self._connected
 
+    def _set_expiry(self, queue_name: str, task_data: dict[str, Any]) -> None:
+        resolved = resolve_metadata_ttl(task_data, ttl=self.ttl, error_ttl=self.error_ttl)
+        if resolved is None:
+            self._task_expiry[queue_name].pop(task_data["id"], None)
+        else:
+            self._task_expiry[queue_name][task_data["id"]] = time() + resolved
+
+    def _purge_expired(self, queue_name: str) -> None:
+        expiry = self._task_expiry[queue_name]
+        if not expiry:
+            return
+
+        now = time()
+        for task_id in [tid for tid, expires_at in expiry.items() if expires_at <= now]:
+            del expiry[task_id]
+            self._task_metadata[queue_name].pop(task_id, None)
+
     async def _create_tasks(self, queue_name: str, tasks: list[dict[str, Any]]) -> list[bool]:
         self._check_connected()
 
@@ -60,6 +82,7 @@ class MemoryBackend(Backend):
             for task in tasks:
                 if task["id"] not in self._task_metadata[queue_name]:
                     self._task_metadata[queue_name][task["id"]] = task
+                    self._set_expiry(queue_name, task)
                     success.append(True)
                 else:
                     success.append(False)
@@ -80,6 +103,7 @@ class MemoryBackend(Backend):
             for task in to_queue:
                 if not unique:
                     self._task_metadata[queue_name][task["id"]] = task
+                    self._set_expiry(queue_name, task)
 
                 self._pending[queue_name].append(task["id"])
 
@@ -97,6 +121,7 @@ class MemoryBackend(Backend):
 
         while True:
             async with self._locks[queue_name]:
+                self._purge_expired(queue_name)
                 if self._pending[queue_name]:
                     tasks = []
                     q = self._pending[queue_name]
@@ -122,6 +147,7 @@ class MemoryBackend(Backend):
         self._check_connected()
 
         async with self._locks[queue_name]:
+            self._purge_expired(queue_name)
             task_ids = list(self._pending[queue_name])[:count]
 
             tasks = []
@@ -146,6 +172,7 @@ class MemoryBackend(Backend):
             queue_cron_size = len(self._crons[queue_name])
 
             self._task_metadata[queue_name].clear()
+            self._task_expiry[queue_name].clear()
             self._pending[queue_name].clear()
             self._scheduled[queue_name].clear()
             self._crons[queue_name].clear()
@@ -164,6 +191,7 @@ class MemoryBackend(Backend):
         self._check_connected()
 
         async with self._locks[queue_name]:
+            self._purge_expired(queue_name)
             results = {}
             for task_id in task_ids:
                 result = self._task_metadata[queue_name].get(task_id)
@@ -183,6 +211,7 @@ class MemoryBackend(Backend):
         async with self._locks[queue_name]:
             if not unique:
                 self._task_metadata[queue_name][task_data["id"]] = task_data
+                self._set_expiry(queue_name, task_data)
 
         if self._instant_processing:
             await self.append(queue_name, [task_data], unique=False)
@@ -200,6 +229,7 @@ class MemoryBackend(Backend):
             now = datetime.now(timezone.utc)
 
         async with self._locks[queue_name]:
+            self._purge_expired(queue_name)
             tasks = []
             scheduled_tasks = self._scheduled[queue_name]
 
@@ -216,6 +246,7 @@ class MemoryBackend(Backend):
 
         async with self._locks[queue_name]:
             self._task_metadata[queue_name][task_data['id']] = task_data
+            self._set_expiry(queue_name, task_data)
 
             return True
 
@@ -232,6 +263,7 @@ class MemoryBackend(Backend):
 
         while True:
             async with self._locks[queue_name]:
+                self._purge_expired(queue_name)
                 for task_id in remaining_ids[:]:
                     task_data = self._task_metadata[queue_name].get(task_id, {})
 
@@ -260,6 +292,7 @@ class MemoryBackend(Backend):
         self._check_connected()
 
         async with self._locks[queue_name]:
+            self._purge_expired(queue_name)
             return {
                 "pending": len(self._pending[queue_name]),
                 "completed": len([t for t in self._task_metadata[queue_name].values() if t["finished_at"]]),
@@ -270,6 +303,7 @@ class MemoryBackend(Backend):
         self._check_connected()
 
         async with self._locks[queue_name]:
+            self._purge_expired(queue_name)
             tasks = self._task_metadata[queue_name]
             return list(tasks.values())
 
@@ -287,6 +321,7 @@ class MemoryBackend(Backend):
         self._check_connected()
 
         async with self._locks[queue_name]:
+            self._purge_expired(queue_name)
             tasks = []
             for scheduled_task in self._scheduled[queue_name]:
                 task_data = self._task_metadata[queue_name].get(scheduled_task.task_id)
