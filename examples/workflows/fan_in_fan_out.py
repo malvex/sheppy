@@ -1,13 +1,13 @@
 import asyncio
 
-from sheppy import Queue, RedisBackend, task
-from sheppy._workflow import workflow
+from sheppy import MemoryBackend, Queue, Worker, task, workflow
 
 ADMIN_EMAILS = [
     "admin1@example.com",
     "admin2@example.com",
     "admin3@example.com",
 ]
+
 
 @task
 async def cleanup_old_data(days: int = 7):
@@ -16,13 +16,16 @@ async def cleanup_old_data(days: int = 7):
 
     return "everything ok!"
 
+
 @task
 async def some_cleanup_at_the_end():
     return True
 
+
 @task
 async def rollback_changes():
     return True
+
 
 @task
 async def send_notification(to: str, subject: str):
@@ -39,19 +42,34 @@ def daily_cleanup(days_to_clean: int):
 
         raise Exception("Cleanup failed, notifications were sent")  # fail the workflow
 
-    if result_task.status == 'completed':
-        yield some_cleanup_at_the_end()
-        yield send_notification("devteam@example.com", "Cleanup finished")
+    yield some_cleanup_at_the_end()
+    yield send_notification("devteam@example.com", "Cleanup finished")
 
-        return "Daily cleanup finished successfully"
+    return "Daily cleanup finished successfully"
 
-    raise Exception("not sure what happened!")
+
+queue = Queue(MemoryBackend(instant_processing=False))
 
 
 async def main():
-    queue = Queue(RedisBackend())
-    # await queue.add_workflow(daily_cleanup(7))
-    await queue.add_workflow(daily_cleanup(30))
+    # start worker in background
+    worker = Worker("default", backend=queue.backend)
+    worker_process = asyncio.create_task(worker.work())
+
+    result = await queue.add_workflow(daily_cleanup(30))
+
+    # wait for the workflow to finish (successfully or not)
+    wf = await queue.wait_for_workflow(result.workflow.id)
+
+    # stop worker
+    worker_process.cancel()
+
+    if wf is None:
+        print("Workflow not found")
+    elif wf.error:
+        print(f"Workflow failed as expected: {wf.error}")
+    else:
+        print(f"Workflow completed: {wf.final_result}")
 
 
 if __name__ == "__main__":

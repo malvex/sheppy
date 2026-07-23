@@ -83,15 +83,15 @@ class RedisBackend(Backend):
 
     def _workflows_key(self, queue_name: str) -> str:
         """Workflow metadata (hset)"""
-        return f"sheppy:workflows:{queue_name}"
-
-    def _workflow_pending_key(self, queue_name: str, workflow_id: str) -> str:
-        """Pending task IDs for a workflow (set)"""
-        return f"sheppy:workflows:{queue_name}:{workflow_id}:pending"
+        return f"sheppy:workflows:metadata:{queue_name}"
 
     def _workflow_pending_index_key(self, queue_name: str) -> str:
         """Index of pending workflow IDs (set)"""
-        return f"sheppy:workflows:{queue_name}:_pending"
+        return f"sheppy:workflows:pending:{queue_name}"
+
+    def _finished_workflows_key(self, queue_name: str) -> str:
+        """Notifications about finished workflows (stream)"""
+        return f"sheppy:workflows:finished:{queue_name}"
 
     def _queues_registry_key(self) -> str:
         """Registry of all queue names and their metadata (hset)"""
@@ -589,9 +589,8 @@ class RedisBackend(Backend):
     async def store_workflow(self, queue_name: str, workflow_data: dict[str, Any]) -> bool:
         workflows_key = self._workflows_key(queue_name)
         workflow_id = workflow_data['id']
-        pending_key = self._workflow_pending_key(queue_name, workflow_id)
         pending_index_key = self._workflow_pending_index_key(queue_name)
-        pending_ids = workflow_data.get('pending_task_ids', [])
+        finished_workflows_key = self._finished_workflows_key(queue_name)
 
         try:
             async with self.client.pipeline(transaction=True) as pipe:
@@ -600,13 +599,12 @@ class RedisBackend(Backend):
                     pipe.hexpire(workflows_key, self.ttl, workflow_id)
 
                 if workflow_data.get('completed') or workflow_data.get('error'):
-                    pipe.delete(pending_key)
                     pipe.srem(pending_index_key, workflow_id)
-                elif pending_ids:
-                    pipe.sadd(pending_key, *pending_ids)
+                    # notify waiters (trim older messages to keep the stream small)
+                    min_id = f"{int((time() - self._results_stream_ttl) * 1000)}-0"
+                    pipe.xadd(finished_workflows_key, {"workflow_id": workflow_id}, minid=min_id)
+                else:
                     pipe.sadd(pending_index_key, workflow_id)
-                    if self.ttl:
-                        pipe.expire(pending_key, self.ttl)
 
                 await pipe.execute()
             return True
@@ -639,6 +637,75 @@ class RedisBackend(Backend):
         except Exception as e:
             raise BackendError(f"Failed to get all workflows: {e}") from e
 
+    async def get_workflow_results(self, queue_name: str, workflow_ids: list[str], timeout: float | None = None) -> dict[str, dict[str, Any]]:
+        workflows_key = self._workflows_key(queue_name)
+        finished_workflows_key = self._finished_workflows_key(queue_name)
+
+        if not workflow_ids:
+            return {}
+
+        results = {}
+        remaining_ids = workflow_ids[:]
+
+        last_id = "0-0"
+        if timeout is not None and timeout >= 0:
+            with contextlib.suppress(redis.ResponseError):
+                last_id = (await self.client.xinfo_stream(finished_workflows_key))["last-generated-id"]
+
+        workflow_jsons = await self.client.hmget(workflows_key, workflow_ids)  # type: ignore[misc]
+        for wf_json in workflow_jsons:
+            if not wf_json:
+                continue
+            wf = json.loads(wf_json)
+
+            if wf.get("completed") or wf.get("error"):
+                results[wf["id"]] = wf
+                remaining_ids.remove(wf["id"])
+
+        if not remaining_ids:
+            return results
+
+        if timeout is None or timeout < 0:
+            return results
+
+        # endless wait if timeout == 0
+        deadline = None if timeout == 0 else asyncio.get_running_loop().time() + timeout
+
+        while True:
+            if deadline:
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    raise TimeoutError(f"Did not complete within {timeout} seconds")
+            else:
+                remaining = 0
+
+            messages = await self.client.xread(
+                {finished_workflows_key: last_id},
+                block=int(remaining * 1000),
+                count=1000
+            )
+
+            if not messages:
+                continue
+
+            for _, stream_messages in messages:
+                for msg_id, data in stream_messages:
+                    last_id = msg_id
+                    workflow_id = data.get(b"workflow_id").decode()
+
+                    if workflow_id in remaining_ids:
+                        wf_json = await self.client.hget(workflows_key, workflow_id)  # type: ignore[misc]
+                        if not wf_json:
+                            continue
+                        wf = json.loads(wf_json)
+
+                        if wf.get("completed") or wf.get("error"):  # should be always true because we only get notifications for finished workflows
+                            results[wf["id"]] = wf
+                            remaining_ids.remove(workflow_id)
+
+                        if not remaining_ids:
+                            return results
+
     async def get_pending_workflows(self, queue_name: str) -> list[dict[str, Any]]:
         workflows_key = self._workflows_key(queue_name)
         pending_index_key = self._workflow_pending_index_key(queue_name)
@@ -656,36 +723,15 @@ class RedisBackend(Backend):
 
     async def delete_workflow(self, queue_name: str, workflow_id: str) -> bool:
         workflows_key = self._workflows_key(queue_name)
-        pending_key = self._workflow_pending_key(queue_name, workflow_id)
         pending_index_key = self._workflow_pending_index_key(queue_name)
         try:
             async with self.client.pipeline(transaction=True) as pipe:
                 pipe.hdel(workflows_key, workflow_id)
-                pipe.delete(pending_key)
                 pipe.srem(pending_index_key, workflow_id)
                 results = await pipe.execute()
             return int(results[0]) > 0
         except Exception as e:
             raise BackendError(f"Failed to delete workflow: {e}") from e
-
-    async def mark_workflow_task_complete(self, queue_name: str, workflow_id: str, task_id: str) -> int:
-        pending_key = self._workflow_pending_key(queue_name, workflow_id)
-
-        try:
-            async with self.client.pipeline() as pipe:
-                pipe.srem(pending_key, task_id)
-                pipe.scard(pending_key)
-                results = await pipe.execute()
-
-            removed_count = results[0]  # 1 if removed, 0 if not found
-            remaining_count = results[1]
-
-            if removed_count == 0:
-                return -1  # task not in pending set
-
-            return int(remaining_count)
-        except Exception as e:
-            raise BackendError(f"Failed to mark workflow task complete: {e}") from e
 
     async def get_stale_messages(self, queue_name: str, min_idle_ms: int) -> list[dict[str, Any]]:
         pending_tasks_key = self._pending_tasks_key(queue_name)

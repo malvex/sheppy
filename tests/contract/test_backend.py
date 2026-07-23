@@ -957,7 +957,7 @@ async def test_cron(backend: Backend):
 
 
 async def test_store_and_get_workflow(backend: Backend):
-    wf = {"id": "wf-1", "pending_task_ids": ["t1", "t2"], "completed": False, "error": None}
+    wf = {"id": "wf-1", "task_order": ["t1", "t2"], "completed": False, "error": None}
 
     await backend.connect()
     assert await backend.store_workflow(Q, wf) is True
@@ -971,9 +971,9 @@ async def test_store_and_get_workflow(backend: Backend):
 
 
 async def test_get_all_workflows(backend: Backend):
-    wf1 = {"id": "wf-1", "pending_task_ids": ["t1"], "completed": False, "error": None}
-    wf2 = {"id": "wf-2", "pending_task_ids": ["t2"], "completed": False, "error": None}
-    wf3 = {"id": "wf-3", "pending_task_ids": [], "completed": True, "error": None}
+    wf1 = {"id": "wf-1", "task_order": ["t1"], "completed": False, "error": None}
+    wf2 = {"id": "wf-2", "task_order": ["t2"], "completed": False, "error": None}
+    wf3 = {"id": "wf-3", "task_order": [], "completed": True, "error": None}
 
     await backend.connect()
     assert await backend.store_workflow(Q, wf1) is True
@@ -990,9 +990,9 @@ async def test_get_all_workflows(backend: Backend):
 
 
 async def test_get_pending_workflows(backend: Backend):
-    wf_pending = {"id": "wf-1", "pending_task_ids": ["t1"], "completed": False, "error": None}
-    wf_completed = {"id": "wf-2", "pending_task_ids": [], "completed": True, "error": None}
-    wf_error = {"id": "wf-3", "pending_task_ids": [], "completed": False, "error": "something broke"}
+    wf_pending = {"id": "wf-1", "task_order": ["t1"], "completed": False, "error": None}
+    wf_completed = {"id": "wf-2", "task_order": [], "completed": True, "error": None}
+    wf_error = {"id": "wf-3", "task_order": [], "completed": False, "error": "something broke"}
 
     await backend.connect()
     assert await backend.store_workflow(Q, wf_pending) is True
@@ -1007,7 +1007,7 @@ async def test_get_pending_workflows(backend: Backend):
 
 
 async def test_delete_workflow(backend: Backend):
-    wf = {"id": "wf-1", "pending_task_ids": ["t1"], "completed": False, "error": None}
+    wf = {"id": "wf-1", "task_order": ["t1"], "completed": False, "error": None}
 
     await backend.connect()
     assert await backend.store_workflow(Q, wf) is True
@@ -1020,25 +1020,9 @@ async def test_delete_workflow(backend: Backend):
     assert await backend.get_all_workflows(Q) == []
 
 
-async def test_mark_workflow_task_complete(backend: Backend):
-    wf = {"id": "wf-1", "pending_task_ids": ["t1", "t2", "t3"], "completed": False, "error": None}
-
-    await backend.connect()
-    assert await backend.store_workflow(Q, wf) is True
-
-    assert await backend.mark_workflow_task_complete(Q, "wf-1", "t1") == 2
-    assert await backend.mark_workflow_task_complete(Q, "wf-1", "t2") == 1
-    assert await backend.mark_workflow_task_complete(Q, "wf-1", "t3") == 0
-
-    # already removed
-    assert await backend.mark_workflow_task_complete(Q, "wf-1", "t1") == -1
-    # nonexistent workflow
-    assert await backend.mark_workflow_task_complete(Q, "nonexistent", "t1") == -1
-
-
 async def test_store_workflow_overwrites(backend: Backend):
-    wf = {"id": "wf-1", "pending_task_ids": ["t1", "t2"], "completed": False, "error": None}
-    wf_updated = {"id": "wf-1", "pending_task_ids": ["t1"], "completed": False, "error": None}
+    wf = {"id": "wf-1", "task_order": ["t1", "t2"], "completed": False, "error": None}
+    wf_updated = {"id": "wf-1", "task_order": ["t1"], "completed": False, "error": None}
 
     await backend.connect()
     assert await backend.store_workflow(Q, wf) is True
@@ -1049,8 +1033,8 @@ async def test_store_workflow_overwrites(backend: Backend):
 
 
 async def test_get_workflows_batch(backend: Backend):
-    wf1 = {"id": "wf-1", "pending_task_ids": ["t1"], "completed": False, "error": None}
-    wf2 = {"id": "wf-2", "pending_task_ids": ["t2"], "completed": False, "error": None}
+    wf1 = {"id": "wf-1", "task_order": ["t1"], "completed": False, "error": None}
+    wf2 = {"id": "wf-2", "task_order": ["t2"], "completed": False, "error": None}
 
     await backend.connect()
     assert await backend.store_workflow(Q, wf1) is True
@@ -1061,3 +1045,52 @@ async def test_get_workflows_batch(backend: Backend):
 
     result = await backend.get_workflows(Q, ["wf-1", "nonexistent"])
     assert result == {"wf-1": wf1}
+
+
+async def test_get_workflow_results_immediate(backend: Backend):
+    wf_pending = {"id": "wf-1", "task_order": [], "completed": False, "error": None}
+    wf_completed = {"id": "wf-2", "task_order": [], "completed": True, "error": None}
+    wf_error = {"id": "wf-3", "task_order": [], "completed": False, "error": "broke"}
+
+    await backend.connect()
+    await backend.store_workflow(Q, wf_pending)
+    await backend.store_workflow(Q, wf_completed)
+    await backend.store_workflow(Q, wf_error)
+
+    # negative timeout returns current results immediately
+    assert await backend.get_workflow_results(Q, ["wf-1"], timeout=-1) == {}
+    assert await backend.get_workflow_results(Q, ["wf-2"], timeout=-1) == {"wf-2": wf_completed}
+    assert await backend.get_workflow_results(Q, ["wf-3"], timeout=-1) == {"wf-3": wf_error}
+
+    # batch with mixed states returns only finished ones
+    assert await backend.get_workflow_results(Q, ["wf-1", "wf-2", "wf-3"], timeout=-1) == {"wf-2": wf_completed, "wf-3": wf_error}
+
+    # empty input
+    assert await backend.get_workflow_results(Q, [], timeout=-1) == {}
+
+
+async def test_get_workflow_results_timeout(backend: Backend):
+    wf = {"id": "wf-1", "task_order": [], "completed": False, "error": None}
+
+    await backend.connect()
+    await backend.store_workflow(Q, wf)
+
+    with pytest.raises(TimeoutError):
+        await backend.get_workflow_results(Q, ["wf-1"], timeout=.01)
+
+
+async def test_get_workflow_results_waits_for_finish(backend: Backend):
+    wf = {"id": "wf-1", "task_order": [], "completed": False, "error": None}
+    wf_finished = {"id": "wf-1", "task_order": [], "completed": True, "error": None}
+
+    await backend.connect()
+    await backend.store_workflow(Q, wf)
+
+    async def finish_later():
+        await asyncio.sleep(1.0 if IS_CI else 0.05)
+        await backend.store_workflow(Q, wf_finished)
+
+    asyncio.create_task(finish_later())
+
+    results = await backend.get_workflow_results(Q, ["wf-1"], timeout=2.0 if IS_CI else .5)
+    assert results == {"wf-1": wf_finished}

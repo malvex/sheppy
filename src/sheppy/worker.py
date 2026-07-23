@@ -351,6 +351,7 @@ class Worker:
                             task = await self._task_processor.handle_stale_task(Task.model_validate(task_data), queue)
                         except Exception:
                             logger.exception("Failed to handle stale task")
+                            continue
 
                         if task.config.retry_on_crash:
                             if task.retry_count < task.config.retry:
@@ -359,6 +360,11 @@ class Worker:
                                 logger.warning(RECLAIM_PREFIX + f"Found stale task {task.id}, marking as crashed (exceeded {task.config.retry} retries)")
                         else:
                             logger.warning(RECLAIM_PREFIX + f"Found stale task {task.id}, marking as crashed")
+
+                        # resume the workflow of a terminally crashed task
+                        # (e.g. its worker died mid-execution). #TODO add worker recovery test for this
+                        if task.is_terminal and task.workflow_id:
+                            await self._resume_workflow_for_task(queue, task)
 
             except asyncio.CancelledError:
                 logger.debug(RECLAIM_PREFIX + "cancelled")
@@ -458,8 +464,9 @@ class Worker:
             if task.error and task.should_retry and task.next_retry_at is not None:
                 await queue.retry(task, task.next_retry_at)
 
-            if (task.status == 'completed' or task.error) and task.workflow_id:
+            if task.is_terminal and task.workflow_id:
                 # workflow processing - resume workflow if this task belongs to one
+                # (only on terminal state, so a task scheduled for retry does not prematurely resume its workflow)
                 await self._resume_workflow_for_task(queue, task)
 
             return task
@@ -469,19 +476,7 @@ class Worker:
             return
 
         try:
-            remaining = await queue._mark_workflow_task_complete(task.workflow_id, task.id)
-
-            if remaining < 0:
-                logger.debug(WORKER_PREFIX + f"Workflow {task.workflow_id} not found or already processed")
-                return
-
-            if remaining > 0:
-                logger.debug(WORKER_PREFIX + f"Workflow {task.workflow_id} has {remaining} tasks remaining")
-                return
-
-            logger.info(WORKER_PREFIX + f"All tasks complete for workflow {task.workflow_id}, resuming")
-
-            result = await queue.resume_workflow(task.workflow_id)
+            result = await queue._resume_workflow(task.workflow_id)
 
             if result.workflow.completed:
                 logger.info(WORKER_PREFIX + f"Workflow {task.workflow_id} completed with result: {result.workflow.final_result}")
@@ -490,7 +485,7 @@ class Worker:
                 logger.error(WORKER_PREFIX + f"Workflow {task.workflow_id} failed: {result.workflow.error}")
 
             elif result.pending_tasks:
-                logger.info(WORKER_PREFIX + f"Workflow {task.workflow_id} waiting for {len(result.pending_tasks)} more tasks")
+                logger.debug(WORKER_PREFIX + f"Workflow {task.workflow_id} waiting for {len(result.pending_tasks)} more tasks")
 
         except Exception as e:
             logger.exception(WORKER_PREFIX + f"Failed to resume workflow for task {task.id}: {e}")

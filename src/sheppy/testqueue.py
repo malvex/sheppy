@@ -430,8 +430,8 @@ class TestQueue:
     def add_workflow(self, workflow: Workflow) -> WorkflowResult:
         return asyncio.run(self._queue.add_workflow(workflow))
 
-    def resume_workflow(self, workflow: Workflow | UUID | str, task_results: dict[UUID, Task] | None = None) -> WorkflowResult:
-        return asyncio.run(self._queue.resume_workflow(workflow, task_results))
+    def _resume_workflow(self, workflow: Workflow | UUID | str, task_results: dict[UUID, Task] | None = None) -> WorkflowResult:
+        return asyncio.run(self._queue._resume_workflow(workflow, task_results))
 
     @overload
     def get_workflow(self, workflow: Workflow | UUID | str) -> Workflow | None: ...
@@ -458,10 +458,8 @@ class TestQueue:
             if not result.pending_tasks:
                 break
 
-            # Process all pending tasks
             self.process_all()
 
-            # Resume workflow
-            result = self.resume_workflow(result.workflow)
+            result = self._resume_workflow(result.workflow)
 
         return result
