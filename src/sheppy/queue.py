@@ -520,10 +520,10 @@ class Queue:
         return task_ids, batch_mode
 
     async def add_workflow(self, workflow: Workflow) -> WorkflowResult:
+        """Add a workflow into the queue."""
         await self.__ensure_backend_is_connected()
 
-        runner = WorkflowRunner(workflow)
-        result = runner.run()
+        result = WorkflowRunner(workflow).run()
 
         await self.backend.store_workflow(self.name, result.workflow.model_dump(mode='json'))
 
@@ -532,36 +532,115 @@ class Queue:
 
         return result
 
-    async def resume_workflow(self, workflow: Workflow | UUID | str, task_results: dict[UUID, Task] | None = None) -> WorkflowResult:
+    async def _resume_workflow(self, workflow: Workflow | UUID | str, task_results: dict[UUID, Task] | None = None) -> WorkflowResult:
         await self.__ensure_backend_is_connected()
 
         if isinstance(workflow, (UUID, str)):
             w_id = str(workflow)
             wf_data = await self.backend.get_workflows(self.name, [w_id])
-            if not wf_data or not wf_data[w_id]:
+            if not wf_data.get(w_id):
                 raise ValueError(f"Workflow not found: {workflow}")
             workflow = Workflow.model_validate(wf_data[w_id])
 
+        if workflow.completed or workflow.error:
+            # already finished - nothing to resume
+            return WorkflowResult(workflow=workflow, pending_tasks=[])
+
         if task_results is None:
-            incomplete_ids = workflow.get_incomplete_task_ids()
-            if incomplete_ids:
-                task_results_dict = await self.get_task(incomplete_ids)  # type: ignore
-                task_results = {
-                    tid: task for tid, task in task_results_dict.items()
-                    if task.status == 'completed' or task.error
-                }
-            else:
-                task_results = {}
+            task_results = await self._get_workflow_task_results(workflow)
 
-        runner = WorkflowRunner(workflow, task_results=task_results)
-        result = runner.run()
+        previous_step_count = len(workflow.task_order)
+        result = WorkflowRunner(workflow, task_results=task_results).run()
 
-        await self.backend.store_workflow(self.name, result.workflow.model_dump(mode='json'))
+        # store only when the state actually changed, so that a no-op resume
+        # cannot clobber a concurrent advancing resume (last write wins)
+        state_changed = (
+            result.workflow.completed
+            or result.workflow.error is not None
+            or len(result.workflow.task_order) != previous_step_count
+        )
+        if state_changed:
+            await self.backend.store_workflow(self.name, result.workflow.model_dump(mode='json'))
 
+        # pending tasks are usually already queued. re-adding deduplicates by
+        # task ID and covers the crash window between storing and adding
         if result.pending_tasks:
             await self.add(result.pending_tasks)
 
         return result
+
+    async def _get_workflow_task_results(self, workflow: Workflow) -> dict[UUID, Task]:
+        if not workflow.task_order:
+            return {}
+
+        return await self.get_task([UUID(tid) for tid in workflow.task_order])
+
+    @overload
+    async def wait_for_workflow(self, workflow: Workflow | UUID | str, timeout: float = 0) -> Workflow | None: ...
+
+    @overload
+    async def wait_for_workflow(self, workflow: list[Workflow | UUID | str], timeout: float = 0) -> dict[UUID, Workflow]: ...
+
+    async def wait_for_workflow(self, workflow: Workflow | UUID | str | list[Workflow | UUID | str], timeout: float = 0) -> dict[UUID, Workflow] | Workflow | None:
+        """Wait for workflow to finish (complete or fail) and return updated workflow instance.
+
+        Args:
+            workflow: Instance of a Workflow or its ID, or list of Workflow instances/IDs for batch mode.
+            timeout: Maximum time to wait in seconds. Default is 0 (wait indefinitely).<br>
+                     If timeout is reached, returns None (or partial results in batch mode).<br>
+                     In batch mode, this is the maximum time to wait for all workflows to finish.<br>
+                     Note: In non-batch mode, if timeout is reached and the workflow has not finished, a TimeoutError is raised.
+
+        Returns:
+            Instance of a Workflow or None if not found or timeout reached.<br>In batch mode, returns dictionary of Workflow IDs to Workflow instances (partial results possible on timeout).
+
+        Raises:
+            TimeoutError: If timeout is reached and the workflow has not finished (only in non-batch mode).
+
+        Example:
+            ```python
+            q = Queue(...)
+            result = await q.add_workflow(my_workflow(5))
+
+            # wait indefinitely for the workflow to finish
+            wf = await q.wait_for_workflow(result.workflow.id)
+            assert wf.completed
+            print(wf.final_result)
+
+            # wait up to 5 seconds
+            try:
+                wf = await q.wait_for_workflow(result.workflow, timeout=5)
+            except TimeoutError:
+                print("Workflow did not finish within timeout")
+
+            # batch mode
+            finished = await q.wait_for_workflow([wf1, wf2], timeout=10)
+            for workflow_id, wf in finished.items():
+                print(f"Workflow {workflow_id} completed: {wf.completed}")
+            ```
+        """
+        await self.__ensure_backend_is_connected()
+
+        workflow_ids, batch_mode = self._get_workflow_ids(workflow)
+        workflow_results = await self.backend.get_workflow_results(self.name, workflow_ids, timeout)
+
+        if batch_mode:
+            return {UUID(wf_id): Workflow.model_validate(wf) for wf_id, wf in workflow_results.items()}
+
+        wf_data = workflow_results.get(workflow_ids[0])
+
+        return Workflow.model_validate(wf_data) if wf_data else None
+
+    def _get_workflow_ids(self, workflow: list[Workflow | UUID | str] | Workflow | UUID | str) -> tuple[list[str], bool]:
+        batch_mode = True
+        if not isinstance(workflow, list):
+            workflow = [workflow]
+            batch_mode = False
+
+        # set to deduplicate workflow ids
+        workflow_ids = list({str(w.id if isinstance(w, Workflow) else w) for w in workflow})
+
+        return workflow_ids, batch_mode
 
     @overload
     async def get_workflow(self, workflow: Workflow | UUID | str) -> Workflow | None: ...
@@ -604,8 +683,3 @@ class Queue:
 
         workflow_id = str(workflow.id if isinstance(workflow, Workflow) else workflow)
         return await self.backend.delete_workflow(self.name, workflow_id)
-
-    async def _mark_workflow_task_complete(self, workflow_id: UUID | str, task_id: UUID | str) -> int:
-        await self.__ensure_backend_is_connected()
-
-        return await self.backend.mark_workflow_task_complete(self.name, str(workflow_id), str(task_id))

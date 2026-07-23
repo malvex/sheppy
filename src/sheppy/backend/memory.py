@@ -2,6 +2,7 @@ import asyncio
 import heapq
 from collections import defaultdict
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from time import time
@@ -81,7 +82,9 @@ class MemoryBackend(Backend):
             success = []
             for task in tasks:
                 if task["id"] not in self._task_metadata[queue_name]:
-                    self._task_metadata[queue_name][task["id"]] = task
+                    # store a copy so that later mutations of the passed-in data
+                    # (e.g. by instant processing) cannot corrupt stored state
+                    self._task_metadata[queue_name][task["id"]] = deepcopy(task)
                     self._set_expiry(queue_name, task)
                     success.append(True)
                 else:
@@ -102,7 +105,7 @@ class MemoryBackend(Backend):
         async with self._locks[queue_name]:
             for task in to_queue:
                 if not unique:
-                    self._task_metadata[queue_name][task["id"]] = task
+                    self._task_metadata[queue_name][task["id"]] = deepcopy(task)
                     self._set_expiry(queue_name, task)
 
                 self._pending[queue_name].append(task["id"])
@@ -130,7 +133,7 @@ class MemoryBackend(Backend):
                         task_id = q.pop(0)
                         task_data = self._task_metadata[queue_name].get(task_id)
                         if task_data:
-                            tasks.append(task_data)
+                            tasks.append(deepcopy(task_data))
 
                     return tasks
 
@@ -153,7 +156,7 @@ class MemoryBackend(Backend):
             tasks = []
             for t in task_ids:
                 if task_data := self._task_metadata[queue_name].get(t):
-                    tasks.append(task_data)
+                    tasks.append(deepcopy(task_data))
 
             return tasks
 
@@ -196,7 +199,7 @@ class MemoryBackend(Backend):
             for task_id in task_ids:
                 result = self._task_metadata[queue_name].get(task_id)
                 if result:
-                    results[task_id] = result
+                    results[task_id] = deepcopy(result)
 
             return results
 
@@ -210,7 +213,7 @@ class MemoryBackend(Backend):
 
         async with self._locks[queue_name]:
             if not unique:
-                self._task_metadata[queue_name][task_data["id"]] = task_data
+                self._task_metadata[queue_name][task_data["id"]] = deepcopy(task_data)
                 self._set_expiry(queue_name, task_data)
 
         if self._instant_processing:
@@ -237,7 +240,7 @@ class MemoryBackend(Backend):
                 scheduled_task = heapq.heappop(scheduled_tasks)
                 task_data = self._task_metadata[queue_name].get(scheduled_task.task_id)
                 if task_data:
-                    tasks.append(task_data)
+                    tasks.append(deepcopy(task_data))
 
             return tasks
 
@@ -245,7 +248,7 @@ class MemoryBackend(Backend):
         self._check_connected()
 
         async with self._locks[queue_name]:
-            self._task_metadata[queue_name][task_data['id']] = task_data
+            self._task_metadata[queue_name][task_data['id']] = deepcopy(task_data)
             self._set_expiry(queue_name, task_data)
 
             return True
@@ -268,7 +271,7 @@ class MemoryBackend(Backend):
                     task_data = self._task_metadata[queue_name].get(task_id, {})
 
                     if task_data.get("finished_at"):
-                        results[task_id] = task_data
+                        results[task_id] = deepcopy(task_data)
                         remaining_ids.remove(task_id)
 
             if not remaining_ids:
@@ -305,7 +308,7 @@ class MemoryBackend(Backend):
         async with self._locks[queue_name]:
             self._purge_expired(queue_name)
             tasks = self._task_metadata[queue_name]
-            return list(tasks.values())
+            return [deepcopy(t) for t in tasks.values()]
 
     async def list_queues(self) -> dict[str, int]:
         self._check_connected()
@@ -326,7 +329,7 @@ class MemoryBackend(Backend):
             for scheduled_task in self._scheduled[queue_name]:
                 task_data = self._task_metadata[queue_name].get(scheduled_task.task_id)
                 if task_data:
-                    tasks.append(task_data)
+                    tasks.append(deepcopy(task_data))
 
             return tasks
 
@@ -358,7 +361,7 @@ class MemoryBackend(Backend):
         self._check_connected()
 
         async with self._locks[queue_name]:
-            self._workflows[queue_name][workflow_data["id"]] = workflow_data
+            self._workflows[queue_name][workflow_data["id"]] = deepcopy(workflow_data)
             return True
 
     async def get_workflows(self, queue_name: str, workflow_ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -369,21 +372,58 @@ class MemoryBackend(Backend):
             for wf_id in workflow_ids:
                 result = self._workflows[queue_name].get(wf_id)
                 if result:
-                    results[wf_id] = result
+                    results[wf_id] = deepcopy(result)
             return results
+
+    async def get_workflow_results(self, queue_name: str, workflow_ids: list[str], timeout: float | None = None) -> dict[str, dict[str, Any]]:
+        self._check_connected()
+
+        start_time = asyncio.get_event_loop().time()
+
+        if not workflow_ids:
+            return {}
+
+        results = {}
+        remaining_ids = workflow_ids[:]
+
+        while True:
+            async with self._locks[queue_name]:
+                for workflow_id in remaining_ids[:]:
+                    wf_data = self._workflows[queue_name].get(workflow_id, {})
+
+                    if wf_data.get("completed") or wf_data.get("error"):
+                        results[workflow_id] = deepcopy(wf_data)
+                        remaining_ids.remove(workflow_id)
+
+            if not remaining_ids:
+                return results
+
+            if timeout is None or timeout < 0:
+                return results
+
+            # endless wait if timeout == 0
+            if timeout == 0:
+                await asyncio.sleep(0.05)
+                continue
+
+            elapsed = asyncio.get_event_loop().time() - start_time
+            if elapsed >= timeout:
+                raise TimeoutError(f"Did not complete within {timeout} seconds")
+
+            await asyncio.sleep(min(0.05, timeout - elapsed))
 
     async def get_all_workflows(self, queue_name: str) -> list[dict[str, Any]]:
         self._check_connected()
 
         async with self._locks[queue_name]:
-            return list(self._workflows[queue_name].values())
+            return [deepcopy(wf) for wf in self._workflows[queue_name].values()]
 
     async def get_pending_workflows(self, queue_name: str) -> list[dict[str, Any]]:
         self._check_connected()
 
         async with self._locks[queue_name]:
             return [
-                wf for wf in self._workflows[queue_name].values()
+                deepcopy(wf) for wf in self._workflows[queue_name].values()
                 if not wf.get("completed") and not wf.get("error")
             ]
 
@@ -395,23 +435,6 @@ class MemoryBackend(Backend):
                 del self._workflows[queue_name][workflow_id]
                 return True
             return False
-
-    async def mark_workflow_task_complete(self, queue_name: str, workflow_id: str, task_id: str) -> int:
-        self._check_connected()
-
-        async with self._locks[queue_name]:
-            workflow = self._workflows[queue_name].get(workflow_id)
-            if not workflow:
-                return -1
-
-            pending_ids = workflow.get("pending_task_ids", [])
-            if task_id not in pending_ids:
-                return -1
-
-            pending_ids = [tid for tid in pending_ids if tid != task_id]
-            workflow["pending_task_ids"] = pending_ids
-
-            return len(pending_ids)
 
     async def acknowledge(self, queue_name: str, task_ids: list[str]) -> None:
         pass
@@ -518,3 +541,7 @@ class MemoryBackend(Backend):
                 if chained_tasks:
                     await self.append(queue_name, chained_tasks)
         await self.store_result(queue_name, processed_task.model_dump(mode="json"))
+
+        # resume the workflow this task belongs to (result must be stored first)
+        if processed_task.is_terminal and processed_task.workflow_id:
+            await hacky_queue._resume_workflow(processed_task.workflow_id)

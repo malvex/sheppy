@@ -234,6 +234,11 @@ class Task(BaseModel):
         return self.config.retry > 0 and self.retry_count < self.config.retry
 
     @property
+    def is_terminal(self) -> bool:
+        """Returns True if the task reached a final state (completed or failed with no retries left)."""
+        return self.status == 'completed' or (self.error is not None and not self.should_retry)
+
+    @property
     def completed(self) -> bool:
         """Deprecated, DO NOT USE. Temporary compatibility attr mostly for my stuff"""
         import warnings  # noqa: PLC0415

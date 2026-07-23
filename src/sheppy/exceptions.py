@@ -4,3 +4,7 @@ class TaskTimeoutError(TimeoutError):
 
 class MiddlewareError(Exception):
     pass
+
+
+class WorkflowError(Exception):
+    pass

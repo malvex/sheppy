@@ -109,8 +109,14 @@ class SyncQueue:
     def add_workflow(self, workflow: Workflow) -> WorkflowResult:
         return self._run_coro(self._queue.add_workflow(workflow))
 
-    def resume_workflow(self, workflow: Workflow | UUID | str, task_results: dict[UUID, Task] | None = None) -> WorkflowResult:
-        return self._run_coro(self._queue.resume_workflow(workflow, task_results))
+    @overload
+    def wait_for_workflow(self, workflow: Workflow | UUID | str, timeout: float = 0) -> Workflow | None: ...
+
+    @overload
+    def wait_for_workflow(self, workflow: list[Workflow | UUID | str], timeout: float = 0) -> dict[UUID, Workflow]: ...
+
+    def wait_for_workflow(self, workflow: Workflow | UUID | str | list[Workflow | UUID | str], timeout: float = 0) -> Workflow | None | dict[UUID, Workflow]:
+        return self._run_coro(self._queue.wait_for_workflow(workflow, timeout))
 
     @overload
     def get_workflow(self, workflow: Workflow | UUID | str) -> Workflow | None: ...

@@ -5,8 +5,8 @@ This file contains utility functions meant for internal use only. Expect breakin
 import importlib
 import os
 import sys
-from collections.abc import Callable
-from typing import Any, cast, get_type_hints
+from collections.abc import Callable, Generator
+from typing import Any, cast, get_args, get_origin, get_type_hints
 
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
 
@@ -69,6 +69,26 @@ def reconstruct_result(func_s: str, result: Any) -> Any:
         # - TypeError: get_type_hints fails
         # - ValueError: resolve_function fails
         # - PydanticSchemaGenerationError: TypeAdapter fails
+        pass
+
+    return result
+
+
+def reconstruct_workflow_result(func_s: str, result: Any) -> Any:
+    if result is None:
+        return result
+
+    try:
+        func = resolve_function(func_s)
+
+        if return_type := get_type_hints(func).get("return"):
+            if get_origin(return_type) is Generator:
+                args = get_args(return_type)
+                if len(args) == 3:
+                    return_type = args[2]
+
+            return TypeAdapter(return_type).validate_python(result)
+    except PydanticSchemaGenerationError:
         pass
 
     return result
