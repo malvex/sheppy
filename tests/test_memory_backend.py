@@ -49,7 +49,7 @@ class TestMemoryBackend:
         result = await queue.get_task(t)
         assert result is not None
         assert result.status == 'failed'
-        assert "intentional failure" in result.error
+        assert "intentional failure" in str(result.exception)
 
     async def test_failing_async_task(self, queue: Queue):
         t = async_failing_task("async failure")
@@ -59,7 +59,7 @@ class TestMemoryBackend:
         result = await queue.get_task(t)
         assert result is not None
         assert result.status == 'failed'
-        assert "async failure" in result.error
+        assert "async failure" in str(result.exception)
 
     async def test_retry_async_task(self, queue: Queue):
         t = async_fail_once()

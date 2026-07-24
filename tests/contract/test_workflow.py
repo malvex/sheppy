@@ -80,15 +80,15 @@ def outer_workflow(x: int):
 @workflow
 def flaky_workflow():
     t = yield fail_once()
-    if t.error:
-        return f"error-path:{t.error}"
+    if t.exception:
+        return f"error-path:{t.exception}"
     return f"ok:{t.result}"
 
 
 @workflow
 def error_branch_workflow():
     t = yield fail_always()
-    if t.error:
+    if t.exception:
         r = yield rollback()
         return f"recovered: {r.result}"
     return "no error"
@@ -129,7 +129,7 @@ async def test_add_workflow_stores_state_and_queues_tasks(queue: Queue):
     result = await queue.add_workflow(sequential_workflow(2))
 
     assert not result.workflow.completed
-    assert result.workflow.error is None
+    assert result.workflow.exception is None
     assert len(result.pending_tasks) == 1
     assert result.pending_tasks[0].spec.args == (2, 1)
     assert result.pending_tasks[0].workflow_id == result.workflow.id
@@ -154,7 +154,7 @@ async def test_sequential_workflow_completes(queue: Queue, worker: Worker):
     wf = await queue.get_workflow(result.workflow.id)
     assert wf is not None
     assert wf.completed
-    assert wf.error is None
+    assert wf.exception is None
     assert wf.final_result == 13
     assert wf.finished_at is not None
 
@@ -257,7 +257,7 @@ async def test_failing_task_recovers_via_retry(queue: Queue, worker: Worker):
 
     wf = (await queue.get_all_workflows())[0]
     assert wf.completed
-    assert wf.error is None
+    assert wf.exception is None
     assert wf.final_result == "ok:recovered"
 
 
@@ -269,7 +269,7 @@ async def test_terminal_failure_takes_error_branch(queue: Queue, worker: Worker)
 
     wf = (await queue.get_all_workflows())[0]
     assert wf.completed
-    assert wf.error is None
+    assert wf.exception is None
     assert wf.final_result == "recovered: rolled back"
 
 
@@ -282,7 +282,7 @@ async def test_workflow_function_raise_fails_workflow(queue: Queue, worker: Work
     wf = await queue.get_workflow(result.workflow.id)
     assert wf is not None
     assert not wf.completed
-    assert wf.error == "RuntimeError: user code exploded after 10"
+    assert str(wf.exception) == "RuntimeError: user code exploded after 10"
     assert wf.finished_at is not None
 
     # progress made before the error is preserved in the task store
@@ -299,12 +299,12 @@ async def test_invalid_yield_fails_workflow_immediately(queue: Queue):
     result = await queue.add_workflow(invalid_yield_workflow())
 
     assert result.pending_tasks == []
-    assert result.workflow.error is not None
-    assert "Invalid yield" in result.workflow.error
+    assert result.workflow.exception is not None
+    assert "Invalid yield" in str(result.workflow.exception)
 
     stored = await queue.get_workflow(result.workflow.id)
     assert stored is not None
-    assert stored.error == result.workflow.error
+    assert stored.exception == result.workflow.exception
 
 
 async def test_empty_workflow_completes_immediately(queue: Queue):
@@ -378,7 +378,7 @@ async def test_wait_for_workflow(queue: Queue, worker: Worker):
 
     assert wf is not None
     assert wf.completed
-    assert wf.error is None
+    assert wf.exception is None
     assert wf.final_result == 13
 
 
@@ -404,7 +404,7 @@ async def test_wait_for_workflow_returns_failed_workflow(queue: Queue, worker: W
 
     assert wf is not None
     assert not wf.completed
-    assert wf.error == "RuntimeError: user code exploded after 10"
+    assert str(wf.exception) == "RuntimeError: user code exploded after 10"
 
 
 async def test_wait_for_workflow_timeout(queue: Queue):

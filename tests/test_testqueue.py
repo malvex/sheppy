@@ -128,7 +128,7 @@ class TestFailingTasks:
 
         # verify failure on returned task
         assert_is_failed(processed)
-        assert processed.error == test_case.expected_error
+        assert str(processed.exception) == test_case.expected_error
         assert processed.finished_at is not None
 
         # failed task should still be in processed list
@@ -356,7 +356,7 @@ class TestScheduledTasks:
 
         assert len(processed) == 1
         assert_is_failed(processed[0])
-        assert processed[0].error == test_case.expected_error
+        assert str(processed[0].exception) == test_case.expected_error
         assert len(queue.failed_tasks) == 1
 
     def test_schedule_in_past(self):

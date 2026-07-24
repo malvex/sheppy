@@ -87,7 +87,8 @@ class TestQueue:
             # check task is failed
             assert processed_task.status == 'failed'
             assert processed_task.result is None
-            assert processed_task.error == "ZeroDivisionError: division by zero"
+            assert processed_task.exception is not None
+            assert str(processed_task.exception) == "ZeroDivisionError: division by zero"
 
             # check queue size is now zero
             assert q.size() == 0
@@ -400,7 +401,7 @@ class TestQueue:
 
         self.processed_tasks.append(task)
 
-        if task.error:
+        if task.exception:
             self.failed_tasks.append(task)
 
             if task.should_retry and task.next_retry_at is not None:
@@ -454,7 +455,7 @@ class TestQueue:
     def process_workflow(self, workflow: Workflow) -> WorkflowResult:
         result = self.add_workflow(workflow)
 
-        while not result.workflow.completed and result.workflow.error is None:
+        while not result.workflow.completed and result.workflow.exception is None:
             if not result.pending_tasks:
                 break
 

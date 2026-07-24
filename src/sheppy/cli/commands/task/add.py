@@ -95,10 +95,10 @@ def add(
                 console.print(json.dumps(result_task.result, indent=2, default=str))
             else:
                 console.print(str(result_task.result))
-        elif result_task and result_task.error:
+        elif result_task and result_task.exception:
             console.print("\n[red]✗ Task failed[/red]")
-            console.print("\n[bold red]Error:[/bold red]")
-            console.print(f"  {result_task.error}")
+            console.print("\n[bold red]Exception:[/bold red]")
+            console.print(f"  {result_task.exception}")
         else:
             # should never happen
             console.print("\n[yellow]Task not completed yet (still pending)[/yellow]")

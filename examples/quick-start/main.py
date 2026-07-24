@@ -24,7 +24,7 @@ async def main() -> None:
 
     print(f"task result: {task.result}")
     print(f"status: {task.status}")
-    print(f"error: {task.error}")
+    print(f"error: {task.exception}")
 
 
 if __name__ == "__main__":

@@ -20,8 +20,8 @@ async def main():
     # await the task completion
     updated_task = await queue.wait_for(t1)
 
-    if updated_task.error:
-        print(f"Task failed with error: {updated_task.error}")
+    if updated_task.exception:
+        print(f"Task failed with error: {updated_task.exception}")
     elif updated_task.status == 'completed':
         print(f"Task succeed with result: {updated_task.result}")
         assert updated_task.result == "Hello, World!"

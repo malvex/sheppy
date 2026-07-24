@@ -82,7 +82,7 @@ async def test_workflow(queue2: Queue, worker_process_factory):
 
     ret = await queue2.get_workflow(w)
 
-    assert ret.error is None
+    assert ret.exception is None
     assert ret.completed is True
 
     # assert ret.final_result == MyModel(name="wf", x=1, y=5)  # this doesn't work but again, it is understandable because no type hint
@@ -95,7 +95,7 @@ async def test_workflow(queue2: Queue, worker_process_factory):
 
     ret2 = await queue2.get_workflow(w2)
 
-    assert ret2.error is None
+    assert ret2.exception is None
     assert ret2.completed is True
 
     assert ret2.final_result == MyModel(name="wf", x=1, y=5)  # reconstructed from the Generator return type hint, same pattern as tasks

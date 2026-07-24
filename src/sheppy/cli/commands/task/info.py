@@ -46,7 +46,7 @@ def info(
             status = "[green]completed[/green]"
         elif task.status == 'crashed':
             status = "[bold][red]crashed[/red][/bold]"
-        elif task.error:
+        elif task.exception:
             status = "[red]failed[/red]"
         elif task.status == 'scheduled':
             status = "[magenta]scheduled[/magenta]"
@@ -80,8 +80,12 @@ def info(
             console.print("\n[bold]Result:[/bold]")
             console.print(f"  {task.result}")
 
-        if task.error:
-            console.print("\n[bold red]Error:[/bold red]")
-            console.print(f"  {task.error}")
+        if task.exception:
+            console.print("\n[bold red]Exception:[/bold red]")
+            console.print(f"  Type: [red]{task.exception.type}[/red]")
+            console.print(f"  Message: [red]{task.exception.message}[/red]")
+            if task.exception.traceback:
+                console.print("\n[bold]Traceback:[/bold]")
+                console.print(task.exception.traceback)
 
     asyncio.run(_info(backend_url))

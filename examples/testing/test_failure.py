@@ -21,9 +21,9 @@ def test_divide_by_zero():
 
     # verify the first task result
     assert processed_tasks[0].status == 'completed'
-    assert processed_tasks[0].error is None
+    assert processed_tasks[0].exception is None
     assert processed_tasks[0].result == 0.5
 
     # verify the second task result (should fail)
     assert processed_tasks[1].status == 'failed'
-    assert processed_tasks[1].error == "ZeroDivisionError: division by zero"
+    assert str(processed_tasks[1].exception) == "ZeroDivisionError: division by zero"

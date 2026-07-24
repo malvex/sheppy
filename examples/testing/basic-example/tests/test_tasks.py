@@ -15,5 +15,5 @@ def test_add():
 
     # verify the task result
     assert processed_task.status == 'completed'
-    assert processed_task.error is None
+    assert processed_task.exception is None
     assert processed_task.result == 3

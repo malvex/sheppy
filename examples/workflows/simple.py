@@ -33,8 +33,8 @@ async def main():
     # stop worker
     worker_process.cancel()
 
-    if wf is None or wf.error:
-        print(f"Workflow failed: {wf.error if wf else 'not found'}")
+    if wf is None or wf.exception:
+        print(f"Workflow failed: {wf.exception if wf else 'not found'}")
     else:
         print(wf.final_result)
 

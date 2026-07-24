@@ -6,7 +6,7 @@ from pydantic import BaseModel, ValidationError
 
 from sheppy import CURRENT_TASK, Depends, Task, task, workflow
 from sheppy._workflow import Workflow, WorkflowRunner
-from sheppy.models import TaskConfig, TaskSpec
+from sheppy.models import TaskConfig, TaskException, TaskSpec
 
 
 @task
@@ -172,7 +172,7 @@ def test_workflow_coerces_args_like_tasks():
 def test_task_is_terminal(status: str, error: str | None, retry: int, retry_count: int, expected: bool):
     t = Task(
         status=status,  # type: ignore[arg-type]
-        error=error,
+        exception=TaskException(type="Exception", module="builtins", message="x") if error else None,
         retry_count=retry_count,
         spec=TaskSpec(func="tests.unit.test_workflow:add"),
         config=TaskConfig(retry=retry),
@@ -188,7 +188,7 @@ def test_runner_first_run_returns_pending_task():
     result = WorkflowRunner(wf).run()
 
     assert not result.workflow.completed
-    assert result.workflow.error is None
+    assert result.workflow.exception is None
     assert len(result.pending_tasks) == 1
 
     t1 = result.pending_tasks[0]
@@ -215,7 +215,7 @@ def test_runner_replay_advances_and_completes():
     r3 = WorkflowRunner(r2.workflow, {t1.id: done1, t2.id: _completed(t2, 12)}).run()
 
     assert r3.workflow.completed
-    assert r3.workflow.error is None
+    assert r3.workflow.exception is None
     assert r3.workflow.final_result == 12
     assert r3.workflow.finished_at is not None
     assert r3.pending_tasks == []
@@ -241,7 +241,7 @@ def test_runner_non_terminal_task_keeps_workflow_waiting():
     r1 = WorkflowRunner(wf).run()
     t1 = r1.pending_tasks[0]
 
-    retrying = t1.model_copy(update={"status": "retrying", "error": "Exception: x", "retry_count": 1})
+    retrying = t1.model_copy(update={"status": "retrying", "exception": TaskException(type="Exception", module="builtins", message="x"), "retry_count": 1})
     r2 = WorkflowRunner(r1.workflow, {t1.id: retrying}).run()
 
     assert not r2.workflow.completed
@@ -283,7 +283,7 @@ def test_runner_error_in_workflow_body():
 
     r2 = WorkflowRunner(r1.workflow, {t1.id: _completed(t1, 10)}).run()
 
-    assert r2.workflow.error == "RuntimeError: boom after 10"
+    assert str(r2.workflow.exception) == "RuntimeError: boom after 10"
     assert not r2.workflow.completed
     assert r2.workflow.finished_at is not None
 
@@ -291,17 +291,17 @@ def test_runner_error_in_workflow_body():
 def test_runner_invalid_yield_fails_with_clear_error():
     result = WorkflowRunner(invalid_yield_workflow()).run()
 
-    assert result.workflow.error is not None
-    assert "Invalid yield" in result.workflow.error
-    assert "int" in result.workflow.error
+    assert result.workflow.exception is not None
+    assert "Invalid yield" in str(result.workflow.exception)
+    assert "int" in str(result.workflow.exception)
 
 
 def test_runner_mixed_yield_fails_with_clear_error():
     result = WorkflowRunner(mixed_yield_workflow()).run()
 
-    assert result.workflow.error is not None
-    assert "Invalid yield" in result.workflow.error
-    assert "homogeneous" in result.workflow.error
+    assert result.workflow.exception is not None
+    assert "Invalid yield" in str(result.workflow.exception)
+    assert "homogeneous" in str(result.workflow.exception)
 
 
 def test_runner_tuple_yield_behaves_like_list_yield():

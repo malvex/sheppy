@@ -17,5 +17,5 @@ def test_send_email_task():
     processed_task = q.process_next()
 
     assert processed_task.status == 'completed'
-    assert processed_task.error is None
+    assert processed_task.exception is None
     assert processed_task.result == Status(ok=True)

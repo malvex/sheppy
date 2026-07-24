@@ -510,7 +510,7 @@ class TestBatchOperations:
 
         for i, t in enumerate(processed):
             assert t.status == 'completed'
-            assert not t.error
+            assert not t.exception
             assert t.result == 2 * i
 
     async def test_batch_add_one(self, task_fn, queue: Queue, worker: Worker):
@@ -529,7 +529,7 @@ class TestBatchOperations:
         t = await queue.get_task(tasks[0])
 
         assert t.status == 'completed'
-        assert not t.error
+        assert not t.exception
         assert t.result == 2
 
     async def test_batch_add_empty(self, queue: Queue):
@@ -553,7 +553,7 @@ class TestBatchOperations:
 
         for i, t in enumerate(processed):
             assert t.status == 'completed'
-            assert not t.error
+            assert not t.exception
             assert t.result == 2 * i
 
 

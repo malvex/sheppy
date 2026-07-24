@@ -43,7 +43,7 @@ async def main():
 
     assert task.result == {"status": "sent"}
     assert task.status == 'completed'
-    assert not task.error
+    assert not task.exception
 
     # stop worker
     worker_process.cancel()

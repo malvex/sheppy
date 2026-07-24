@@ -391,7 +391,7 @@ class MemoryBackend(Backend):
                 for workflow_id in remaining_ids[:]:
                     wf_data = self._workflows[queue_name].get(workflow_id, {})
 
-                    if wf_data.get("completed") or wf_data.get("error"):
+                    if wf_data.get("completed") or wf_data.get("exception"):
                         results[workflow_id] = deepcopy(wf_data)
                         remaining_ids.remove(workflow_id)
 
@@ -424,7 +424,7 @@ class MemoryBackend(Backend):
         async with self._locks[queue_name]:
             return [
                 deepcopy(wf) for wf in self._workflows[queue_name].values()
-                if not wf.get("completed") and not wf.get("error")
+                if not wf.get("completed") and not wf.get("exception")
             ]
 
     async def delete_workflow(self, queue_name: str, workflow_id: str) -> bool:
@@ -522,7 +522,7 @@ class MemoryBackend(Backend):
         _, processed_task = await self._task_processor.process_task(task, hacky_queue, self._worker_id)
 
         # handle retry
-        if processed_task.error and processed_task.should_retry and processed_task.next_retry_at is not None:
+        if processed_task.exception and processed_task.should_retry and processed_task.next_retry_at is not None:
             async with self._locks[queue_name]:
                 processed_data = processed_task.model_dump(mode="json")
                 self._task_metadata[queue_name][task_id] = processed_data
