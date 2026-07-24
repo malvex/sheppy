@@ -36,7 +36,7 @@ async def send_notification(to: str, subject: str):
 def daily_cleanup(days_to_clean: int):
     result_task = yield cleanup_old_data(days=days_to_clean)
 
-    if result_task.error:
+    if result_task.exception:
         yield rollback_changes()
         yield [send_notification(email, "Oh no, daily cleanup failed!") for email in ADMIN_EMAILS]
 
@@ -66,8 +66,8 @@ async def main():
 
     if wf is None:
         print("Workflow not found")
-    elif wf.error:
-        print(f"Workflow failed as expected: {wf.error}")
+    elif wf.exception:
+        print(f"Workflow failed as expected: {wf.exception}")
     else:
         print(f"Workflow completed: {wf.final_result}")
 

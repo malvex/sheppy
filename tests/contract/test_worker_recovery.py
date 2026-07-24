@@ -1,6 +1,7 @@
 import asyncio
 
 from sheppy import Queue, task
+from sheppy.exceptions import WorkerCrashedError
 
 
 @task
@@ -119,6 +120,9 @@ class TestWorkerInstanceProcess:
 
         t = await queue2.get_task(t)
         assert t.status == "crashed"
+        assert t.exception is not None
+        assert t.exception.type == "WorkerCrashedError"
+        assert isinstance(t.exception.to_exception(), WorkerCrashedError)
         worker2.kill()
 
     async def test_crashed_task_retry(self, queue2: Queue, worker_process_factory):

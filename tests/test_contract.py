@@ -82,7 +82,7 @@ class TestFailingTasks:
         # refresh and verify failure
         task = await queue.get_task(task)
         assert_is_failed(task)
-        assert task.error == test_case.expected_error
+        assert str(task.exception) == test_case.expected_error
         assert task.finished_at is not None
 
 
@@ -208,7 +208,7 @@ class TestScheduledTasks:
 
         task = await queue.get_task(task)
         assert_is_failed(task)
-        assert task.error == test_case.expected_error
+        assert str(task.exception) == test_case.expected_error
 
     async def test_schedule_in_past(self, queue: Queue, worker: Worker):
         task = simple_sync_task(1, 2)

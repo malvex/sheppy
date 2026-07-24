@@ -461,7 +461,7 @@ class Worker:
             except Exception:
                 logger.exception(f"Failed to store result for task {task.id}")
 
-            if task.error and task.should_retry and task.next_retry_at is not None:
+            if task.exception and task.should_retry and task.next_retry_at is not None:
                 await queue.retry(task, task.next_retry_at)
 
             if task.is_terminal and task.workflow_id:
@@ -481,8 +481,8 @@ class Worker:
             if result.workflow.completed:
                 logger.info(WORKER_PREFIX + f"Workflow {task.workflow_id} completed with result: {result.workflow.final_result}")
 
-            elif result.workflow.error:
-                logger.error(WORKER_PREFIX + f"Workflow {task.workflow_id} failed: {result.workflow.error}")
+            elif result.workflow.exception:
+                logger.error(WORKER_PREFIX + f"Workflow {task.workflow_id} failed: {result.workflow.exception}")
 
             elif result.pending_tasks:
                 logger.debug(WORKER_PREFIX + f"Workflow {task.workflow_id} waiting for {len(result.pending_tasks)} more tasks")

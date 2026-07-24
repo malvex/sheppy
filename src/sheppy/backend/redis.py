@@ -598,7 +598,7 @@ class RedisBackend(Backend):
                 if self.ttl:
                     pipe.hexpire(workflows_key, self.ttl, workflow_id)
 
-                if workflow_data.get('completed') or workflow_data.get('error'):
+                if workflow_data.get('completed') or workflow_data.get('exception'):
                     pipe.srem(pending_index_key, workflow_id)
                     # notify waiters (trim older messages to keep the stream small)
                     min_id = f"{int((time() - self._results_stream_ttl) * 1000)}-0"
@@ -658,7 +658,7 @@ class RedisBackend(Backend):
                 continue
             wf = json.loads(wf_json)
 
-            if wf.get("completed") or wf.get("error"):
+            if wf.get("completed") or wf.get("exception"):
                 results[wf["id"]] = wf
                 remaining_ids.remove(wf["id"])
 
@@ -699,7 +699,7 @@ class RedisBackend(Backend):
                             continue
                         wf = json.loads(wf_json)
 
-                        if wf.get("completed") or wf.get("error"):  # should be always true because we only get notifications for finished workflows
+                        if wf.get("completed") or wf.get("exception"):  # should be always true because we only get notifications for finished workflows
                             results[wf["id"]] = wf
                             remaining_ids.remove(workflow_id)
 

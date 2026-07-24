@@ -24,8 +24,8 @@ async def main():
 
     if processed.status == 'completed':
         print(f"Task {t.id} completed with result: {processed.result}")
-    elif processed.error:
-        print(f"Task {t.id} failed with error: {processed.error}")
+    elif processed.exception:
+        print(f"Task {t.id} failed with error: {processed.exception}")
     else:
         # this shouldn't happen because we are waiting for the task to complete
         print(f"Task {t.id} is still pending.")

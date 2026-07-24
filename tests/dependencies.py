@@ -95,6 +95,21 @@ async def async_failing_task(message: str = "Async task failed") -> None:
     raise ValueError(message)
 
 
+class CustomTaskError(Exception):
+    pass
+
+
+@task
+def failing_task_custom_error(code: int, detail: str = "oops") -> None:
+    raise CustomTaskError(detail, code)
+
+
+@task
+async def async_failing_task_custom_error(code: int, detail: str = "oops") -> None:
+    await asyncio.sleep(0.001)
+    raise CustomTaskError(detail, code)
+
+
 # Tasks with dependencies
 @task
 def task_with_dependency(
@@ -625,7 +640,7 @@ def assert_is_new(task: Task | None, status: TaskStatus = 'new') -> None:
     assert isinstance(task, Task)
 
     assert task.status == status
-    assert task.error is None
+    assert task.exception is None
     assert task.result is None
     assert task.finished_at is None
 
@@ -635,7 +650,7 @@ def assert_is_completed(task: Task | None, status: TaskStatus = 'completed') -> 
     assert isinstance(task, Task)
 
     assert task.status == status
-    assert task.error is None
+    assert task.exception is None
     assert task.finished_at is not None
 
 
@@ -644,7 +659,7 @@ def assert_is_failed(task: Task | None, status: TaskStatus = 'failed') -> None:
     assert isinstance(task, Task)
 
     assert task.status == status
-    assert task.error is not None
+    assert task.exception is not None
     assert task.result is None
 
     if not task.should_retry:

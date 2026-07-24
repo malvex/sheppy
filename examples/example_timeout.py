@@ -43,7 +43,7 @@ def test_timeout():
     assert processed1.status == 'completed'
     assert processed2.status == 'completed'
     assert processed3.status == 'failed'
-    assert processed3.error == "TaskTimeoutError: Task exceeded timeout of 1.0 seconds"
+    assert str(processed3.exception) == "TaskTimeoutError: Task exceeded timeout of 1.0 seconds"
 
 
 def test_timeout_with_retry():

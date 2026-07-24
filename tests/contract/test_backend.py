@@ -990,9 +990,9 @@ async def test_get_all_workflows(backend: Backend):
 
 
 async def test_get_pending_workflows(backend: Backend):
-    wf_pending = {"id": "wf-1", "task_order": ["t1"], "completed": False, "error": None}
-    wf_completed = {"id": "wf-2", "task_order": [], "completed": True, "error": None}
-    wf_error = {"id": "wf-3", "task_order": [], "completed": False, "error": "something broke"}
+    wf_pending = {"id": "wf-1", "task_order": ["t1"], "completed": False, "exception": None}
+    wf_completed = {"id": "wf-2", "task_order": [], "completed": True, "exception": None}
+    wf_error = {"id": "wf-3", "task_order": [], "completed": False, "exception": {"type": "Exception", "module": "builtins", "message": "something broke", "args": ["something broke"], "traceback": None}}
 
     await backend.connect()
     assert await backend.store_workflow(Q, wf_pending) is True
@@ -1048,9 +1048,9 @@ async def test_get_workflows_batch(backend: Backend):
 
 
 async def test_get_workflow_results_immediate(backend: Backend):
-    wf_pending = {"id": "wf-1", "task_order": [], "completed": False, "error": None}
-    wf_completed = {"id": "wf-2", "task_order": [], "completed": True, "error": None}
-    wf_error = {"id": "wf-3", "task_order": [], "completed": False, "error": "broke"}
+    wf_pending = {"id": "wf-1", "task_order": [], "completed": False, "exception": None}
+    wf_completed = {"id": "wf-2", "task_order": [], "completed": True, "exception": None}
+    wf_error = {"id": "wf-3", "task_order": [], "completed": False, "exception": {"type": "Exception", "module": "builtins", "message": "broke", "args": ["broke"], "traceback": None}}
 
     await backend.connect()
     await backend.store_workflow(Q, wf_pending)

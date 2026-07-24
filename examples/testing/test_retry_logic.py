@@ -31,11 +31,11 @@ def test_fail_once():
 
     # verify the task result
     assert processed[0].status == 'failed'
-    assert processed[0].error == "ValueError: task failed"
+    assert str(processed[0].exception) == "ValueError: task failed"
 
     # retry should succeed
     assert processed[1].status == 'completed'
-    assert processed[1].error is None
+    assert processed[1].exception is None
     assert processed[1].result == "success"
 
     # both processed tasks should have the same id

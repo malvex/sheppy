@@ -94,7 +94,7 @@ async def test_memory_backend():
 
         ret = await queue.get_workflow(w)
 
-        if ret.completed or ret.error:
+        if ret.completed or ret.exception:
             ok = True
             break
 
@@ -103,7 +103,7 @@ async def test_memory_backend():
     if not ok:
         pytest.fail("workflow did not completed in time")
 
-    assert ret.error is None
+    assert ret.exception is None
     assert ret.completed is True
 
     assert ret.final_result[0] == 5
@@ -116,7 +116,7 @@ async def test_memory_backend():
 
     assert ret.final_result[3].status == "failed"
     assert ret.final_result[3].result is None
-    assert "division by zero" in ret.final_result[3].error
+    assert "division by zero" in str(ret.final_result[3].exception)
 
     assert ret.final_result[4].status == "completed"
     assert ret.final_result[4].result == ({}, "world")
@@ -136,7 +136,7 @@ async def test_quick_error_exception_redis_backend(queue2: Queue, worker_process
     ret = await queue2.get_workflow(w)
 
     assert ret.completed is False
-    assert ret.error == "Exception: exception test"
+    assert str(ret.exception) == "Exception: exception test"
     assert ret.final_result is None
 
 
@@ -149,7 +149,7 @@ async def test_quick_error_assert_redis_backend(queue2: Queue, worker_process_fa
     ret = await queue2.get_workflow(w)
 
     assert ret.completed is False
-    assert ret.error == "AssertionError: y assert fail test\nassert -1 > 0"
+    assert str(ret.exception) == "AssertionError: y assert fail test\nassert -1 > 0"
     assert ret.final_result is None
 
 
@@ -167,7 +167,7 @@ async def test_redis_backend(queue2: Queue, worker_process_factory):
 
         ret = await queue2.get_workflow(w)
 
-        if ret.completed or ret.error:
+        if ret.completed or ret.exception:
             ok = True
             break
 
@@ -178,7 +178,7 @@ async def test_redis_backend(queue2: Queue, worker_process_factory):
 
     # print(ret.model_dump_json())
 
-    assert ret.error is None
+    assert ret.exception is None
     assert ret.completed is True
 
     assert ret.final_result[0] == 5
@@ -191,7 +191,7 @@ async def test_redis_backend(queue2: Queue, worker_process_factory):
 
     assert ret.final_result[3].status == "failed"
     assert ret.final_result[3].result is None
-    assert "division by zero" in ret.final_result[3].error
+    assert "division by zero" in str(ret.final_result[3].exception)
 
     assert ret.final_result[4].status == "completed"
     assert ret.final_result[4].result == ({}, "world")

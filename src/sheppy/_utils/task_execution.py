@@ -12,8 +12,8 @@ from uuid import uuid4
 
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
 
-from ..exceptions import MiddlewareError, TaskTimeoutError
-from ..models import CURRENT_TASK, Task, TaskStatus
+from ..exceptions import MiddlewareError, TaskTimeoutError, WorkerCrashedError
+from ..models import CURRENT_TASK, Task, TaskException, TaskStatus
 from ..protocols import (
     AsyncMiddlewareProtocol,
     MiddlewareProtocol,
@@ -204,7 +204,7 @@ class TaskProcessor(TaskProcessorProtocol):
         # we reconstruct result here only to trigger result validation
         # before we store task as completed
         task.__dict__["result"] = reconstruct_result(task.spec.func, result)
-        task.__dict__["error"] = None
+        task.__dict__["exception"] = None
         task.__dict__["finished_at"] = datetime.now(timezone.utc)
 
         return task
@@ -213,7 +213,7 @@ class TaskProcessor(TaskProcessorProtocol):
     def mark_failed(task: Task, exception: Exception, status: TaskStatus = 'failed') -> Task:
         task.__dict__["status"] = status
         task.__dict__["result"] = None
-        task.__dict__["error"] = f"{exception.__class__.__name__}: {exception}"
+        task.__dict__["exception"] = TaskException.from_exception(exception)
         task.__dict__["finished_at"] = datetime.now(timezone.utc)
 
         return task
@@ -222,7 +222,12 @@ class TaskProcessor(TaskProcessorProtocol):
     def mark_crashed(task: Task, error: str = "Worker crashed during execution", status: TaskStatus = 'crashed') -> Task:
         task.__dict__["status"] = status
         task.__dict__["result"] = None
-        task.__dict__["error"] = error
+        task.__dict__["exception"] = TaskException(
+            type=WorkerCrashedError.__qualname__,
+            module=WorkerCrashedError.__module__,
+            message=error,
+            args=(error,),
+        )
         task.__dict__["finished_at"] = datetime.now(timezone.utc)
 
         return task

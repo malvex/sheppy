@@ -542,7 +542,7 @@ class Queue:
                 raise ValueError(f"Workflow not found: {workflow}")
             workflow = Workflow.model_validate(wf_data[w_id])
 
-        if workflow.completed or workflow.error:
+        if workflow.completed or workflow.exception:
             # already finished - nothing to resume
             return WorkflowResult(workflow=workflow, pending_tasks=[])
 
@@ -556,7 +556,7 @@ class Queue:
         # cannot clobber a concurrent advancing resume (last write wins)
         state_changed = (
             result.workflow.completed
-            or result.workflow.error is not None
+            or result.workflow.exception is not None
             or len(result.workflow.task_order) != previous_step_count
         )
         if state_changed:

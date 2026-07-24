@@ -1,4 +1,8 @@
+import builtins
+import importlib
+import json
 from datetime import datetime, timezone
+from traceback import format_exception
 from typing import (
     Annotated,
     Any,
@@ -21,6 +25,7 @@ from pydantic import (
 from typing_extensions import NotRequired, TypedDict
 
 from ._utils.functions import reconstruct_result
+from .exceptions import TaskFailedError
 
 P = ParamSpec('P')
 R = TypeVar('R')
@@ -52,6 +57,102 @@ class RateLimit(TypedDict):
     rate_period: float  # time window for the rate limit in seconds
     key: NotRequired[str]  # defaults to task name, can be set to group rate limits across tasks
     strategy: NotRequired[RateLimitStrategy]  # defaults to "sliding_window"
+
+
+def _json_safe(value: Any) -> Any:
+    try:
+        json.dumps(value)
+    except (TypeError, ValueError):
+        return repr(value)  # repr acceptable here as it's only used for TaskException
+    return value
+
+
+class TaskException(BaseModel):
+    """Serializable representation of an exception raised during task execution.
+
+    Captures everything needed to inspect a task failure in a JSON-serializable form, so it can be stored in any backend and reconstructed later.
+
+    Attributes:
+        type: Exception class name, e.g. `ValueError`.
+        module: Module where the exception class is defined, e.g. `builtins`.
+        message: Exception message, i.e. `str(exception)`.
+        args: Exception args, sanitized to be JSON serializable (non-serializable values are replaced with their repr).
+        traceback: Full formatted traceback of the exception. None for synthesized exceptions (e.g. worker crash).
+
+    Example:
+        ```python
+        from sheppy import Queue, task
+
+        @task
+        def failing_task():
+            raise ValueError("something went wrong")
+
+        q = Queue(...)
+        t = await q.add(failing_task())
+        t = await q.wait_for(t)
+
+        assert t.exception is not None
+        print(t.exception.type)       # "ValueError"
+        print(t.exception.message)    # "something went wrong"
+        print(t.exception.traceback)  # full formatted traceback
+
+        # best-effort reconstruction of the original exception
+        exc = t.exception.to_exception()
+        assert isinstance(exc, ValueError)
+        ```
+    """
+    model_config = ConfigDict(frozen=True)
+
+    type: str
+    """str: Exception class name, e.g. `ValueError`."""
+    module: str
+    """str: Module where the exception class is defined, e.g. `builtins`."""
+    message: str
+    """str: Exception message, i.e. `str(exception)`."""
+    args: tuple[Any, ...] = Field(default_factory=tuple)
+    """tuple[Any, ...]: Exception args, sanitized to be JSON serializable."""
+    traceback: str | None = None
+    """str|None: Full formatted traceback. None for synthesized exceptions (e.g. worker crash)."""
+
+    @classmethod
+    def from_exception(cls, exception: BaseException) -> 'TaskException':
+        return cls(
+            type=type(exception).__qualname__,
+            module=type(exception).__module__,
+            message=str(exception),
+            args=tuple(_json_safe(arg) for arg in exception.args),
+            traceback="".join(format_exception(exception)),
+        )
+
+    def to_exception(self) -> Exception:
+        exc_class = self._resolve_exception_class()
+        if exc_class is not None:
+            for args in (tuple(self.args), (self.message,)):
+                try:
+                    return exc_class(*args)
+                except Exception:
+                    continue
+
+        # fallback if original exception cannot be reconstructed
+        return TaskFailedError(f"{self.module}:{self.type}", self.message, self.traceback)
+
+    def _resolve_exception_class(self) -> builtins.type[Exception] | None:
+        try:
+            obj: Any = importlib.import_module(self.module)
+            for attr in self.type.split('.'):
+                obj = getattr(obj, attr)
+        except (ImportError, AttributeError):
+            return None
+
+        if isinstance(obj, type) and issubclass(obj, Exception):
+            return obj
+        return None
+
+    def __str__(self) -> str:
+        return f"{self.type}: {self.message}"
+
+    def __repr__(self) -> str:
+        return f"TaskException(type={self.type!r}, message={self.message!r})"
 
 
 class TaskSpec(BaseModel):
@@ -152,7 +253,8 @@ class Task(BaseModel):
     Attributes:
         id: Unique identifier for the task.
         status: Task status.
-        error: Error message if the task failed. None if the task succeeded or is not yet executed.
+        exception: Exception data if the task failed, as a TaskException. None if the task succeeded or is not yet executed.
+        error: Deprecated, use `exception` instead.
         result: The result of the task execution. If the task failed, this will be None.
         spec: Task specification
         config: Task configuration
@@ -191,8 +293,8 @@ class Task(BaseModel):
     """UUID: Unique identifier for the task."""
     status: TaskStatus = 'new'
     """TaskStatus: Task status."""
-    error: str | None = None
-    """str|None: Error message if the task failed. None if the task succeeded or is not yet executed."""
+    exception: TaskException | None = None
+    """TaskException|None: Exception data if the task failed. None if the task succeeded or is not yet executed."""
     result: Any = None
     """Any: The result of the task execution. This will be None if the task failed or is not yet executed."""
 
@@ -236,7 +338,7 @@ class Task(BaseModel):
     @property
     def is_terminal(self) -> bool:
         """Returns True if the task reached a final state (completed or failed with no retries left)."""
-        return self.status == 'completed' or (self.error is not None and not self.should_retry)
+        return self.status == 'completed' or (self.exception is not None and not self.should_retry)
 
     @property
     def completed(self) -> bool:
@@ -244,6 +346,13 @@ class Task(BaseModel):
         import warnings  # noqa: PLC0415
         warnings.warn("task.completed is deprecated, use task.status instead", category=DeprecationWarning, stacklevel=2)
         return self.status == "completed"
+
+    @property
+    def error(self) -> str | None:
+        """Deprecated, use `task.exception` instead. Returns the error as a `"Type: message"` string."""
+        import warnings  # noqa: PLC0415
+        warnings.warn("task.error is deprecated, use task.exception instead", category=DeprecationWarning, stacklevel=2)
+        return str(self.exception) if self.exception is not None else None
 
     @model_validator(mode='after')
     def _reconstruct_pydantic_result(self) -> 'Task':
@@ -266,7 +375,7 @@ class Task(BaseModel):
             "args": repr(self.spec.args),
             "kwargs": repr(self.spec.kwargs),
             "status": repr(self.status),
-            "error": repr(self.error)
+            "exception": repr(self.exception)
         }
 
         if self.retry_count > 0:

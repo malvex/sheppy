@@ -17,7 +17,7 @@ from ._utils.functions import (
 )
 from ._utils.validation import _is_depends_parameter, validate_input
 from .exceptions import WorkflowError
-from .models import CURRENT_TASK, Task
+from .models import CURRENT_TASK, Task, TaskException
 
 P = ParamSpec('P')
 R = TypeVar('R')
@@ -69,7 +69,8 @@ class Workflow(BaseModel):
         task_order: Deterministic task IDs in creation order (one per replay step).
         completed: True when the workflow function has returned.
         final_result: Return value of the workflow function (when completed).
-        error: Error message if the workflow failed. None otherwise.
+        exception: Exception data if the workflow failed, as a TaskException. None otherwise.
+        error: Deprecated, use `exception` instead.
         created_at: Timestamp when the workflow was created.
         finished_at: Timestamp when the workflow completed or failed. None while running.
 
@@ -113,12 +114,19 @@ class Workflow(BaseModel):
     """bool: True when the workflow function has returned."""
     final_result: Any = None
     """Any: Return value of the workflow function (when completed)."""
-    error: str | None = None
-    """str|None: Error message if the workflow failed. None otherwise."""
+    exception: TaskException | None = None
+    """TaskException|None: Exception data if the workflow failed. None otherwise."""
     created_at: AwareDatetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     """datetime: Timestamp when the workflow was created."""
     finished_at: AwareDatetime | None = None
     """datetime|None: Timestamp when the workflow completed or failed. None while running."""
+
+    @property
+    def error(self) -> str | None:
+        """Deprecated, use `workflow.exception` instead. Returns the error as a `"Type: message"` string."""
+        import warnings  # noqa: PLC0415
+        warnings.warn("workflow.error is deprecated, use workflow.exception instead", category=DeprecationWarning, stacklevel=2)
+        return str(self.exception) if self.exception is not None else None
 
     def get_stored_task_ids(self) -> dict[int, UUID]:
         """Map of replay step index to deterministic task ID, from previous runs."""
@@ -261,7 +269,7 @@ class WorkflowRunner:
 
         except Exception as e:
             return WorkflowResult(
-                workflow=self._make_workflow(ctx, error=f"{type(e).__name__}: {e}"),
+                workflow=self._make_workflow(ctx, exception=TaskException.from_exception(e)),
                 pending_tasks=[],
             )
         finally:
@@ -341,7 +349,7 @@ class WorkflowRunner:
         *,
         completed: bool = False,
         final_result: Any = None,
-        error: str | None = None,
+        exception: TaskException | None = None,
     ) -> Workflow:
         data = self.workflow.model_dump()
         data['task_order'] = ctx.task_order
@@ -349,9 +357,9 @@ class WorkflowRunner:
         if completed:
             data['completed'] = True
             data['final_result'] = final_result
-        if error is not None:
-            data['error'] = error
-        if completed or error:
+        if exception is not None:
+            data['exception'] = exception
+        if completed or exception:
             data['finished_at'] = datetime.now(timezone.utc)
 
         return Workflow.model_validate(data)

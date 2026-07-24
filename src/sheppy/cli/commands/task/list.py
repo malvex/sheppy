@@ -57,7 +57,7 @@ def list_tasks(
                 queue_status = "[bold][red]crashed[/red][/bold]"
             elif task.status == 'retrying':  # FIXME: doesn't work
                 queue_status = "[yellow]retrying[/yellow]"
-            elif task.error:
+            elif task.exception:
                 queue_status = "[red]failed[/red]"
             #elif str(task.id) in all_scheduled_task_ids:
             elif task.status == 'scheduled':

@@ -21,7 +21,7 @@ async def send_email(email: Email, queue: Queue = Depends(get_queue)) -> Status:
 
     processed = await queue.wait_for(t, timeout=5)
 
-    if processed.error:
-        raise Exception(f"Task failed: {processed.error}")
+    if processed.exception:
+        raise Exception(f"Task failed: {processed.exception}")
 
     return processed.result
