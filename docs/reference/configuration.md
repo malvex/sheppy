@@ -9,6 +9,7 @@ Sheppy is configured through environment variables, loaded once at import time.
 | `SHEPPY_MAX_CONCURRENT_TASKS` | int | `10` | Max tasks a worker processes concurrently. |
 | `SHEPPY_SHUTDOWN_TIMEOUT` | float | `30.0` | Seconds a worker waits for active tasks at shutdown before cancelling them. |
 | `SHEPPY_LOG_LEVEL` | str | `info` | Log verbosity: `debug`, `info`, `warning`, or `error`. |
+| `SHEPPY_PRESTART` | str | (none) | Prestart hook as a `"module:function"` path, run once before the `sheppy work` CLI starts the worker. |
 
 Example:
 
