@@ -43,6 +43,7 @@ $ sheppy work [OPTIONS]
 * `--disable-cron-manager`: Disable cron manager
 * `-l, --log-level <debug|info|warning|error>`: Logging level. Env: SHEPPY_LOG_LEVEL  [default: info]
 * `--shutdown-timeout <float>`: Shutdown timeout in seconds. Env: SHEPPY_SHUTDOWN_TIMEOUT  [default: 30.0]
+* `--prestart <str>`: Prestart hook &#x27;module:function&#x27; run before the worker starts. Env: SHEPPY_PRESTART
 * `--help`: Show this message and exit.
 
 ## `sheppy task`

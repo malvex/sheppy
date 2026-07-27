@@ -18,6 +18,7 @@ class EnvConfig(BaseModel):
     max_concurrent_tasks: int = Field(default=DEFAULT_MAX_CONCURRENT_TASKS, ge=1)
     shutdown_timeout: float = Field(default=DEFAULT_SHUTDOWN_TIMEOUT, ge=0)
     log_level: LogLevelType = DEFAULT_LOG_LEVEL
+    prestart: str | None = None
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -36,6 +37,7 @@ def load_config(environ: MutableMapping[str, str]) -> EnvConfig:
         max_concurrent_tasks=environ.get("SHEPPY_MAX_CONCURRENT_TASKS", DEFAULT_MAX_CONCURRENT_TASKS),
         shutdown_timeout=environ.get("SHEPPY_SHUTDOWN_TIMEOUT", DEFAULT_SHUTDOWN_TIMEOUT),
         log_level=environ.get("SHEPPY_LOG_LEVEL", DEFAULT_LOG_LEVEL),
+        prestart=environ.get("SHEPPY_PRESTART"),
     )
 
 

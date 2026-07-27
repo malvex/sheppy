@@ -9,6 +9,7 @@ from rich.logging import RichHandler
 
 from sheppy import Backend, Worker
 from sheppy._config import LogLevelType, config
+from sheppy._utils.functions import resolve_function
 from sheppy.queue import _create_backend_from_url
 
 from ..utils import LogLevel, console
@@ -26,6 +27,7 @@ def work(
     disable_cron_manager: Annotated[bool, typer.Option("--disable-cron-manager", help="Disable cron manager")] = False,
     log_level: Annotated[LogLevelType, typer.Option("--log-level", "-l", help="Logging level. Env: SHEPPY_LOG_LEVEL")] = config.log_level,
     shutdown_timeout: Annotated[float, typer.Option("--shutdown-timeout", help="Shutdown timeout in seconds. Env: SHEPPY_SHUTDOWN_TIMEOUT")] = config.shutdown_timeout,
+    prestart: Annotated[str | None, typer.Option("--prestart", help="Prestart hook 'module:function' run before the worker starts. Env: SHEPPY_PRESTART")] = config.prestart,
 ) -> None:
     """Start a worker to process tasks from a queue."""
 
@@ -63,17 +65,19 @@ def work(
                   f"  Scheduler: [yellow]{not disable_scheduler}[/yellow]"
                   f"  Cron Manager: [yellow]{not disable_cron_manager}[/yellow]")
     console.print(f"  Max concurrent tasks: [yellow]{max_concurrent}[/yellow]")
+    if prestart:
+        console.print(f"  Prestart hook: [yellow]{prestart}[/yellow]")
     console.print()
 
     _start_worker(queues, backend_instance, max_concurrent, max_prefetch, _log_level,
                   shutdown_timeout, disable_job_processing, disable_scheduler, disable_cron_manager,
-                  oneshot, max_tasks)
+                  oneshot, max_tasks, prestart)
 
 
 def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, max_prefetch_tasks: int | None,
                   log_level: LogLevel, shutdown_timeout: float,
                   disable_job_processing: bool, disable_scheduler: bool, disable_cron_manager: bool,
-                  oneshot: bool = False, max_tasks: int | None = None,
+                  oneshot: bool = False, max_tasks: int | None = None, prestart: str | None = None,
                   ) -> None:
 
     loggers = [
@@ -90,6 +94,10 @@ def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, max_
                 log_time_format="[%X] ",
                 show_path=False
             ))
+
+    if prestart:
+        console.print(f"[cyan]Running prestart hook '[bold]{prestart}[/bold]'[/cyan]")
+        resolve_function(prestart)()
 
     worker = Worker(queues, backend=backend, max_concurrent_tasks=max_concurrent,
                     max_prefetch_tasks=max_prefetch_tasks,
