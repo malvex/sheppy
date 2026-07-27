@@ -1,94 +1,92 @@
-# Sheppy 🐕
+# Sheppy
 
-Documentation: <a href="https://docs.sheppy.org" target="_blank">https://docs.sheppy.org</a>
+[![PyPI version](https://img.shields.io/pypi/v/sheppy)](https://pypi.org/project/sheppy/)
+[![CI](https://github.com/malvex/sheppy/actions/workflows/test.yml/badge.svg)](https://github.com/malvex/sheppy/actions/workflows/test.yml)
+[![Python versions](https://img.shields.io/pypi/pyversions/sheppy)](https://pypi.org/project/sheppy/)
 
----
+Sheppy is an async-native task queue for Python. Decorate a function with `@task`, add it to a `Queue`, and a worker process executes it. Arguments are validated with Pydantic, tasks are stored in Redis (and soon Postgres), and workers wait on blocking reads instead of polling.
 
-## What is Sheppy?
+## Install
 
-Sheppy is an async-native task queue designed to be simple enough to understand completely, yet powerful enough to handle millions of tasks in production. Built on asyncio from the ground up and uses blocking waits instead of polling. Sheppy scales from the smallest deployments to large distributed systems by simply launching more worker processes.
+```bash
+pip install sheppy
+```
 
-### Core Principles
-
-- **Async Native**: Built on asyncio from the ground up
-- **Simplicity**: Two main concepts - `@task` decorator and `Queue`
-- **Low Latency**: Blocking reads instead of polling
-- **Type Safety**: Full Pydantic integration for validation and serialization
-- **Easy Scaling**: Just run more workers with `sheppy work`
-- **No Magic**: Clear and understandable implementation
-
-## TL;DR Quick Start
-
-This is all you need to know:
+## Example
 
 ```python
 import asyncio
-from datetime import datetime, timedelta
-from sheppy import Queue, task, RedisBackend
 
-queue = Queue(RedisBackend("redis://127.0.0.1:6379"))
+from sheppy import Queue, task
+
 
 @task
-async def say_hello(to: str) -> str:
-    s = f"Hello, {to}!"
-    print(s)
-    return s
+async def send_email(to: str, subject: str) -> str:
+    return f"sent '{subject}' to {to}"
 
-async def main():
-    t1 = say_hello("World")
-    await queue.add(t1)
-    await queue.add(say_hello("Moon"))
-    await queue.schedule(say_hello("Patient Person"), at=timedelta(seconds=10))  # runs in 10 seconds from now
-    await queue.schedule(say_hello("New Year"), at=datetime.fromisoformat("2026-01-01 00:00:00 +00:00"))
 
-    # await the task completion
-    updated_task = await queue.wait_for(t1)
+async def main() -> None:
+    queue = Queue("memory://")  # use "redis://localhost:6379" in production
 
-    if updated_task.error:
-        print(f"Task failed with error: {updated_task.error}")
-    elif updated_task.status == 'completed':
-        print(f"Task succeed with result: {updated_task.result}")
-        assert updated_task.result == "Hello, World!"
-    else:
-        # note: this won't happen because wait_for doesn't return pending tasks
-        print("Task is still pending!")
+    t = send_email("alice@example.com", "Welcome!")  # returns a Task model, nothing runs yet
+    await queue.add(t)
+
+    done = await queue.wait_for(t)
+    print(done.result)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-Run it:
-
 ```bash
-# run the app:
-python examples/tldr.py  # nothing will happen because worker isn't running
-
-# in another terminal, you can list queued tasks:
-sheppy task list  # (shows 2 pending and 2 scheduled tasks)
-
-# run worker process to process the tasks
-sheppy work  # (you should see the tasks to get processed, and the app should finish!)
+$ python example.py
+sent 'Welcome!' to alice@example.com
 ```
 
-For more details, see the <a href="https://docs.sheppy.org/getting-started/" target="_blank">Getting Started Guide</a>.
+The `memory://` backend executes tasks in-process, so this runs with no external services. Against Redis the application code is identical, but a separate worker process executes the tasks:
+
+```bash
+docker run -d -p 6379:6379 redis:7   # task storage
+python example.py                    # enqueues the task and waits for the result
+sheppy work                          # run in a second terminal: picks up and executes it
+```
+
+Scale out by starting more workers: every `sheppy work` process adds capacity.
+
+## Features
+
+- Scheduling and cron: `queue.schedule(t, at=timedelta(minutes=30))` or an absolute datetime, `queue.add_cron(t, "0 9 * * *")` for recurring tasks
+- Retries: `@task(retry=3, retry_delay=[1, 10, 60])` waits 1s, then 10s, then 60s between attempts. Timeouts and worker crashes can trigger retries too
+- Rate limiting: `@task(rate_limit={"max_rate": 2, "rate_period": 5})` delays tasks past the limit (sliding or fixed window) instead of dropping them
+- Pydantic validation: arguments are checked when you call the task function, before anything is queued. Results are validated against the return annotation
+- `TestQueue` runs tasks synchronously in unit tests without a separate worker or redis
+- FastAPI integration: `Depends` injection inside task functions and a monitoring ApiRouter
 
 ## Requirements
 
 - Python 3.10+
 - Redis 6.2+
 
-## Developing
+## Links
+
+- Documentation: <https://docs.sheppy.org>
+- Changelog: <https://docs.sheppy.org/changelog/>
+- Issues: <https://github.com/malvex/sheppy/issues>
+
+## Development
 
 ```bash
 git clone https://github.com/malvex/sheppy.git
 cd sheppy
-uv sync --group dev
+uv sync --dev
 
-pytest -v tests/ --tb=short
-mypy src/
-ruff check src/
+docker compose -f docker-compose.test.yml up -d
+uv run pytest tests/
+uv run mypy --strict src/sheppy/
+uv run ruff check src/ tests/
 ```
 
 ## License
 
-This project is licensed under the terms of the MIT license.
+MIT. See [LICENSE](LICENSE).

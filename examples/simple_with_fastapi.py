@@ -70,7 +70,7 @@ def get_queue():
 
 # DEMO ONLY: in production run this as separate process
 async def run_worker():
-    w = Worker(backend=backend)
+    w = Worker("default", backend=backend)
     await w.work()
 
 ################################################
@@ -108,7 +108,7 @@ async def register(user_data: UserCreate,
     await queue.add(task)
 
     # optional - for demo purposes we will wait for results
-    task = await task.wait_for(task)
+    task = await queue.wait_for(task)
 
     assert task.status == 'completed'
     assert isinstance(task.result, Status)

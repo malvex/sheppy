@@ -29,8 +29,8 @@ def test_fail_once():
     # there should be two processed tasks: the original + one retry
     assert len(processed) == 2
 
-    # verify the task result
-    assert processed[0].status == 'failed'
+    # verify the first attempt failed and is marked for retry
+    assert processed[0].status == 'retrying'
     assert str(processed[0].exception) == "ValueError: task failed"
 
     # retry should succeed

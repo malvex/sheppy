@@ -1,6 +1,6 @@
 # Sheppy CLI reference
 
-Sheppy - Modern Task Queue
+Sheppy - async-native task queue for Python
 
 **Usage**:
 
@@ -16,7 +16,6 @@ $ sheppy [OPTIONS] COMMAND [ARGS]...
 **Commands**:
 
 * `work`: Start a worker to process tasks from a queue.
-* `dev-server`: Start a local key-value server.
 * `task`: Task management commands
 * `queue`: Queue management commands
 * `cron`: Cron management commands
@@ -33,35 +32,17 @@ $ sheppy work [OPTIONS]
 
 **Options**:
 
-* `-q, --queue TEXT`: Queue name(s). Env: SHEPPY_QUEUE  [default: default]
-* `-u, --backend-url TEXT`: Backend URL. Env: SHEPPY_BACKEND_URL
-* `-c, --max-concurrent INTEGER RANGE`: Max concurrent tasks. Env: SHEPPY_MAX_CONCURRENT_TASKS  [default: 10; x&gt;=1]
-* `--max-prefetch INTEGER RANGE`: Max prefetch tasks  [x&gt;=1]
-* `--reload`: Reload worker on file changes
+* `-q, --queue <str>`: Queue name(s). Env: SHEPPY_QUEUE  [default: default]
+* `-u, --backend-url <str>`: Backend URL. Env: SHEPPY_BACKEND_URL
+* `-c, --max-concurrent <int range>`: Max concurrent tasks. Env: SHEPPY_MAX_CONCURRENT_TASKS  [default: 10; x&gt;=1]
+* `--max-prefetch <int range>`: Max prefetch tasks  [x&gt;=1]
 * `--oneshot`: Process pending tasks and then exit
-* `--max-tasks INTEGER RANGE`: Maximum amount of tasks to process  [x&gt;=1]
+* `--max-tasks <int range>`: Maximum amount of tasks to process  [x&gt;=1]
 * `--disable-job-processing`: Disable job processing
 * `--disable-scheduler`: Disable scheduler
 * `--disable-cron-manager`: Disable cron manager
-* `-l, --log-level [debug|info|warning|error]`: Logging level. Env: SHEPPY_LOG_LEVEL  [default: info]
-* `--shutdown-timeout FLOAT`: Shutdown timeout in seconds. Env: SHEPPY_SHUTDOWN_TIMEOUT  [default: 30.0]
-* `--help`: Show this message and exit.
-
-## `sheppy dev-server`
-
-Start a local key-value server.
-
-**Usage**:
-
-```console
-$ sheppy dev-server [OPTIONS]
-```
-
-**Options**:
-
-* `-H, --host TEXT`: IP to bind to  [default: 127.0.0.1]
-* `-p, --port INTEGER`: What port it should run at  [default: 17420]
-* `-l, --log-level [debug|info|warning|error]`: Logging level  [default: info]
+* `-l, --log-level <debug|info|warning|error>`: Logging level. Env: SHEPPY_LOG_LEVEL  [default: info]
+* `--shutdown-timeout <float>`: Shutdown timeout in seconds. Env: SHEPPY_SHUTDOWN_TIMEOUT  [default: 30.0]
 * `--help`: Show this message and exit.
 
 ## `sheppy task`
@@ -99,10 +80,10 @@ $ sheppy task list [OPTIONS]
 
 **Options**:
 
-* `-q, --queue TEXT`: Queue name. Env: SHEPPY_QUEUE  [default: default]
-* `-u, --backend-url TEXT`: Backend URL. Env: SHEPPY_BACKEND_URL
-* `-s, --status [all|pending|scheduled|completed|failed]`: Filter by status  [default: all]
-* `-f, --format [table|json]`: Output format  [default: table]
+* `-q, --queue <str>`: Queue name. Env: SHEPPY_QUEUE  [default: default]
+* `-u, --backend-url <str>`: Backend URL. Env: SHEPPY_BACKEND_URL
+* `-s, --status <all|pending|scheduled|completed|failed>`: Filter by status  [default: all]
+* `-f, --format <table|json>`: Output format  [default: table]
 * `--help`: Show this message and exit.
 
 ### `sheppy task info`
@@ -112,17 +93,17 @@ Get detailed information about a specific task.
 **Usage**:
 
 ```console
-$ sheppy task info [OPTIONS] TASK_ID
+$ sheppy task info [OPTIONS] {task_id}
 ```
 
 **Arguments**:
 
-* `TASK_ID`: Task ID to get info for  [required]
+* `task_id`: Task ID to get info for  [required]
 
 **Options**:
 
-* `-q, --queue TEXT`: Queue name. Env: SHEPPY_QUEUE  [default: default]
-* `-u, --backend-url TEXT`: Backend URL. Env: SHEPPY_BACKEND_URL
+* `-q, --queue <str>`: Queue name. Env: SHEPPY_QUEUE  [default: default]
+* `-u, --backend-url <str>`: Backend URL. Env: SHEPPY_BACKEND_URL
 * `--help`: Show this message and exit.
 
 ### `sheppy task retry`
@@ -132,17 +113,17 @@ Retry a failed task by re-queueing it.
 **Usage**:
 
 ```console
-$ sheppy task retry [OPTIONS] TASK_ID
+$ sheppy task retry [OPTIONS] {task_id}
 ```
 
 **Arguments**:
 
-* `TASK_ID`: Task ID to retry  [required]
+* `task_id`: Task ID to retry  [required]
 
 **Options**:
 
-* `-q, --queue TEXT`: Queue name. Env: SHEPPY_QUEUE  [default: default]
-* `-u, --backend-url TEXT`: Backend URL. Env: SHEPPY_BACKEND_URL
+* `-q, --queue <str>`: Queue name. Env: SHEPPY_QUEUE  [default: default]
+* `-u, --backend-url <str>`: Backend URL. Env: SHEPPY_BACKEND_URL
 * `-f, --force`: Force retry even if task hasn&#x27;t failed
 * `--help`: Show this message and exit.
 
@@ -153,17 +134,17 @@ Test run a task function without queuing it.
 **Usage**:
 
 ```console
-$ sheppy task test [OPTIONS] FUNCTION
+$ sheppy task test [OPTIONS] {function}
 ```
 
 **Arguments**:
 
-* `FUNCTION`: Function to test (module:function format)  [required]
+* `function`: Function to test (module:function format)  [required]
 
 **Options**:
 
-* `-a, --args TEXT`: JSON array of positional arguments  [default: []]
-* `-k, --kwargs TEXT`: JSON object of keyword arguments  [default: {}]
+* `-a, --args <str>`: JSON array of positional arguments  [default: []]
+* `-k, --kwargs <str>`: JSON object of keyword arguments  [default: {}]
 * `-t, --trace`: Show full execution trace
 * `--help`: Show this message and exit.
 
@@ -174,21 +155,21 @@ Add a new task to a queue.
 **Usage**:
 
 ```console
-$ sheppy task add [OPTIONS] FUNCTION
+$ sheppy task add [OPTIONS] {function}
 ```
 
 **Arguments**:
 
-* `FUNCTION`: Function to add (module:function format)  [required]
+* `function`: Function to add (module:function format)  [required]
 
 **Options**:
 
-* `-a, --args TEXT`: JSON array of positional arguments  [default: []]
-* `-k, --kwargs TEXT`: JSON object of keyword arguments  [default: {}]
+* `-a, --args <str>`: JSON array of positional arguments  [default: []]
+* `-k, --kwargs <str>`: JSON object of keyword arguments  [default: {}]
 * `-w, --wait`: Wait for task result
-* `-t, --timeout FLOAT`: Timeout in seconds when waiting for result  [default: 0.0]
-* `-q, --queue TEXT`: Queue name. Env: SHEPPY_QUEUE  [default: default]
-* `-u, --backend-url TEXT`: Backend URL. Env: SHEPPY_BACKEND_URL
+* `-t, --timeout <float>`: Timeout in seconds when waiting for result  [default: 0.0]
+* `-q, --queue <str>`: Queue name. Env: SHEPPY_QUEUE  [default: default]
+* `-u, --backend-url <str>`: Backend URL. Env: SHEPPY_BACKEND_URL
 * `--help`: Show this message and exit.
 
 ### `sheppy task schedule`
@@ -198,21 +179,21 @@ Schedule a task to run at a specific time.
 **Usage**:
 
 ```console
-$ sheppy task schedule [OPTIONS] FUNCTION
+$ sheppy task schedule [OPTIONS] {function}
 ```
 
 **Arguments**:
 
-* `FUNCTION`: Function to schedule (module:function format  [required]
+* `function`: Function to schedule (module:function format  [required]
 
 **Options**:
 
-* `-d, --delay TEXT`: Delay before task execution (e.g., 30s, 5m, 2h, 1d)
-* `--at TEXT`: Execute at specific time (ISO format: 2024-01-20T15:30:00)
-* `-a, --args TEXT`: JSON array of positional arguments  [default: []]
-* `-k, --kwargs TEXT`: JSON object of keyword arguments  [default: {}]
-* `-q, --queue TEXT`: Queue name. Env: SHEPPY_QUEUE  [default: default]
-* `-u, --backend-url TEXT`: Backend URL. Env: SHEPPY_BACKEND_URL
+* `-d, --delay <str>`: Delay before task execution (e.g., 30s, 5m, 2h, 1d)
+* `--at <str>`: Execute at specific time (ISO format: 2024-01-20T15:30:00)
+* `-a, --args <str>`: JSON array of positional arguments  [default: []]
+* `-k, --kwargs <str>`: JSON object of keyword arguments  [default: {}]
+* `-q, --queue <str>`: Queue name. Env: SHEPPY_QUEUE  [default: default]
+* `-u, --backend-url <str>`: Backend URL. Env: SHEPPY_BACKEND_URL
 * `--help`: Show this message and exit.
 
 ## `sheppy queue`
@@ -245,7 +226,7 @@ $ sheppy queue list [OPTIONS]
 
 **Options**:
 
-* `-u, --backend-url TEXT`: Backend URL. Env: SHEPPY_BACKEND_URL
+* `-u, --backend-url <str>`: Backend URL. Env: SHEPPY_BACKEND_URL
 * `--help`: Show this message and exit.
 
 ## `sheppy cron`
@@ -278,6 +259,6 @@ $ sheppy cron list [OPTIONS]
 
 **Options**:
 
-* `-q, --queue TEXT`: Queue name. Env: SHEPPY_QUEUE  [default: default]
-* `-u, --backend-url TEXT`: Backend URL. Env: SHEPPY_BACKEND_URL
+* `-q, --queue <str>`: Queue name. Env: SHEPPY_QUEUE  [default: default]
+* `-u, --backend-url <str>`: Backend URL. Env: SHEPPY_BACKEND_URL
 * `--help`: Show this message and exit.

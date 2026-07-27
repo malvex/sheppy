@@ -25,38 +25,43 @@ theme:
 
 nav:
   - Home: index.md
-  - Getting Started:
-    - getting-started/index.md
-    - Quickstart: getting-started/quickstart.md
-    - getting-started/task-scheduling.md
-    - getting-started/error-handling.md
-    - getting-started/validation-with-pydantic.md
-    - getting-started/testing.md
-    - getting-started/cron.md
-    - Advanced:
-      - getting-started/advanced/fastapi-integration.md
+  - Tutorials:
+    - Quickstart: tutorials/quickstart.md
+  - How-to guides:
+    - Schedule tasks: guides/task-scheduling.md
+    - Cron jobs: guides/cron.md
+    - Handle errors and retries: guides/error-handling.md
+    - Validate with Pydantic: guides/validation-with-pydantic.md
+    - Rate limiting: guides/rate-limiting.md
+    # - Workflows: guides/workflows.md
+    - Dependency injection: guides/dependencies.md
+    - Test tasks: guides/testing.md
+    # - Use with FastAPI: guides/fastapi-integration.md  # todo
+    - Synchronous Queue without asyncio: guides/sync-queue.md
   - API Reference:
     - Queue class: reference/queue.md
     - TestQueue class: reference/testqueue.md
+    - Worker class: reference/worker.md
+    - Configuration: reference/configuration.md
     - CLI reference: reference/cli.md
     - Models:
       - Task: reference/task.md
+      - TaskException: reference/task-exception.md
       - TaskSpec: reference/task-spec.md
       - TaskConfig: reference/task-config.md
       - TaskCron: reference/task-cron.md
-    - Backends:
-      - Backend class: reference/backends/backend.md
-      - RedisBackend class: reference/backends/redis-backend.md
-      - MemoryBackend class: reference/backends/memory-backend.md
-    - Advanced:
-      - Worker class: reference/worker.md
+    # - Backends:
+    #   - Backend class: reference/backends/backend.md
+    #   - RedisBackend class: reference/backends/redis-backend.md
+    #   - MemoryBackend class: reference/backends/memory-backend.md
   - Code Examples:
     - examples/index.md
-  - Changelog: changelog.md
   - About:
+    # - How Sheppy works: about/how-it-works.md
     - About Sheppy: about/index.md
-    - about/roadmap.md
-    - about/license.md
+    - Roadmap: about/roadmap.md
+    - License: about/license.md
+  - Changelog: changelog.md
 
 plugins:
   search: null

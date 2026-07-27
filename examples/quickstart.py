@@ -1,5 +1,5 @@
 import asyncio
-from sheppy import Queue, RedisBackend, task
+from sheppy import Queue, task
 
 
 @task
@@ -7,8 +7,7 @@ async def calculate(x: int, y: int) -> int:
     return x + y
 
 
-backend = RedisBackend("redis://127.0.0.1:6379")
-queue = Queue(backend)
+queue = Queue("redis://localhost:6379")
 
 
 async def main():

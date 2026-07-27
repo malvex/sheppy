@@ -6,11 +6,13 @@ Over the last 8 years, I have tried many Python task queue libraries. They were 
 
 So I decided to build Sheppy to fix these issues. It's designed for modern async Python from the ground up, uses type hints everywhere, integrates with amazing Pydantic library, and rethinks how background tasks should work.
 
-The design is inspired by FastAPI and uses similar coding patterns. The goal is to be "simple, yet powerful". Sheppy is designed to be have minimal API interface with just a few simple concepts to learn, while implementing industry best practices. No complex abstractions, no unnecessary wrappers. Just functions (tasks) and queues.
+The design is inspired by FastAPI and uses similar coding patterns. The goal is to be "simple, yet powerful": a minimal API with a few concepts to learn - just functions (tasks) and queues. No complex abstractions, no unnecessary wrappers.
 
 ## Project Status
 
 Sheppy is brand new and under active development. The core features are stable and ready for use, but the library is still evolving based on real-world needs and feedback.
+
+See [Roadmap](roadmap.md) for planned upcoming features.
 
 ## Contributing
 

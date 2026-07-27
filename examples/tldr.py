@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sheppy import Queue, task, RedisBackend
 
 queue = Queue(RedisBackend("redis://127.0.0.1:6379"))
@@ -15,7 +15,7 @@ async def main():
     await queue.add(t1)
     await queue.add(say_hello("Moon"))
     await queue.schedule(say_hello("Patient Person"), at=timedelta(seconds=10))  # runs in 10 seconds from now
-    await queue.schedule(say_hello("New Year"), at=datetime.fromisoformat("2026-01-01 00:00:00 +00:00"))
+    await queue.schedule(say_hello("Tomorrow"), at=datetime.now(timezone.utc) + timedelta(days=1))  # runs tomorrow
 
     # await the task completion
     updated_task = await queue.wait_for(t1)

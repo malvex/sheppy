@@ -15,3 +15,6 @@ wheels/
 .vscode
 .coverage
 .cache/
+
+# mkdocs build output
+site/
