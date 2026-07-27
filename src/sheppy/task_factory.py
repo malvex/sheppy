@@ -134,6 +134,42 @@ def task(
     ttl: int | None | Literal["inherit"] = "inherit",
     error_ttl: int | None | Literal["inherit"] = "inherit",
 ) -> Callable[[Callable[P, R]], Callable[P, Task]] | Callable[P, Task]:
+    """Turn a function into a task factory.
+
+    Works with and without parentheses (`@task` or `@task(retry=3)`) and with
+    both sync and async functions. Calling the decorated function does not
+    execute it. It validates the arguments and returns a Task instance ready
+    to be queued.
+
+    Args:
+        retry: Number of times to retry the task if it fails. Default is 0 (no retries).
+        retry_delay: Delay between retries in seconds. A single value applies to
+            every attempt; a list sets the delay per attempt. Defaults to 1.0.
+        middleware: Middleware applied to this task only.
+        timeout: Maximum execution time in seconds. Default is None (no timeout).
+        retry_on_timeout: If True, a task that times out is retried. Default is False.
+        retry_on_crash: If True, a task whose worker crashed is retried
+            (RedisBackend only). Default is False.
+        rate_limit: RateLimit dict, e.g. `{"max_rate": 2, "rate_period": 5}`.
+        ttl: Expiry of the task's stored metadata once it finishes, in seconds.
+            None disables expiry; "inherit" (default) uses the backend's `ttl`.
+        error_ttl: Expiry applied when the task fails, in seconds. None disables
+            expiry; "inherit" (default) falls back to `ttl`.
+
+    Returns:
+        The decorated function. Calling it returns a Task instance.
+
+    Example:
+        ```python
+        from sheppy import task
+
+        @task(retry=3, retry_delay=[1, 10, 60])
+        async def send_email(to: str) -> str:
+            ...
+
+        t = send_email("alice@example.com")  # returns a Task model, nothing runs yet
+        ```
+    """
     def decorator(func: Callable[P, R]) -> Callable[P, Task]:
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> Task:
@@ -159,5 +195,5 @@ def task(
     if func is not None:
         return decorator(func)
 
-    # If called with parentheses (@task() or @task(name="...")), return the decorator
+    # If called with parentheses (@task() or @task(retry=3)), return the decorator
     return decorator

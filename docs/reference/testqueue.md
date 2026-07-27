@@ -1,8 +1,8 @@
 # `TestQueue` reference
 
-Sheppy offers a first class support for testing tasks using the `TestQueue` class. This class mimics the behavior of a real queue but operates synchronously, making it ideal for predictable and fast unit tests.
+`TestQueue` mirrors the `Queue` API but runs tasks synchronously in the test process without a separate worker or redis. Tasks only execute when you call `process_next()` or `process_all()`.
 
-See [Testing tasks](../getting-started/testing.md) guide for more details and examples.
+See the [Testing tasks](../guides/testing.md) guide for examples.
 
 ::: sheppy.TestQueue
     options:
@@ -22,3 +22,9 @@ See [Testing tasks](../getting-started/testing.md) guide for more details and ex
             - process_next
             - process_all
             - process_scheduled
+            - add_workflow
+            - get_workflow
+            - get_all_workflows
+            - get_pending_workflows
+            - delete_workflow
+            - process_workflow

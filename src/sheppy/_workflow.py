@@ -144,7 +144,7 @@ class Workflow(BaseModel):
 
 
 class WorkflowResult(NamedTuple):
-    """Result of driving a workflow (via `Queue.add_workflow()` or `Queue.resume_workflow()`).
+    """Result of driving a workflow (via `Queue.add_workflow()` or a resume after tasks finish).
 
     Attributes:
         workflow: The updated workflow state.
@@ -206,6 +206,21 @@ def workflow(
     The decorated function must be a plain (non-async) generator function,
     and it must be deterministic across replays. Arguments are validated
     against the function signature at call time exactly like `@task`.
+
+    Calling the decorated function does not run anything; it returns a
+    `Workflow` instance capturing the function and its arguments. The
+    generator's return value becomes `Workflow.final_result`.
+
+    Can be used bare (`@workflow`) or with parentheses (`@workflow()`).
+
+    Example:
+        ```python
+        @workflow
+        def place_order(order_id: int):
+            prepared = yield prepare(order_id)
+            charged = yield charge(prepared.result["total"])
+            return {"charged": charged.result}
+        ```
     """
     def decorator(
         fn: Callable[P, Generator[WorkflowYield, Any, R]]

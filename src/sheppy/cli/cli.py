@@ -29,7 +29,7 @@ def callback(
     version: Annotated[bool, typer.Option("--version", help="Show the version and exit.", callback=version_callback)] = False,
 ) -> None:
     """
-    Sheppy - Modern Task Queue
+    Sheppy - async-native task queue for Python
     """
     pass
 

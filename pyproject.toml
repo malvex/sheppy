@@ -1,7 +1,7 @@
 [project]
 name = "sheppy"
 dynamic = ["version"]
-description = "A modern, fast, and easy to use task queue system for async Python"
+description = "Async-native task queue for Python with Pydantic validation"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [

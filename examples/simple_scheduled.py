@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 from pydantic import BaseModel
 
-from sheppy import MemoryBackend, Queue, Worker, task
+from sheppy import Queue, task
 
 
 class Email(BaseModel):
@@ -14,22 +14,15 @@ class Email(BaseModel):
 
 @task
 async def send_email(email: Email) -> dict[str, str]:
-    print(f"[{datetime.now()}] Sent email to {email.to}, Subject: {email.subject}, Body: {email.body}")
+    print(f"[{datetime.now()}] Sent email to {email.to},"
+          f"Subject: {email.subject}, Body: {email.body}")
     return {"status": "sent"}
 
 
-queue = Queue(MemoryBackend(instant_processing=False))
-
-
-async def run_worker():
-    w = Worker("default", backend=queue.backend)
-    await w.work()
+queue = Queue("redis://localhost:6379")
 
 
 async def main():
-    # start worker in background
-    worker_process = asyncio.create_task(run_worker())
-
     welcome_email = Email(to="user1@example.com",
                           subject="Registration Successful!",
                           body="Your account has been created!")
@@ -43,7 +36,8 @@ async def main():
     task = send_email(welcome_email)
     await queue.add(task)
 
-    # schedule feedback email to be delivered after a few weeks (2 seconds in this example)
+    # schedule feedback email to be delivered after
+    # a few weeks (2 seconds in this example)
     survey_email_task = send_email(survey_email)
     await queue.schedule(survey_email_task, at=timedelta(seconds=2))
 
@@ -55,6 +49,7 @@ async def main():
 
     # confirm scheduled task wasn't sent yet
     survey_email_task = await queue.get_task(survey_email_task)
+    print(survey_email_task.status)
     assert survey_email_task.status == 'scheduled'
 
     # wait for scheduled email to happen (for demo purposes)
@@ -67,8 +62,6 @@ async def main():
     assert not survey_email_task.exception
     assert survey_email_task.result.get("status") == "sent"
 
-    # stop worker
-    worker_process.cancel()
 
 if __name__ == "__main__":
     asyncio.run(main())

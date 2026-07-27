@@ -180,7 +180,6 @@ class TaskSpec(BaseModel):
 
         print(t.spec.func)  # e.g. "my_module:my_task"
         print(t.spec.args)  # (42, "hello")
-        print(t.spec.return_type)  # "builtins.str"
         ```
     """
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -196,18 +195,27 @@ class TaskSpec(BaseModel):
 
 
 class TaskConfig(BaseModel):
-    """Task configuration
+    """Task configuration.
 
     Attributes:
         retry: Number of times to retry the task if it fails. Default is 0 (no retries).
-        retry_delay: Delay between retries in seconds. If a single float is provided, it will be used for all retries. If a list is provided, it will be used for each retry attempt respectively (exponential backoff). Default is 1.0 seconds.
-        ttl: TTL for the task in seconds, applied once the task finishes. None disables expiry; "inherit" (default) falls back to the backend's `ttl` setting.
-        error_ttl: TTL for the task in seconds applied when the task fails. None disables expiry; "inherit" (default) falls back to `ttl`.
+        retry_delay: Delay between retries in seconds. A single float is used for every
+            attempt; a list sets the delay per attempt, and the last value is reused
+            when attempts outnumber list entries. Default is 1.0 seconds.
+        timeout: Maximum execution time in seconds. Default is None (no timeout).
+        retry_on_timeout: If True, a task that times out is retried. Default is False.
+        retry_on_crash: If True, a task whose worker crashed is retried
+            (RedisBackend only). Default is False.
+        rate_limit: Optional RateLimit dict limiting how often the task may run.
+        ttl: TTL for the task in seconds, applied once the task finishes. None disables
+            expiry; "inherit" (default) falls back to the backend's `ttl` setting.
+        error_ttl: TTL for the task in seconds applied when the task fails. None disables
+            expiry; "inherit" (default) falls back to `ttl`.
 
     Note:
         - You should not create TaskConfig instances directly. Instead, use the `@task` decorator to define a task function, and then call that function to create a Task instance.
         - `retry` must be a non-negative integer.
-        - `retry_delay` must be a positive float or a list of positive floats.
+        - `retry_delay` list must not be empty.
 
     Example:
         ```python
@@ -227,7 +235,7 @@ class TaskConfig(BaseModel):
     retry: int = Field(default=0, ge=0)
     """int: Number of times to retry the task if it fails. Default is 0 (no retries)."""
     retry_delay: float | list[float] = Field(default=1.0)
-    """float|list[float]: Delay between retries in seconds. If a single float is provided, it will be used for all retries. If a list is provided, it will be used for each retry attempt respectively (exponential backoff). Default is 1.0 seconds."""
+    """float|list[float]: Delay between retries in seconds. A single float is used for every attempt; a list sets the delay per attempt, and the last value is reused when attempts outnumber list entries. Default is 1.0 seconds."""
 
     timeout: float | None = None  # seconds
     retry_on_timeout: bool = False
@@ -283,7 +291,7 @@ class Task(BaseModel):
         t = add(2, 3)
         print(t.id)  # UUID of the task
         print(t.spec.func)  # "my_module:add"
-        print(t.spec.args)  # [2, 3]
+        print(t.spec.args)  # (2, 3)
         print(t.result)  # None (not yet executed)
         ```
     """
@@ -342,7 +350,7 @@ class Task(BaseModel):
 
     @property
     def completed(self) -> bool:
-        """Deprecated, DO NOT USE. Temporary compatibility attr mostly for my stuff"""
+        """Return whether the task status is 'completed'. Deprecated: use `status` instead."""
         import warnings  # noqa: PLC0415
         warnings.warn("task.completed is deprecated, use task.status instead", category=DeprecationWarning, stacklevel=2)
         return self.status == "completed"

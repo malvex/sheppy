@@ -19,6 +19,10 @@ class TestQueue:
 
     Args:
         name: Name of the queue. Defaults to "test-queue".
+        dependency_overrides: Mapping of original dependency callables to
+                              replacements, applied when resolving task
+                              dependencies. Used to stub dependencies
+                              (e.g. database connections) in tests.
 
     Attributes:
         processed_tasks: List of tasks that have been processed.
@@ -429,6 +433,18 @@ class TestQueue:
         return task
 
     def add_workflow(self, workflow: Workflow) -> WorkflowResult:
+        """Start a workflow run.
+
+        Runs the workflow generator until it yields tasks that need
+        processing (which are added to the queue unprocessed) or
+        completes, and stores the workflow state.
+
+        Args:
+            workflow: Workflow instance returned by a `@workflow` function.
+
+        Returns:
+            WorkflowResult with the updated workflow and its pending tasks.
+        """
         return asyncio.run(self._queue.add_workflow(workflow))
 
     def _resume_workflow(self, workflow: Workflow | UUID | str, task_results: dict[UUID, Task] | None = None) -> WorkflowResult:
@@ -441,18 +457,66 @@ class TestQueue:
     def get_workflow(self, workflow: list[Workflow | UUID | str]) -> dict[UUID, Workflow]: ...
 
     def get_workflow(self, workflow: Workflow | UUID | str | list[Workflow | UUID | str]) -> Workflow | None | dict[UUID, Workflow]:
+        """Get workflow by id.
+
+        Args:
+            workflow: Instance of a Workflow or its ID, or list of Workflow instances/IDs for batch mode.
+
+        Returns:
+            (Workflow|None): Instance of a Workflow or None if not found.
+            (dict[UUID, Workflow]): *(In batch mode)* Returns Dictionary of Workflow IDs to Workflow instances.
+        """
         return asyncio.run(self._queue.get_workflow(workflow))
 
     def get_all_workflows(self) -> list[Workflow]:
+        """Get all stored workflows, including completed/failed ones.
+
+        Returns:
+            List of all Workflow instances
+        """
         return asyncio.run(self._queue.get_all_workflows())
 
     def get_pending_workflows(self) -> list[Workflow]:
+        """Get workflows that are neither completed nor errored.
+
+        Returns:
+            List of pending Workflow instances
+        """
         return asyncio.run(self._queue.get_pending_workflows())
 
     def delete_workflow(self, workflow: Workflow | UUID | str) -> bool:
+        """Delete a workflow.
+
+        Args:
+            workflow: Instance of a Workflow or its ID
+
+        Returns:
+            True if the workflow existed and was deleted.
+        """
         return asyncio.run(self._queue.delete_workflow(workflow))
 
     def process_workflow(self, workflow: Workflow) -> WorkflowResult:
+        """Drive a workflow to completion synchronously.
+
+        Loops add → process all pending tasks → resume until the workflow
+        completes, errors, or yields no pending tasks.
+
+        Args:
+            workflow: Workflow instance returned by a `@workflow` function.
+
+        Returns:
+            Final WorkflowResult; check `result.workflow.completed` and
+            `result.workflow.exception` for the outcome.
+
+        Example:
+            ```python
+            q = TestQueue()
+
+            result = q.process_workflow(my_workflow(1, 2))
+            assert result.workflow.completed is True
+            assert result.workflow.final_result == 3
+            ```
+        """
         result = self.add_workflow(workflow)
 
         while not result.workflow.completed and result.workflow.exception is None:

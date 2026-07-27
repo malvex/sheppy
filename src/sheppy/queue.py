@@ -36,15 +36,19 @@ def _create_backend_from_url(url: str) -> Backend:
 
 class Queue:
     """
-    `Queue` class provides an easy way to manage task queue.
+    Main entry point for adding, scheduling, and tracking tasks. Workers execute them.
 
-    Parameters:
+    Args:
         backend: An instance of task backend (e.g. `sheppy.RedisBackend`),<br>
                  or a URL string to automatically infer a backend:<br>
-                 - `redis://host:port` or `rediss://host:port` for RedisBackend<br>
+                 - `redis://host:port` or `rediss://host:port` (TLS) for RedisBackend<br>
                  - `memory://` for MemoryBackend<br>
                  If not provided, uses `SHEPPY_BACKEND_URL` environment variable.
         name: Name of the queue. Defaults to `SHEPPY_QUEUE` env var or "default".
+
+    Raises:
+        ValueError: If no backend is provided and `SHEPPY_BACKEND_URL` is not set,
+            or if the URL scheme is not supported.
     """
 
     def __init__(self, backend: Backend | str | None = None, name: str | None = None):
@@ -139,13 +143,16 @@ class Queue:
         return [Task.model_validate(t) for t in tasks_data]
 
     async def get_pending(self, count: int = 1) -> list[Task]:
-        """List pending tasks.
+        """List pending tasks without removing them from the queue.
 
         Args:
             count: Number of pending tasks to retrieve.
 
         Returns:
             List of pending tasks
+
+        Raises:
+            ValueError: If count is less than 1.
         """
         if count <= 0:
             raise ValueError("Value must be larger than zero")
@@ -161,21 +168,24 @@ class Queue:
             task: Instance of a Task
             at: When to process the task.<br>
                 If timedelta is provided, it will be added to current time.<br>
-                *Note: datetime must be offset-aware (i.e. have timezone info).*
+                If datetime is provided, it must be offset-aware (i.e. have timezone info).
 
         Returns:
             Success boolean
 
+        Raises:
+            TypeError: If the provided datetime is naive (has no timezone info).
+
         Example:
             ```python
-            from datetime import datetime, timedelta
+            from datetime import datetime, timedelta, timezone
 
             q = Queue(...)
             # schedule task to be processed after 10 minutes
             await q.schedule(task, timedelta(minutes=10))
 
             # ... or at specific time
-            await q.schedule(task, datetime.fromisoformat("2026-01-01 00:00:00 +00:00"))
+            await q.schedule(task, datetime(2027, 1, 1, tzinfo=timezone.utc))
             ```
         """
         await self.__ensure_backend_is_connected()
@@ -207,20 +217,22 @@ class Queue:
     async def wait_for(self, task: list[Task | UUID | str], timeout: float = 0) -> dict[UUID, Task]: ...
 
     async def wait_for(self, task: Task | UUID | str | list[Task | UUID | str], timeout: float = 0) -> dict[UUID, Task] | Task | None:
-        """Wait for task to complete and return updated task instance.
+        """Wait for task to finish and return the updated task instance.
 
         Args:
             task: Instance of a Task or its ID, or list of Task instances/IDs for batch mode.
             timeout: Maximum time to wait in seconds. Default is 0 (wait indefinitely).<br>
-                     If timeout is reached, returns None (or partial results in batch mode).<br>
-                     In batch mode, this is the maximum time to wait for all tasks to complete.<br>
-                     Note: In non-batch mode, if timeout is reached and no task is found, a TimeoutError is raised.
+                     A negative value returns immediately with whatever has finished so far.<br>
+                     In batch mode, this is the maximum time to wait for all tasks to complete.
 
         Returns:
-            Instance of a Task or None if not found or timeout reached.<br>In batch mode, returns dictionary of Task IDs to Task instances (partial results possible on timeout).
+            The finished Task, or None (only possible with a negative timeout when the task
+            has not finished yet).<br>In *batch mode*, returns a dictionary of Task IDs to
+            finished Task instances.
 
         Raises:
-            TimeoutError: If timeout is reached and no task is found (only in non-batch mode).
+            TimeoutError: If a positive timeout expires before all given tasks have finished
+                (in both single and batch mode).
 
         Example:
             ```python
@@ -233,10 +245,7 @@ class Queue:
             # wait up to 5 seconds for task to complete
             try:
                 updated_task = await q.wait_for(task, timeout=5)
-                if updated_task:
-                    assert updated_task.status == 'completed'
-                else:
-                    print("Task not found or still pending after timeout")
+                assert updated_task.status == 'completed'
             except TimeoutError:
                 print("Task did not complete within timeout")
 
@@ -245,8 +254,6 @@ class Queue:
 
             for task_id, task in updated_tasks.items():
                 print(f"Task {task_id} status: {task.status}")
-
-            # Note: updated_tasks may contain only a subset of tasks if timeout is reached
             ```
         """
         await self.__ensure_backend_is_connected()
@@ -269,11 +276,11 @@ class Queue:
             at: When to retry the task.<br>
                 - If None (default), retries immediately.<br>
                 - If timedelta is provided, it will be added to current time.<br>
-                *Note: datetime must be offset-aware (i.e. have timezone info).*
+                - If datetime is provided, it must be offset-aware (i.e. have timezone info).
             force: If True, allows retrying even if task has completed successfully. Defaults to False.
 
         Returns:
-            Success boolean
+            True if the task was re-queued, False if no task with the given ID exists.
 
         Raises:
             ValueError: If task has already completed successfully and force is not set to True.
@@ -291,7 +298,7 @@ class Queue:
             await q.retry(task, at=timedelta(minutes=5))
 
             # or at specific time
-            await q.retry(task, at=datetime.fromisoformat("2026-01-01 00:00:00 +00:00"))
+            await q.retry(task, at=datetime(2027, 1, 1, tzinfo=timezone.utc))
 
             # force retry even if task is completed (= finished successfully)
             await q.retry(task, force=True)
@@ -360,7 +367,8 @@ class Queue:
             cron: Cron expression string (e.g. "*/5 * * * *" to run every 5 minutes)
 
         Returns:
-            Success boolean
+            True if the cron was added, False if an identical cron
+            (same task and expression) already exists.
 
         Example:
             ```python
@@ -582,20 +590,22 @@ class Queue:
     async def wait_for_workflow(self, workflow: list[Workflow | UUID | str], timeout: float = 0) -> dict[UUID, Workflow]: ...
 
     async def wait_for_workflow(self, workflow: Workflow | UUID | str | list[Workflow | UUID | str], timeout: float = 0) -> dict[UUID, Workflow] | Workflow | None:
-        """Wait for workflow to finish (complete or fail) and return updated workflow instance.
+        """Wait for workflow to finish (complete or fail) and return the updated workflow.
 
         Args:
             workflow: Instance of a Workflow or its ID, or list of Workflow instances/IDs for batch mode.
             timeout: Maximum time to wait in seconds. Default is 0 (wait indefinitely).<br>
-                     If timeout is reached, returns None (or partial results in batch mode).<br>
-                     In batch mode, this is the maximum time to wait for all workflows to finish.<br>
-                     Note: In non-batch mode, if timeout is reached and the workflow has not finished, a TimeoutError is raised.
+                     A negative value returns immediately with whatever has finished so far.<br>
+                     In batch mode, this is the maximum time to wait for all workflows to finish.
 
         Returns:
-            Instance of a Workflow or None if not found or timeout reached.<br>In batch mode, returns dictionary of Workflow IDs to Workflow instances (partial results possible on timeout).
+            The finished Workflow, or None if no workflow with the given ID exists
+            (or, with a negative timeout, it has not finished yet).<br>In *batch mode*,
+            returns a dictionary of Workflow IDs to finished Workflow instances.
 
         Raises:
-            TimeoutError: If timeout is reached and the workflow has not finished (only in non-batch mode).
+            TimeoutError: If a positive timeout expires before all given workflows
+                have finished (in both single and batch mode).
 
         Example:
             ```python
@@ -649,6 +659,16 @@ class Queue:
     async def get_workflow(self, workflow: list[Workflow | UUID | str]) -> dict[UUID, Workflow]: ...
 
     async def get_workflow(self, workflow: Workflow | UUID | str | list[Workflow | UUID | str]) -> dict[UUID, Workflow] | Workflow | None:
+        """Get a workflow by ID, or multiple workflows in batch mode.
+
+        Args:
+            workflow: Workflow instance or its ID, or a list of instances/IDs
+                for batch mode.
+
+        Returns:
+            The Workflow, or None if not found. In batch mode, a dictionary
+            of workflow IDs to Workflow instances (only found workflows).
+        """
         await self.__ensure_backend_is_connected()
 
         batch_mode = isinstance(workflow, list)
@@ -667,18 +687,36 @@ class Queue:
         return None
 
     async def get_all_workflows(self) -> list[Workflow]:
+        """List all workflows, including completed and failed ones.
+
+        Returns:
+            List of all workflows
+        """
         await self.__ensure_backend_is_connected()
 
         workflows_data = await self.backend.get_all_workflows(self.name)
         return [Workflow.model_validate(wf) for wf in workflows_data]
 
     async def get_pending_workflows(self) -> list[Workflow]:
+        """List workflows that still have unfinished tasks.
+
+        Returns:
+            List of pending workflows
+        """
         await self.__ensure_backend_is_connected()
 
         workflows_data = await self.backend.get_pending_workflows(self.name)
         return [Workflow.model_validate(wf) for wf in workflows_data]
 
     async def delete_workflow(self, workflow: Workflow | UUID | str) -> bool:
+        """Delete a workflow.
+
+        Args:
+            workflow: Workflow instance or its ID.
+
+        Returns:
+            True if the workflow was deleted, False if it did not exist.
+        """
         await self.__ensure_backend_is_connected()
 
         workflow_id = str(workflow.id if isinstance(workflow, Workflow) else workflow)

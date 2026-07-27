@@ -40,28 +40,30 @@ HEARTBEAT_PREFIX = "<Heartbeat> "
 
 
 class Worker:
-    """Worker that processes tasks from the queue.
+    """Process tasks from one or more queues.
 
-    The Worker monitors the specified queue(s) for pending tasks and processes them asynchronously. It uses blocking pop operations to efficiently wait for new tasks. The worker can handle multiple tasks concurrently, up to a specified limit.
-    It also handles scheduled tasks and cron jobs.
+    The Worker waits for pending tasks using blocking reads and processes them
+    concurrently. It also runs the scheduler (moves due scheduled tasks into
+    the queue), the cron manager (creates task instances from registered cron
+    jobs), and, with RedisBackend, heartbeat and crash recovery.
 
     Args:
         queue_name: Name of the queue or list of queue names to process tasks from.
-                    Defaults to SHEPPY_QUEUE env var (supports comma-separated) or "default".
         backend: Instance of the backend to use for storing and retrieving tasks.
-                 If not provided, uses SHEPPY_BACKEND_URL environment variable.
-        shutdown_timeout: Time in seconds to wait for active tasks to complete during shutdown.
-                          Defaults to SHEPPY_SHUTDOWN_TIMEOUT env var or 30.0 seconds.
-        max_concurrent_tasks: Maximum number of tasks to process concurrently.
-                              Defaults to SHEPPY_MAX_CONCURRENT_TASKS env var or 10.
+        shutdown_timeout: Time in seconds to wait for active tasks to complete during shutdown. Default is 30.0 seconds.
+        max_concurrent_tasks: Maximum number of tasks to process concurrently. Default is 10.
+        max_prefetch_tasks: Maximum number of tasks to pop from the queue at once. Defaults to None (limited only by max_concurrent_tasks).
         enable_job_processing: If True, enables job processing. Default is True.
         enable_scheduler: If True, enables the scheduler to enqueue scheduled tasks. Default is True.
         enable_cron_manager: If True, enables the cron manager to handle cron jobs. Default is True.
 
+    Note:
+        The SHEPPY_* environment variables are read by the `sheppy work` CLI
+        command, not by this class. Configure the class explicitly.
+
     Attributes:
         queues: List of Queue instances corresponding to the specified queue names.
         worker_id: Unique identifier for the worker instance.
-        stats: Statistics about processed and failed tasks.
         enable_job_processing: Indicates if job processing is enabled.
         enable_scheduler: Indicates if the scheduler is enabled.
         enable_cron_manager: Indicates if the cron manager is enabled.

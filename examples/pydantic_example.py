@@ -26,4 +26,4 @@ task = process_user(user_data)
 
 # input is validated immediately, before the task can even be queued
 user_data = {"invalid": "input"}
-task = process_user(user_data)  # throws a ValidationError exception!
+task = process_user(user_data)  # throws a ValidationError exception

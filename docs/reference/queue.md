@@ -1,8 +1,10 @@
 # `Queue` reference
 
-Sheppy provides a `Queue` class to manage and execute background tasks. The queue supports adding tasks, scheduling them for future execution, retrying failed tasks, and managing periodic tasks using cron expressions.
+`Queue` is the main entry point of Sheppy: it stores and tracks tasks. (Workers execute them - see the [`Worker` reference](worker.md).)
 
-See [Getting Started](../getting-started/index.md) guide for more details and examples.
+Construct it with a `Backend` instance or a URL string: `"redis://localhost:6379"`, `"rediss://…"` for TLS, or `"memory://"` for the in-process backend. With no arguments it falls back to the `SHEPPY_BACKEND_URL` environment variable.
+
+See the [Quickstart](../tutorials/quickstart.md) and the [how-to guides](../guides/task-scheduling.md) for examples.
 
 ::: sheppy.Queue
     options:
@@ -20,3 +22,9 @@ See [Getting Started](../getting-started/index.md) guide for more details and ex
             - add_cron
             - delete_cron
             - get_crons
+            - add_workflow
+            - wait_for_workflow
+            - get_workflow
+            - get_all_workflows
+            - get_pending_workflows
+            - delete_workflow
