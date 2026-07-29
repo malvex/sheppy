@@ -28,19 +28,19 @@ class TestResolveMetadataTtl:
         assert resolve_metadata_ttl(task_data("failed"), ttl=None, error_ttl="inherit") is None
 
     def test_backend_ttl_applies_to_regular_statuses(self):
-        for status in ("completed", "cancelled", "unknown"):
+        for status in ("completed", "unknown"):
             assert resolve_metadata_ttl(task_data(status), ttl=100, error_ttl=10) == 100
 
     def test_backend_error_ttl_applies_to_error_statuses(self):
-        for status in ("failed", "crashed"):
+        for status in ("failed", "crashed", "cancelled"):
             assert resolve_metadata_ttl(task_data(status), ttl=100, error_ttl=10) == 10
 
     def test_backend_error_ttl_inherit_falls_back_to_backend_ttl(self):
-        for status in ("failed", "crashed"):
+        for status in ("failed", "crashed", "cancelled"):
             assert resolve_metadata_ttl(task_data(status), ttl=100, error_ttl="inherit") == 100
 
     def test_backend_error_ttl_none_disables_expiry(self):
-        for status in ("failed", "crashed"):
+        for status in ("failed", "crashed", "cancelled"):
             assert resolve_metadata_ttl(task_data(status), ttl=100, error_ttl=None) is None
 
     def test_backend_ttl_none_disables_expiry(self):

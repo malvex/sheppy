@@ -180,6 +180,38 @@ class SyncQueue:
         """
         return self._run_coro(self._queue.retry(task, at, force))
 
+    def cancel(self, task: Task | UUID | str) -> Task:
+        """Cancel a pending or scheduled task.
+
+        Args:
+            task: Instance of a Task or its ID.
+
+        Returns:
+            The updated Task instance with status 'cancelled'.
+
+        Raises:
+            TaskCancellationError: If the task cannot be cancelled - either it
+                was already claimed by a worker, it already finished, or it
+                does not exist.
+        """
+        return self._run_coro(self._queue.cancel(task))
+
+    def delete(self, task: Task | UUID | str) -> bool:
+        """Hard-delete a finished task's stored metadata.
+
+        Only tasks in a terminal state (completed, failed, crashed, cancelled) can be deleted.
+
+        Args:
+            task: Instance of a Task or its ID.
+
+        Returns:
+            True if the task existed and was deleted, False if it was not found.
+
+        Raises:
+            ValueError: If the task has not finished yet.
+        """
+        return self._run_coro(self._queue.delete(task))
+
     def size(self) -> int:
         """Get number of pending tasks in the queue.
 

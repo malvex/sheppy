@@ -1,8 +1,12 @@
+import json
 import logging
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
 
 from rich.console import Console
+
+from sheppy.models import Task
 
 console = Console()
 
@@ -54,3 +58,21 @@ def humanize_datetime(dt: datetime | None, now: datetime | None = None) -> str:
         time_string = f"{int(abs_delta)} second" + ("s" if abs_delta >= 2 else "")
 
     return f"{time_string} ago" if is_past else f"in {time_string}"
+
+
+def print_json(data: Any) -> None:
+    console.print(json.dumps(data, indent=2, default=str), markup=False, highlight=False, soft_wrap=True, crop=False)
+
+
+def task_status_label(task: Task) -> str:
+    if task.status == 'completed':
+        return "completed"
+    if task.status == 'crashed':
+        return "crashed"
+    if task.status == 'retrying':  # FIXME: doesn't work
+        return "retrying"
+    if task.exception:
+        return "failed"
+    if task.status == 'scheduled':
+        return "scheduled"
+    return task.status

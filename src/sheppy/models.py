@@ -328,6 +328,9 @@ class Task(BaseModel):
     workflow_id: UUID | None = None
     """UUID|None: ID of the workflow this task belongs to (if created within a workflow)."""
 
+    cron_id: UUID | None = None
+    """UUID|None: ID of the CronTask that created this job (temporary)"""
+
     # caller: str | None = None
     # worker: str | None = None
 
@@ -400,7 +403,9 @@ class TaskCron(BaseModel):
         expression: Cron expression defining the schedule, e.g. "*/5 * * * *" for every 5 minutes.
         spec: Task specification
         config: Task configuration
-
+        managed_by: Origin of the cron definition. None means programmatic
+            (added via `Queue.add_cron()`); "pyproject" means declared in a
+            pyproject.toml file and reconciled by workers.
     Note:
         - You should not create TaskCron instances directly. Instead, use the `add_cron` method of the Queue class to create a cron definition.
         - `args` and `kwargs` in `spec` must be JSON serializable.
@@ -441,6 +446,9 @@ class TaskCron(BaseModel):
     """Task specification"""
     config: TaskConfig
     """Task configuration"""
+
+    managed_by: str | None = None
+    """str|None: Origin of the cron definition; None for programmatic, "pyproject" for declarative."""
 
     # enabled: bool = True
     # last_run: AwareDatetime | None = None
@@ -509,5 +517,6 @@ class TaskCron(BaseModel):
         return Task(
             id=uuid5(TASK_CRON_NS, str(self.deterministic_id) + str(start.timestamp())),
             spec=self.spec.model_copy(deep=True),
-            config=self.config.model_copy(deep=True)
+            config=self.config.model_copy(deep=True),
+            cron_id=self.deterministic_id,
         )

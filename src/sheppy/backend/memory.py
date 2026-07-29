@@ -253,6 +253,51 @@ class MemoryBackend(Backend):
 
             return True
 
+    async def cancel(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
+        self._check_connected()
+
+        async with self._locks[queue_name]:
+            self._purge_expired(queue_name)
+            task_data = self._task_metadata[queue_name].get(task_id)
+
+            if not task_data or task_data.get("finished_at") is not None:
+                return None
+
+            # task was already claimed by a worker
+            removed = False
+            if task_id in self._pending[queue_name]:
+                self._pending[queue_name].remove(task_id)
+                removed = True
+            else:
+                scheduled = self._scheduled[queue_name]
+                for i, scheduled_task in enumerate(scheduled):
+                    if scheduled_task.task_id == task_id:
+                        scheduled.pop(i)
+                        heapq.heapify(scheduled)
+                        removed = True
+                        break
+
+            if not removed:
+                return None
+
+            task_data["status"] = "cancelled"
+            task_data["finished_at"] = datetime.now(timezone.utc).isoformat()
+            self._set_expiry(queue_name, task_data)
+
+            return deepcopy(task_data)
+
+    async def delete_task(self, queue_name: str, task_id: str) -> bool:
+        self._check_connected()
+
+        async with self._locks[queue_name]:
+            if task_id not in self._task_metadata[queue_name]:
+                return False
+
+            del self._task_metadata[queue_name][task_id]
+            self._task_expiry[queue_name].pop(task_id, None)
+
+            return True
+
     async def get_results(self, queue_name: str, task_ids: list[str], timeout: float | None = None) -> dict[str,dict[str, Any]]:
         self._check_connected()
 

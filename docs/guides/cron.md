@@ -40,6 +40,29 @@ Expressions use standard five-field cron syntax (`minute hour day-of-month month
 - `queue.delete_cron(task, "*/1 * * * *")` removes a cron; pass the same task and expression you registered.
 - `sheppy cron list` shows registered crons from the CLI.
 
+## Declarative cron jobs (pyproject.toml)
+
+Instead of calling `add_cron()`, you can declare cron jobs in your project's `pyproject.toml`:
+
+```toml
+[[tool.sheppy.cron]]
+task = "myapp.tasks:cleanup"
+expression = "0 3 * * *"
+args = [30]
+
+[[tool.sheppy.cron]]
+task = "myapp.tasks:backup"
+expression = "0 4 * * sun"
+```
+
+Every worker started with `sheppy work` from that directory reads the file and reconciles continuously:
+
+- crons declared in the file are created and marked as file-managed
+- remove an entry from the file and the worker deletes that cron within seconds
+- crons added through `queue.add_cron()` are left alone, even when identical to a declaration
+
+Entries take optional `args`, `kwargs`, and `queue` (which defaults to the worker's first queue). Invalid entries are logged and skipped, and if the file is missing or broken the worker keeps the current state instead of deleting anything. Use `Worker(cron_config_file=...)` for the programmatic path.
+
 ## When to use cron vs `schedule()`
 
 Use `queue.schedule()` for one-off future tasks ("send this email in 30 minutes"). Use `add_cron()` for recurring work ("nightly cleanup at 03:00"). A cron registration persists until you delete it; a scheduled task fires once.

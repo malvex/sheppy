@@ -6,6 +6,7 @@ from uuid import UUID
 from ._config import config
 from ._workflow import Workflow, WorkflowResult, WorkflowRunner
 from .backend.base import Backend
+from .exceptions import TaskCancellationError
 from .models import Task, TaskCron
 from .task_factory import TaskFactory
 
@@ -335,6 +336,72 @@ class Queue:
         success = await self.backend.append(self.name, [_task.model_dump(mode="json")], unique=False)
         return success[0]
 
+    async def cancel(self, task: Task | UUID | str) -> Task:
+        """Cancel a pending or scheduled task.
+
+        Args:
+            task: Instance of a Task or its ID.
+
+        Returns:
+            The updated Task instance with status 'cancelled'.
+
+        Raises:
+            TaskCancellationError: If the task cannot be cancelled - either it
+                was already claimed by a worker, it already finished, or it
+                does not exist.
+
+        Example:
+            ```python
+            q = Queue(...)
+
+            await q.schedule(task, timedelta(minutes=10))
+
+            cancelled = await q.cancel(task)
+            assert cancelled.status == 'cancelled'
+            ```
+        """
+        await self.__ensure_backend_is_connected()
+
+        task_id = str(task.id if isinstance(task, Task) else task)
+        task_data = await self.backend.cancel(self.name, task_id)
+
+        if task_data is None:
+            raise TaskCancellationError(f"Task {task_id} could not be cancelled.")
+
+        return Task.model_validate(task_data)
+
+    async def delete(self, task: Task | UUID | str) -> bool:
+        """Hard-delete a finished task's stored metadata.
+
+        Only tasks in a terminal state (completed, failed, crashed, cancelled) can be deleted.
+
+        Args:
+            task: Instance of a Task or its ID.
+
+        Returns:
+            True if the task existed and was deleted, False if it was not found.
+
+        Raises:
+            ValueError: If the task has not finished yet.
+
+        Example:
+            ```python
+            q = Queue(...)
+
+            await q.cancel(task)
+            deleted = await q.delete(task)
+            assert deleted is True
+            ```
+        """
+        _task = await self.get_task(task)
+        if not _task:
+            return False
+
+        if _task.finished_at is None:
+            raise ValueError("Only finished tasks can be deleted, cancel the task first")
+
+        return await self.backend.delete_task(self.name, str(_task.id))
+
     async def size(self) -> int:
         """Get number of pending tasks in the queue.
 
@@ -427,6 +494,14 @@ class Queue:
         """
         await self.__ensure_backend_is_connected()
         return [TaskCron.model_validate(tc) for tc in await self.backend.get_crons(self.name)]
+
+    async def _store_cron(self, cron: TaskCron) -> bool:
+        await self.__ensure_backend_is_connected()
+        return await self.backend.add_cron(self.name, str(cron.deterministic_id), cron.model_dump(mode="json"))
+
+    async def _delete_task_cron(self, cron: TaskCron) -> bool:
+        await self.__ensure_backend_is_connected()
+        return await self.backend.delete_cron(self.name, str(cron.deterministic_id))
 
     async def _pop_pending(self, limit: int = 1, timeout: float | None = None) -> list[Task]:
         """Get next task to process. Internal method used by workers.

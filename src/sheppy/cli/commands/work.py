@@ -67,6 +67,7 @@ def work(
     console.print(f"  Max concurrent tasks: [yellow]{max_concurrent}[/yellow]")
     if prestart:
         console.print(f"  Prestart hook: [yellow]{prestart}[/yellow]")
+
     console.print()
 
     _start_worker(queues, backend_instance, max_concurrent, max_prefetch, _log_level,

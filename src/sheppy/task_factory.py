@@ -92,11 +92,12 @@ class TaskFactory:
         return _task
 
     @staticmethod
-    def create_cron_from_task(task: Task, cron_expression: str) -> TaskCron:
+    def create_cron_from_task(task: Task, cron_expression: str, managed_by: str | None = None) -> TaskCron:
         return TaskCron(
             expression=cron_expression,
             spec=task.spec.model_copy(deep=True),
             config=task.config.model_copy(deep=True),
+            managed_by=managed_by,
         )
 
 
