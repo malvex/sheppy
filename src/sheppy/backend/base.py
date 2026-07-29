@@ -17,7 +17,7 @@ def resolve_metadata_ttl(task_data: dict[str, Any], *, ttl: int | None, error_tt
     task_ttl: TTLValue = config.get("ttl", "inherit")
     task_error_ttl: TTLValue = config.get("error_ttl", "inherit")
 
-    if task_data.get("status") in ("failed", "crashed"):
+    if task_data.get("status") in ("failed", "crashed", "cancelled"):
         for candidate in (task_error_ttl, task_ttl, error_ttl, ttl):
             if not isinstance(candidate, str):  # skip "inherit"
                 return candidate
@@ -75,6 +75,14 @@ class Backend(ABC):
 
     @abstractmethod
     async def store_result(self, queue_name: str, task_data: dict[str, Any]) -> bool:
+        pass
+
+    @abstractmethod
+    async def cancel(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
+        pass
+
+    @abstractmethod
+    async def delete_task(self, queue_name: str, task_id: str) -> bool:
         pass
 
     @abstractmethod

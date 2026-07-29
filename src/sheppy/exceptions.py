@@ -14,6 +14,10 @@ class WorkerCrashedError(Exception):
     pass
 
 
+class TaskCancellationError(Exception):
+    """Raised when a task cannot be cancelled (already claimed by a worker, already finished, or not found)."""
+
+
 class TaskFailedError(Exception):
     """Fallback exception for task failures whose original exception class cannot be reconstructed."""
 

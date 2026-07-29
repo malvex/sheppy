@@ -1,13 +1,17 @@
 import asyncio
 import contextlib
 import logging
+import os
 import signal
 from collections.abc import Callable
 from functools import partial
 from typing import Any, cast
+from uuid import UUID
 
 from pydantic import BaseModel
 
+from ._utils.cron_config import load_cron_declarations
+from ._utils.functions import resolve_function
 from ._utils.task_execution import (
     LoggingMiddleware,
     TaskChainingMiddleware,
@@ -23,6 +27,7 @@ from .protocols import (
     TaskProcessorProtocol,
 )
 from .queue import Queue
+from .task_factory import TaskFactory
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +61,6 @@ class Worker:
         enable_job_processing: If True, enables job processing. Default is True.
         enable_scheduler: If True, enables the scheduler to enqueue scheduled tasks. Default is True.
         enable_cron_manager: If True, enables the cron manager to handle cron jobs. Default is True.
-
     Note:
         The SHEPPY_* environment variables are read by the `sheppy work` CLI
         command, not by this class. Configure the class explicitly.
@@ -137,6 +141,7 @@ class Worker:
         self.enable_job_processing = enable_job_processing
         self.enable_scheduler = enable_scheduler
         self.enable_cron_manager = enable_cron_manager
+        self._cron_config_file = "pyproject.toml" if os.path.exists("pyproject.toml") else None
 
         self._work_queue_tasks: list[asyncio.Task[None]] = []
         self._scheduler_task: asyncio.Task[None] | None = None
@@ -277,8 +282,63 @@ class Worker:
 
         logger.info(SCHEDULER_PREFIX + "stopped")
 
+    async def _reconcile_declared_crons(self) -> None:
+        if self._cron_config_file is None:
+            return
+
+        declarations = load_cron_declarations(self._cron_config_file)
+        if declarations is None:
+            return
+
+        declared_by_queue: dict[str, dict[UUID, TaskCron]] = {q.name: {} for q in self.queues}
+
+        for decl in declarations:
+            queue_name = decl.queue or self.queues[0].name
+            if queue_name not in declared_by_queue:
+                logger.warning(CRON_MANAGER_PREFIX + f"Cron declaration for {decl.task!r} targets queue {queue_name!r} which this worker does not serve, skipping")
+                continue
+
+            try:
+                func = resolve_function(decl.task)
+                task = TaskFactory.create_task(func, decl.args, decl.kwargs, retry=0, retry_delay=None,
+                                               middleware=None, timeout=None, retry_on_timeout=None, retry_on_crash=None)
+                cron = TaskFactory.create_cron_from_task(task, decl.expression, managed_by="pyproject")
+            except Exception as e:
+                logger.error(CRON_MANAGER_PREFIX + f"Invalid cron declaration for {decl.task!r}: {e}")
+                continue
+
+            declared_by_queue[queue_name][cron.deterministic_id] = cron
+
+        for queue in self.queues:
+            declared = declared_by_queue[queue.name]
+
+            scheduled = await queue.get_scheduled()
+
+            for existing in await queue.get_crons():
+                det_id = existing.deterministic_id
+                if det_id in declared:
+                    continue  # already registered (either declared or programmatic)
+
+                if existing.managed_by == "pyproject":
+                    logger.info(CRON_MANAGER_PREFIX + f"Removing undeclared cron {existing.id} ({existing.spec.func})")
+                    await queue._delete_task_cron(existing)
+
+                    cron_id = existing.deterministic_id
+
+                    for t in scheduled:
+                        if t.cron_id == cron_id:
+                            # todo: do for loop and batch cancel?
+                            logger.info(CRON_MANAGER_PREFIX + f"Cancelling residual task {t.id}")
+                            await queue.cancel(t)
+
+
+            for cron in declared.values():
+                await queue._store_cron(cron)
+
     async def _run_cron_manager(self, poll_interval: float) -> None:
         logger.info(CRON_MANAGER_PREFIX + "started")
+
+        await self._reconcile_declared_crons()
 
         while not self._shutdown_event.is_set():
             try:
@@ -453,6 +513,12 @@ class Worker:
 
     async def process_task(self, task: Task, queue: Queue) -> Task:
         async with self._task_semaphore:
+            fresh = await queue.get_task(task.id)
+            if fresh is None or fresh.status == 'cancelled':
+                await queue.backend.acknowledge(queue.name, [str(task.id)])
+                return fresh if fresh is not None else task
+            task = fresh
+
             try:
                 _, task = await self._task_processor.process_task(task, queue, self.worker_id)
             except MiddlewareError:

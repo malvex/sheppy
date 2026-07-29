@@ -1,7 +1,7 @@
 import asyncio
 import contextlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from time import time
 from typing import Any, cast
 
@@ -108,6 +108,10 @@ class RedisBackend(Backend):
         """Queued tasks to be processed (stream)"""
         return f"sheppy:pending:{queue_name}"
 
+    def _pending_index_key(self, queue_name: str) -> str:
+        """Index of unclaimed pending tasks: task_id -> stream message_id (hash)"""
+        return f"sheppy:pending_ids:{queue_name}"
+
     def _finished_tasks_key(self, queue_name: str) -> str:
         """Notifications about finished tasks (stream)"""
         return f"sheppy:finished:{queue_name}"
@@ -165,6 +169,7 @@ class RedisBackend(Backend):
         try:
             async with self.client.pipeline(transaction=False) as pipe:
                 pipe.hsetnx(self._queues_registry_key(), queue_name, "{}")
+                xadd_positions = []
 
                 for t in to_queue:
                     _task_data = json.dumps(t)
@@ -173,11 +178,20 @@ class RedisBackend(Backend):
                         pipe.set(f"{tasks_metadata_key}:{t['id']}", _task_data)
 
                     # add to pending stream
+                    xadd_positions.append(len(pipe.command_stack))
                     pipe.xadd(pending_tasks_key, {"data": _task_data})
 
-                await pipe.execute()
+                res = await pipe.execute()
         except Exception as e:
             raise BackendError(f"Failed to enqueue task: {e}") from e
+
+        # record stream message ids in the pending index (used by cancel())
+        if to_queue:
+            mapping = {}
+            for t, pos in zip(to_queue, xadd_positions, strict=True):
+                message_id = res[pos]
+                mapping[t["id"]] = message_id.decode() if isinstance(message_id, bytes) else message_id
+            await self.client.hset(self._pending_index_key(queue_name), mapping=mapping)
 
         return success
 
@@ -211,6 +225,8 @@ class RedisBackend(Backend):
                 # store message_id for acknowledge()
                 self._pending_messages[task_data["id"]] = (queue_name, message_id.decode())
                 tasks.append(task_data)
+
+            await self.client.hdel(self._pending_index_key(queue_name), *[t["id"] for t in tasks])
 
             return tasks
 
@@ -246,6 +262,7 @@ class RedisBackend(Backend):
             count += 1
 
         await self.client.xtrim(pending_tasks_key, maxlen=0)
+        await self.client.delete(self._pending_index_key(queue_name))
         await self.client.delete(scheduled_key)
         await self.client.hdel(self._queues_registry_key(), queue_name)
         await self.client.delete(self._rate_limit_key(queue_name))
@@ -353,6 +370,67 @@ class RedisBackend(Backend):
             return True
         except Exception as e:
             raise BackendError(f"Failed to store task result: {e}") from e
+
+    async def cancel(self, queue_name: str, task_id: str) -> dict[str, Any] | None:
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
+        scheduled_key = self._scheduled_tasks_key(queue_name)
+        pending_tasks_key = self._pending_tasks_key(queue_name)
+        pending_index_key = self._pending_index_key(queue_name)
+
+        await self._ensure_consumer_group(pending_tasks_key)
+
+        raw = await self.client.get(f"{tasks_metadata_key}:{task_id}")
+        if not raw:
+            return None
+
+        task_data: dict[str, Any] = json.loads(raw)
+
+        if task_data.get("finished_at") is not None:
+            return None
+
+        if task_data.get("status") == "scheduled":
+            removed = await self.client.zrem(scheduled_key, task_id)
+            if removed > 0:
+                return await self._finalize_cancellation(queue_name, task_data)
+            # else: scheduled task just got into pending queue
+
+        raw_message_id = await self.client.hget(pending_index_key, task_id)
+        if raw_message_id is None:
+            # already claimed by a worker (or never queued) -> cancellation fails
+            return None
+
+        message_id = raw_message_id.decode() if isinstance(raw_message_id, bytes) else raw_message_id
+
+        # XDEL is atomic, so only one of two concurrent cancellations wins
+        removed = await self.client.xdel(pending_tasks_key, message_id)
+        await self.client.hdel(pending_index_key, task_id)
+
+        if removed <= 0:
+            # stale index entry -> the message was already removed
+            return None
+
+        return await self._finalize_cancellation(queue_name, task_data)
+
+    async def _finalize_cancellation(self, queue_name: str, task_data: dict[str, Any]) -> dict[str, Any]:
+        task_data["status"] = "cancelled"
+        task_data["finished_at"] = datetime.now(timezone.utc).isoformat()
+
+        async with self.client.pipeline(transaction=True) as pipe:
+            pipe.set(
+                f"{self._tasks_metadata_key(queue_name)}:{task_data['id']}",
+                json.dumps(task_data),
+                ex=resolve_metadata_ttl(task_data, ttl=self.ttl, error_ttl=self.error_ttl),
+            )
+            # notify waiters (wait_for) that the task reached a terminal state
+            min_id = f"{int((time() - self._results_stream_ttl) * 1000)}-0"
+            pipe.xadd(self._finished_tasks_key(queue_name), {"task_id": task_data["id"]}, minid=min_id)
+            await pipe.execute()
+
+        return task_data
+
+    async def delete_task(self, queue_name: str, task_id: str) -> bool:
+        tasks_metadata_key = self._tasks_metadata_key(queue_name)
+        return bool(await self.client.delete(f"{tasks_metadata_key}:{task_id}"))
 
     async def get_stats(self, queue_name: str) -> dict[str, int]:
         scheduled_tasks_key = self._scheduled_tasks_key(queue_name)
