@@ -3,7 +3,7 @@ import contextlib
 import json
 from datetime import datetime
 from time import time
-from typing import Any
+from typing import Any, cast
 
 try:
     import redis.asyncio as redis
@@ -16,6 +16,12 @@ except ImportError as e:
 from .._utils.task_execution import generate_unique_worker_id
 from ..models import TTLValue
 from .base import Backend, BackendError, resolve_metadata_ttl
+
+# redis-py >= 8.0 types stream command responses as RESP2/RESP3 unions
+# we only use RESP2 without decode_responses, so responses are always lists of tuples with
+# bytes keys, and blocking reads return None on timeout
+_StreamMessages = list[tuple[bytes, dict[bytes, bytes]]]  # [(message_id, fields), ...]
+_XReadResult = list[tuple[bytes, _StreamMessages]] | None  # [(stream_key, messages), ...]
 
 
 class RedisBackend(Backend):
@@ -48,10 +54,11 @@ class RedisBackend(Backend):
                 #decode_responses=self.decode_responses,
                 #max_connections=self.max_connections,
                 #protocol=3,  # enable RESP version 3
+                socket_timeout=None,  # redis-py >= 8.0 sets this to "5s" (was "None") which breaks blocking wait (pop(), etc)
                 **self.redis_kwargs
             )
             self._client = redis.Redis.from_pool(self._pool)
-            await self._client.ping()  # type: ignore[misc]
+            await self._client.ping()
         except Exception as e:
             self._client = None
             self._pool = None
@@ -181,13 +188,13 @@ class RedisBackend(Backend):
         await self._ensure_consumer_group(pending_tasks_key)
 
         try:
-            result = await self.client.xreadgroup(
+            result = cast(_XReadResult, await self.client.xreadgroup(
                 groupname=self.consumer_group,
                 consumername=self.consumer_name,
                 streams={pending_tasks_key: ">"},  # ">" means only new messages (not delivered to other consumers)
                 count=limit,
                 block=None if timeout is None or timeout == 0 else int(timeout * 1000)
-            )
+            ))
 
             if not result:
                 return []
@@ -215,7 +222,7 @@ class RedisBackend(Backend):
 
         await self._ensure_consumer_group(pending_tasks_key)
 
-        messages = await self.client.xrange(pending_tasks_key, count=count)
+        messages = cast(_StreamMessages, await self.client.xrange(pending_tasks_key, count=count))
 
         return [json.loads(fields[b"data"]) for _message_id, fields in messages]
 
@@ -240,7 +247,7 @@ class RedisBackend(Backend):
 
         await self.client.xtrim(pending_tasks_key, maxlen=0)
         await self.client.delete(scheduled_key)
-        await self.client.hdel(self._queues_registry_key(), queue_name)  # type: ignore[misc]
+        await self.client.hdel(self._queues_registry_key(), queue_name)
         await self.client.delete(self._rate_limit_key(queue_name))
         sw_keys = [key async for key in self.client.scan_iter(match=self._sliding_window_key(queue_name, '*'), count=10000)]
         if sw_keys:
@@ -291,7 +298,7 @@ class RedisBackend(Backend):
 
         score = now.timestamp() if now else time()
 
-        task_id_entries = await self.client.zrangebyscore(scheduled_key, 0, score)
+        task_id_entries = cast(list[bytes], await self.client.zrangebyscore(scheduled_key, 0, score))
 
         claimed_ids = []
         for entry in task_id_entries:
@@ -383,7 +390,7 @@ class RedisBackend(Backend):
         results = {}
         remaining_ids = task_ids[:]
 
-        last_id = "0-0"
+        last_id: str | bytes = "0-0"
         if timeout is not None and timeout >= 0:
             with contextlib.suppress(redis.ResponseError):
                 last_id = (await self.client.xinfo_stream(finished_tasks_key))["last-generated-id"]
@@ -415,11 +422,11 @@ class RedisBackend(Backend):
             else:
                 remaining = 0
 
-            messages = await self.client.xread(
+            messages = cast(_XReadResult, await self.client.xread(
                 {finished_tasks_key: last_id},
                 block=int(remaining * 1000),
                 count=1000
-            )
+            ))
 
             if not messages:
                 continue
@@ -427,7 +434,10 @@ class RedisBackend(Backend):
             for _, stream_messages in messages:
                 for msg_id, data in stream_messages:
                     last_id = msg_id
-                    task_id = data.get(b"task_id").decode()
+                    raw_task_id = data.get(b"task_id")
+                    if raw_task_id is None:
+                        continue
+                    task_id = raw_task_id.decode()
 
                     if task_id in remaining_ids:
                         task_json = await self.client.get(f"{tasks_metadata_key}:{task_id}")
@@ -493,7 +503,7 @@ class RedisBackend(Backend):
             return None
 
         # over limit - undo increment
-        await self.client.hincrby(rl_key, key, -1)  # type: ignore[misc]
+        await self.client.hincrby(rl_key, key, -1)
         pttl_result = results[2]
         remaining_ms = pttl_result[0] if pttl_result and pttl_result[0] > 0 else ttl_ms
         base_wait = remaining_ms / 1000.0
@@ -544,7 +554,7 @@ class RedisBackend(Backend):
             self._initialized_groups.add(stream_key)
 
     async def list_queues(self) -> dict[str, int]:
-        queue_names = await self.client.hkeys(self._queues_registry_key())  # type: ignore[misc]
+        queue_names = await self.client.hkeys(self._queues_registry_key())
 
         queues = {}
         for raw_name in sorted(queue_names):
@@ -575,15 +585,15 @@ class RedisBackend(Backend):
 
     async def add_cron(self, queue_name: str, deterministic_id: str, task_cron: dict[str, Any]) -> bool:
         cron_key = self._cron_tasks_key(queue_name)
-        return bool(await self.client.hsetnx(cron_key, deterministic_id, json.dumps(task_cron)))  # type: ignore[misc]
+        return bool(await self.client.hsetnx(cron_key, deterministic_id, json.dumps(task_cron)))
 
     async def delete_cron(self, queue_name: str, deterministic_id: str) -> bool:
         cron_key = self._cron_tasks_key(queue_name)
-        return bool(await self.client.hdel(cron_key, deterministic_id))  # type: ignore[misc]
+        return bool(await self.client.hdel(cron_key, deterministic_id))
 
     async def get_crons(self, queue_name: str) -> list[dict[str, Any]]:
         cron_key = self._cron_tasks_key(queue_name)
-        cron_data = await self.client.hvals(cron_key)  # type: ignore[misc]
+        cron_data = await self.client.hvals(cron_key)
         return [json.loads(d) for d in cron_data]
 
     async def store_workflow(self, queue_name: str, workflow_data: dict[str, Any]) -> bool:
@@ -618,7 +628,7 @@ class RedisBackend(Backend):
             return {}
 
         try:
-            data = await self.client.hmget(workflows_key, workflow_ids)  # type: ignore[misc]
+            data = await self.client.hmget(workflows_key, workflow_ids)
             result = {}
             for wf_json in data:
                 if wf_json:
@@ -632,7 +642,7 @@ class RedisBackend(Backend):
         workflows_key = self._workflows_key(queue_name)
 
         try:
-            all_data = await self.client.hvals(workflows_key)  # type: ignore[misc]
+            all_data = await self.client.hvals(workflows_key)
             return [json.loads(wf_json) for wf_json in all_data if wf_json]
         except Exception as e:
             raise BackendError(f"Failed to get all workflows: {e}") from e
@@ -647,12 +657,12 @@ class RedisBackend(Backend):
         results = {}
         remaining_ids = workflow_ids[:]
 
-        last_id = "0-0"
+        last_id: str | bytes = "0-0"
         if timeout is not None and timeout >= 0:
             with contextlib.suppress(redis.ResponseError):
                 last_id = (await self.client.xinfo_stream(finished_workflows_key))["last-generated-id"]
 
-        workflow_jsons = await self.client.hmget(workflows_key, workflow_ids)  # type: ignore[misc]
+        workflow_jsons = await self.client.hmget(workflows_key, workflow_ids)
         for wf_json in workflow_jsons:
             if not wf_json:
                 continue
@@ -679,10 +689,10 @@ class RedisBackend(Backend):
             else:
                 remaining = 0
 
-            messages = await self.client.xread(
+            messages = cast(_XReadResult, await self.client.xread(
                 {finished_workflows_key: last_id},
                 block=int(remaining * 1000),
-                count=1000
+                count=1000)
             )
 
             if not messages:
@@ -691,10 +701,14 @@ class RedisBackend(Backend):
             for _, stream_messages in messages:
                 for msg_id, data in stream_messages:
                     last_id = msg_id
-                    workflow_id = data.get(b"workflow_id").decode()
+                    raw_workflow_id = data.get(b"workflow_id")
+                    if raw_workflow_id is None:
+                        continue
+
+                    workflow_id = raw_workflow_id.decode()
 
                     if workflow_id in remaining_ids:
-                        wf_json = await self.client.hget(workflows_key, workflow_id)  # type: ignore[misc]
+                        wf_json = await self.client.hget(workflows_key, workflow_id)
                         if not wf_json:
                             continue
                         wf = json.loads(wf_json)
@@ -711,12 +725,12 @@ class RedisBackend(Backend):
         pending_index_key = self._workflow_pending_index_key(queue_name)
 
         try:
-            workflow_ids = await self.client.smembers(pending_index_key)  # type: ignore[misc]
+            workflow_ids = await self.client.smembers(pending_index_key)
             if not workflow_ids:
                 return []
 
             ids = [wid.decode() if isinstance(wid, bytes) else wid for wid in workflow_ids]
-            data = await self.client.hmget(workflows_key, ids)  # type: ignore[misc]
+            data = await self.client.hmget(workflows_key, ids)
             return [json.loads(wf_json) for wf_json in data if wf_json]
         except Exception as e:
             raise BackendError(f"Failed to get pending workflows: {e}") from e
