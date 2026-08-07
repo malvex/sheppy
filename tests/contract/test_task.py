@@ -81,7 +81,6 @@ def test_instanced_task_defaults(task_fn):
     assert task.spec.func == fn_name
     assert task.spec.args == (1, 2)
     assert task.spec.kwargs == {}
-    assert task.spec.middleware == []
 
     assert task.config.retry == 0
     assert task.config.retry_delay == 1.0

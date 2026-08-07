@@ -456,24 +456,6 @@ class TestCronOperations:
 
 class TestMiddleware:
 
-    def test_persists_on_task(self):
-        queue = TestQueue()
-
-        t1 = simple_async_task(1, 2)
-        t2 = task_add_with_middleware_noop(1, 2)
-
-        assert len(t1.spec.middleware) == 0
-        assert len(t2.spec.middleware) == 2
-
-        queue.add([t1, t2])
-        t1, t2 = queue.process_all()
-
-        assert len(t1.spec.middleware) == 0
-        assert len(t2.spec.middleware) == 2
-
-        assert t1.result == 3
-        assert t2.result == 3
-
     def test_noop(self):
         queue = TestQueue()
 

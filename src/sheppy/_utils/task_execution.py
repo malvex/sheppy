@@ -135,7 +135,17 @@ class TaskProcessor(TaskProcessorProtocol):
         return await coro
 
     async def _preprocess(self, task: Task, queue: Queue) -> tuple[Task, list[MiddlewareGenerator]]:
-        middlewares = self.middleware + (task.spec.middleware or [])
+        task_middleware: list[Callable[..., Any]] = []
+        try:
+            task_wrapper = resolve_function(task.spec.func, wrapped=False)
+            task_middleware = cast(list[Callable[..., Any]], getattr(task_wrapper, "__sheppy_middleware__", []))
+        except ValueError:
+            # resolve_function will fail again in _execute_task_function.
+            # We don't raise here yet so we go through happy path with self.mark_failed() try/catch in process_task
+            # TODO: should be refactored
+            pass
+
+        middlewares = [*self.middleware, *task_middleware]
 
         if not middlewares:
             return task, []
@@ -143,8 +153,7 @@ class TaskProcessor(TaskProcessorProtocol):
         _generators: list[MiddlewareGenerator] = []
 
         try:
-            for middleware_string in middlewares:
-                middleware = resolve_function(middleware_string, wrapped=False) if isinstance(middleware_string, str) else middleware_string
+            for middleware in middlewares:
                 gen: MiddlewareGenerator = middleware(task, queue)
                 if inspect.isasyncgen(gen):
                     task = await cast(AsyncMiddlewareGenerator, gen).__anext__() or task

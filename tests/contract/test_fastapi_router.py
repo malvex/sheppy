@@ -206,7 +206,7 @@ class TestAddTask:
     async def test_add_task_func_not_a_task(self, client: "AsyncClient"):
         resp = await client.post("/sheppy/pytest/tasks", json={"func": "os:getcwd"})
         assert resp.status_code == 400
-        assert "did not return a Task" in resp.json()["detail"]
+        assert "Refusing to resolve function not decorated" in resp.json()["detail"]
 
 
 class TestScheduleTask:

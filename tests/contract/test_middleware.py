@@ -1,3 +1,5 @@
+import pytest
+
 from sheppy import Queue, Worker
 from tests.dependencies import (
     # middleware_change_arg,
@@ -22,26 +24,6 @@ from tests.dependencies import (
 
 
 class TestMiddleware:
-
-    async def test_persists_on_task(self, queue: Queue, worker: Worker):
-        t1 = simple_async_task(1, 2)
-        t2 = task_add_with_middleware_noop(1, 2)
-
-        assert len(t1.spec.middleware) == 0
-        assert len(t2.spec.middleware) == 2
-
-        await queue.add([t1, t2])
-        await worker.work(max_tasks=2)
-
-        t1 = await queue.get_task(t1)
-        t2 = await queue.get_task(t2)
-
-        assert len(t1.spec.middleware) == 0
-        assert len(t2.spec.middleware) == 2
-
-        assert t1.result == 3
-        assert t2.result == 3
-
 
     async def test_noop(self, queue: Queue, worker: Worker):
 
@@ -82,3 +64,19 @@ class TestMiddleware:
         task = await queue.get_task(task)
 
         assert task.result == 105007
+
+    async def test_backwards_compat(self, queue: Queue, worker: Worker):
+        task = simple_async_task(1, 2)
+        data = task.model_dump(mode="json")
+        data['spec']['middleware'] = "tests.dependencies:middleware_noop"
+
+        task = task.model_validate(data)
+
+        assert not hasattr(task.spec, "middleware")
+
+        # middleware should be silently dropped for backwards compatibility,
+        # but everything else should fail so we still forbid extra fields
+        data['spec']['something-else'] = "anything"
+
+        with pytest.raises(match="Extra inputs are not permitted"):
+            task.model_validate(data)

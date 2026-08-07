@@ -31,7 +31,6 @@ class TaskFactory:
                     kwargs: dict[str, Any],
                     retry: int,
                     retry_delay: float | list[float] | None,
-                    middleware: list[Callable[..., Any]] | None,
                     timeout: float | None,
                     retry_on_timeout: bool | None,
                     retry_on_crash: bool | None,
@@ -65,12 +64,6 @@ class TaskFactory:
 
         args, kwargs = validate_input(func, tuple(args or ()), dict(kwargs or {}))
 
-        stringified_middlewares = []
-        if middleware:
-            for m in middleware:
-                # todo: should probably also validate them here
-                stringified_middlewares.append(stringify_function(m))
-
         task_kwargs: dict[str, Any] = {}
 
         ctx = get_workflow_context()
@@ -84,7 +77,6 @@ class TaskFactory:
                 func=func_string,
                 args=args,
                 kwargs=kwargs,
-                middleware=stringified_middlewares
             ),
             config=TaskConfig(**task_config)
         )
@@ -172,6 +164,8 @@ def task(
         ```
     """
     def decorator(func: Callable[P, R]) -> Callable[P, Task]:
+        func.__sheppy_task__ = True  # type: ignore[attr-defined]
+
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> Task:
 
@@ -181,7 +175,6 @@ def task(
                 kwargs,
                 retry,
                 retry_delay,
-                middleware,
                 timeout,
                 retry_on_timeout,
                 retry_on_crash,
@@ -189,6 +182,8 @@ def task(
                 ttl,
                 error_ttl
             )
+
+        wrapper.__sheppy_middleware__ = list(middleware if middleware else [])  # type: ignore[attr-defined]
 
         return wrapper
 

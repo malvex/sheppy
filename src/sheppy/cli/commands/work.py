@@ -9,7 +9,7 @@ from rich.logging import RichHandler
 
 from sheppy import Backend, Worker
 from sheppy._config import LogLevelType, config
-from sheppy._utils.functions import resolve_function
+from sheppy._utils.functions import _resolve_function
 from sheppy.queue import _create_backend_from_url
 
 from ..utils import LogLevel, console
@@ -98,7 +98,7 @@ def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, max_
 
     if prestart:
         console.print(f"[cyan]Running prestart hook '[bold]{prestart}[/bold]'[/cyan]")
-        resolve_function(prestart)()
+        _resolve_function(prestart)()  # evil
 
     worker = Worker(queues, backend=backend, max_concurrent_tasks=max_concurrent,
                     max_prefetch_tasks=max_prefetch_tasks,
