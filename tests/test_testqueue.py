@@ -84,8 +84,9 @@ class TestSuccessfulTasks:
         t1 = test_case.create_task()
         assert queue.add(t1) is True
 
-        pytest.xfail("not really a bug, but it's a bug")
-        assert queue.get_task(t1) == t1
+        stored = queue.get_task(t1)
+        assert stored is not None
+        assert stored.model_dump(mode="json") == t1.model_dump(mode="json")
 
     @pytest.mark.parametrize("test_case", TaskTestCases.subset_successful_tasks(), ids=lambda tc: tc.name)
     def test_process_all(self, test_case: TaskTestCase):
