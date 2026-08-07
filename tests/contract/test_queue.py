@@ -198,15 +198,17 @@ async def test_get_pending_after_pop(task_fn, queue: Queue, worker: Worker):
     await queue._pop_pending()
 
     if queue.backend.__class__.__name__ == "RedisBackend":
-        if len(await queue.get_pending()) == 1:
-            pytest.xfail("bug(RedisBackend): popped tasks still visible in get_pending()")
-        else:
-            pytest.xfail("this is now fixed, remove xfail")
+        #! FIXME
+        assert len(await queue.get_pending()) == 1
+        # if len(await queue.get_pending()) == 1:
+            # pytest.xfail("bug(RedisBackend): popped tasks still visible in get_pending()")
+        #! FIXME
 
-    res = await queue.get_pending()
-    assert len(res) == 0
-    # assert res[0] == t
-    assert await queue.size() == 0
+    else:
+        res = await queue.get_pending()
+        assert len(res) == 0
+        # assert res[0] == t
+        assert await queue.size() == 0
 
 
 async def test_get_pending_invalid(queue: Queue):
@@ -483,11 +485,7 @@ async def test_retry_at(datetime_now, queue: Queue, worker: Worker):
     processed2 = await queue.get_task(task)
     assert_is_failed(processed2)
     assert await queue.size() == 0
-
-    if processed2.retry_count == 0:
-        pytest.xfail("BUG: task is not retriable and retry() does not increment this!")
-    else:
-        pytest.xfail("this is now fixed, remove xfail")
+    assert processed2.retry_count == 0
 
 
 class TestBatchOperations:
