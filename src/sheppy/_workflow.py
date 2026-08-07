@@ -227,6 +227,7 @@ def workflow(
     ) -> Callable[P, Workflow]:
         _validate_workflow_function(fn)
         func_string = stringify_function(fn)
+        fn.__sheppy_task__ = True  # type: ignore[attr-defined]
 
         @wraps(fn)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> Workflow:

@@ -30,6 +30,15 @@ def stringify_function(func: Callable[..., Any]) -> str:
 
 
 def resolve_function(func: str, wrapped: bool = True) -> Callable[..., Any]:
+    fn = _resolve_function(func, wrapped)
+
+    if not getattr(fn, "__sheppy_task__", False):
+        raise ValueError(f"Refusing to resolve function not decorated with @task or @workflow: {func}")
+
+    return fn
+
+
+def _resolve_function(func: str, wrapped: bool = True) -> Callable[..., Any]:
     module_name = None
     function_name = None
 

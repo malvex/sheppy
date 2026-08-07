@@ -162,7 +162,6 @@ class TaskSpec(BaseModel):
         func: Fully qualified function name, e.g. `my_module.my_submodule:my_function`
         args: Positional arguments to be passed to the function.
         kwargs: Keyword arguments to be passed to the function.
-        middleware: List of fully qualified middleware function names to be applied to the task, e.g. `['my_module.submodule:my_middleware']`. Middleware will be applied in the order they are listed.
 
     Note:
         - You should not create TaskSpec instances directly. Instead, use the `@task` decorator to define a task function, and then call that function to create a Task instance.
@@ -190,9 +189,13 @@ class TaskSpec(BaseModel):
     """tuple[Any, ...]: Positional arguments to be passed to the function."""
     kwargs: dict[str, Any] = Field(default_factory=dict)
     """dict[str, Any]: Keyword arguments to be passed to the function."""
-    middleware: list[str] | None = None
-    """list[str]|None: List of fully qualified middleware function names to be applied to the task, e.g. `['my_module.submodule:my_middleware']`. Middleware will be applied in the order they are listed."""
 
+    @model_validator(mode="before")
+    @classmethod
+    def ignore_legacy_middleware(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            data.pop("middleware", None)
+        return data
 
 class TaskConfig(BaseModel):
     """Task configuration.

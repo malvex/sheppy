@@ -301,7 +301,7 @@ class Worker:
             try:
                 func = resolve_function(decl.task)
                 task = TaskFactory.create_task(func, decl.args, decl.kwargs, retry=0, retry_delay=None,
-                                               middleware=None, timeout=None, retry_on_timeout=None, retry_on_crash=None)
+                                               timeout=None, retry_on_timeout=None, retry_on_crash=None)
                 cron = TaskFactory.create_cron_from_task(task, decl.expression, managed_by="pyproject")
             except Exception as e:
                 logger.error(CRON_MANAGER_PREFIX + f"Invalid cron declaration for {decl.task!r}: {e}")
