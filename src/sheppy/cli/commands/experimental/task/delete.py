@@ -38,7 +38,7 @@ def delete(
             raise typer.Exit(1) from None
 
         try:
-            deleted = await q.delete(uuid_obj)
+            deleted = await q.experimental.delete(uuid_obj)
         except ValueError as e:
             console.print(f"[red]Error: {e}[/red]")
             raise typer.Exit(1) from None

@@ -38,8 +38,8 @@ The generator must be a plain (non-async) generator function, and it must be det
 `add_workflow()` starts the run and `wait_for_workflow()` blocks until it completes or fails:
 
 ```python
-result = await queue.add_workflow(greetings_workflow(["Alex", "John"]))
-wf = await queue.wait_for_workflow(result.workflow.id)
+result = await queue.experimental.add_workflow(greetings_workflow(["Alex", "John"]))
+wf = await queue.experimental.wait_for_workflow(result.workflow.id)
 print(wf.final_result)
 ```
 

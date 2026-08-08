@@ -31,7 +31,7 @@ async def test_cancel_pending_task(task_fn, queue: Queue, worker: Worker):
     await queue.add(t)
     assert await queue.size() == 1
 
-    cancelled = await queue.cancel(t)
+    cancelled = await queue.experimental.cancel(t)
 
     assert cancelled.status == 'cancelled'
     assert cancelled.finished_at is not None
@@ -58,10 +58,10 @@ async def test_cancel_pending_task_by_id(task_fn, queue: Queue):
     t2 = task_fn(3, 4)
     await queue.add([t1, t2])
 
-    cancelled = await queue.cancel(t1.id)
+    cancelled = await queue.experimental.cancel(t1.id)
     assert cancelled.status == 'cancelled'
 
-    cancelled = await queue.cancel(str(t2.id))
+    cancelled = await queue.experimental.cancel(str(t2.id))
     assert cancelled.status == 'cancelled'
 
 
@@ -70,7 +70,7 @@ async def test_cancel_scheduled_task(task_fn, queue: Queue):
     await queue.schedule(t, timedelta(minutes=10))
     assert len(await queue.get_scheduled()) == 1
 
-    cancelled = await queue.cancel(t)
+    cancelled = await queue.experimental.cancel(t)
 
     assert cancelled.status == 'cancelled'
     assert cancelled.finished_at is not None
@@ -91,7 +91,7 @@ async def test_cancel_claimed_task_fails(task_fn, queue: Queue):
     assert len(claimed) == 1
 
     with pytest.raises(TaskCancellationError):
-        await queue.cancel(t)
+        await queue.experimental.cancel(t)
 
 
 async def test_cancel_completed_task_fails(task_fn, queue: Queue, worker: Worker):
@@ -106,29 +106,29 @@ async def test_cancel_completed_task_fails(task_fn, queue: Queue, worker: Worker
     assert_is_completed(processed)
 
     with pytest.raises(TaskCancellationError):
-        await queue.cancel(t)
+        await queue.experimental.cancel(t)
 
 
 async def test_cancel_twice_fails(task_fn, queue: Queue):
     t = task_fn(1, 2)
     await queue.add(t)
 
-    await queue.cancel(t)
+    await queue.experimental.cancel(t)
 
     with pytest.raises(TaskCancellationError):
-        await queue.cancel(t)
+        await queue.experimental.cancel(t)
 
 
 async def test_cancel_nonexistent_task_fails(queue: Queue):
     with pytest.raises(TaskCancellationError):
-        await queue.cancel(uuid4())
+        await queue.experimental.cancel(uuid4())
 
 
 async def test_wait_for_returns_cancelled_task(task_fn, queue: Queue):
     t = task_fn(1, 2)
     await queue.add(t)
 
-    await queue.cancel(t)
+    await queue.experimental.cancel(t)
 
     finished = await queue.wait_for(t)
     assert finished is not None
@@ -138,13 +138,13 @@ async def test_wait_for_returns_cancelled_task(task_fn, queue: Queue):
 async def test_delete_cancelled_task(task_fn, queue: Queue):
     t = task_fn(1, 2)
     await queue.add(t)
-    await queue.cancel(t)
+    await queue.experimental.cancel(t)
 
-    assert await queue.delete(t) is True
+    assert await queue.experimental.delete(t) is True
     assert await queue.get_task(t) is None
 
     # already deleted
-    assert await queue.delete(t) is False
+    assert await queue.experimental.delete(t) is False
 
 
 async def test_delete_completed_task(task_fn, queue: Queue, worker: Worker):
@@ -155,7 +155,7 @@ async def test_delete_completed_task(task_fn, queue: Queue, worker: Worker):
     await queue.add(t)
     await worker.work(1)
 
-    assert await queue.delete(t) is True
+    assert await queue.experimental.delete(t) is True
     assert await queue.get_task(t) is None
 
 
@@ -164,18 +164,18 @@ async def test_delete_unfinished_task_fails(task_fn, queue: Queue):
     await queue.add(t)
 
     with pytest.raises(ValueError, match="cancel the task first"):
-        await queue.delete(t)
+        await queue.experimental.delete(t)
 
     # scheduled tasks cannot be deleted either
     t2 = task_fn(1, 2)
     await queue.schedule(t2, timedelta(minutes=10))
 
     with pytest.raises(ValueError, match="cancel the task first"):
-        await queue.delete(t2)
+        await queue.experimental.delete(t2)
 
 
 async def test_delete_nonexistent_task(queue: Queue):
-    assert await queue.delete(uuid4()) is False
+    assert await queue.experimental.delete(uuid4()) is False
 
 
 #Redis-specific tests for the task_id -> message_id index that cancel() relies on
@@ -205,7 +205,7 @@ class TestPendingIndexRedis:
 
         t = simple_async_task(1, 2)
         await queue.add(t)
-        await queue.cancel(t)
+        await queue.experimental.cancel(t)
 
         assert await backend.client.hget(index_key, str(t.id)) is None
 
@@ -228,7 +228,7 @@ class TestPendingIndexRedis:
         # XREADGROUP and the index cleanup (index entry still present)
         await backend.client.hset(index_key, str(t.id), message_id)
 
-        cancelled = await queue.cancel(t)
+        cancelled = await queue.experimental.cancel(t)
         assert cancelled.status == 'cancelled'
 
         # the worker must skip execution and leave the cancelled state intact
@@ -248,7 +248,7 @@ async def test_cancelled_task_uses_error_ttl(queue: Queue, backend: Backend):
 
     t = simple_async_task(1, 2)
     await queue.add(t)
-    await queue.cancel(t)
+    await queue.experimental.cancel(t)
 
     ttl = await backend.client.ttl(f"sheppy:tasks:{queue.name}:{t.id}")
     assert ttl > 0

@@ -84,7 +84,7 @@ def my_workflow(y: int) -> Generator[Any, Any, tuple[int, Task, Task, Task, Task
 async def test_memory_backend():
     queue = Queue("memory://")
 
-    await queue.add_workflow(w := my_workflow(5))
+    await queue.experimental.add_workflow(w := my_workflow(5))
 
     i = 0
     ok = False
@@ -93,7 +93,7 @@ async def test_memory_backend():
     while i < 3:
         i += 1
 
-        ret = await queue.get_workflow(w)
+        ret = await queue.experimental.get_workflow(w)
 
         if ret.completed or ret.exception:
             ok = True
@@ -131,10 +131,10 @@ async def test_memory_backend():
 async def test_quick_error_exception_redis_backend(queue2: Queue, worker_process_factory):
     worker_process_factory()
 
-    await queue2.add_workflow(w := my_workflow(-2))
+    await queue2.experimental.add_workflow(w := my_workflow(-2))
 
     await asyncio.sleep(0.5)
-    ret = await queue2.get_workflow(w)
+    ret = await queue2.experimental.get_workflow(w)
 
     assert ret.completed is False
     assert str(ret.exception) == "Exception: exception test"
@@ -144,10 +144,10 @@ async def test_quick_error_exception_redis_backend(queue2: Queue, worker_process
 async def test_quick_error_assert_redis_backend(queue2: Queue, worker_process_factory):
     worker_process_factory()
 
-    await queue2.add_workflow(w := my_workflow(-1))
+    await queue2.experimental.add_workflow(w := my_workflow(-1))
 
     await asyncio.sleep(0.5)
-    ret = await queue2.get_workflow(w)
+    ret = await queue2.experimental.get_workflow(w)
 
     assert ret.completed is False
     assert str(ret.exception) == "AssertionError: y assert fail test\nassert -1 > 0"
@@ -157,7 +157,7 @@ async def test_quick_error_assert_redis_backend(queue2: Queue, worker_process_fa
 async def test_redis_backend(queue2: Queue, worker_process_factory):
     worker_process_factory()
 
-    await queue2.add_workflow(w := my_workflow(5))
+    await queue2.experimental.add_workflow(w := my_workflow(5))
 
     i = 0
     ok = False
@@ -166,7 +166,7 @@ async def test_redis_backend(queue2: Queue, worker_process_factory):
     while i < 3:
         i += 1
 
-        ret = await queue2.get_workflow(w)
+        ret = await queue2.experimental.get_workflow(w)
 
         if ret.completed or ret.exception:
             ok = True

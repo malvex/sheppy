@@ -329,7 +329,7 @@ class Worker:
                         if t.cron_id == cron_id:
                             # todo: do for loop and batch cancel?
                             logger.info(CRON_MANAGER_PREFIX + f"Cancelling residual task {t.id}")
-                            await queue.cancel(t)
+                            await queue.experimental.cancel(t)
 
 
             for cron in declared.values():
@@ -544,7 +544,7 @@ class Worker:
             return
 
         try:
-            result = await queue._resume_workflow(task.workflow_id)
+            result = await queue.experimental._resume_workflow(task.workflow_id)
 
             if result.workflow.completed:
                 logger.info(WORKER_PREFIX + f"Workflow {task.workflow_id} completed with result: {result.workflow.final_result}")

@@ -26,10 +26,10 @@ async def main():
     worker = Worker("default", backend=queue.backend)
     worker_process = asyncio.create_task(worker.work())
 
-    result = await queue.add_workflow(greetings_workflow(["Alex", "John"]))
+    result = await queue.experimental.add_workflow(greetings_workflow(["Alex", "John"]))
 
     # wait for the workflow to finish
-    wf = await queue.wait_for_workflow(result.workflow.id)
+    wf = await queue.experimental.wait_for_workflow(result.workflow.id)
 
     # stop worker
     worker_process.cancel()

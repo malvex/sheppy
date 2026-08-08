@@ -77,11 +77,11 @@ async def test_tasks(queue2: Queue, worker_process_factory):
 async def test_workflow(queue2: Queue, worker_process_factory):
     worker_process_factory()
 
-    await queue2.add_workflow(w := my_workflow(5))
+    await queue2.experimental.add_workflow(w := my_workflow(5))
 
     await asyncio.sleep(1)
 
-    ret = await queue2.get_workflow(w)
+    ret = await queue2.experimental.get_workflow(w)
 
     assert ret.exception is None
     assert ret.completed is True
@@ -90,11 +90,11 @@ async def test_workflow(queue2: Queue, worker_process_factory):
     assert ret.final_result == {"name": "wf", "x": 1, "y": 5}  # this works
 
 
-    await queue2.add_workflow(w2 := my_workflow2(5))
+    await queue2.experimental.add_workflow(w2 := my_workflow2(5))
 
     await asyncio.sleep(1)
 
-    ret2 = await queue2.get_workflow(w2)
+    ret2 = await queue2.experimental.get_workflow(w2)
 
     assert ret2.exception is None
     assert ret2.completed is True
