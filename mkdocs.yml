@@ -37,7 +37,9 @@ nav:
     - Dependency injection: guides/dependencies.md
     - Test tasks: guides/testing.md
     # - Use with FastAPI: guides/fastapi-integration.md  # todo
-    - Synchronous Queue without asyncio: guides/sync-queue.md
+    - Experimental:
+      - Synchronous Queue without asyncio: guides/sync-queue.md
+      - Workflows: guides/workflows.md
   - API Reference:
     - Queue class: reference/queue.md
     - TestQueue class: reference/testqueue.md
@@ -50,6 +52,9 @@ nav:
       - TaskSpec: reference/task-spec.md
       - TaskConfig: reference/task-config.md
       - TaskCron: reference/task-cron.md
+    - Experimental:
+      - SyncQueue: reference/sync-queue.md
+      - Workflow: reference/workflow.md
     # - Backends:
     #   - Backend class: reference/backends/backend.md
     #   - RedisBackend class: reference/backends/redis-backend.md

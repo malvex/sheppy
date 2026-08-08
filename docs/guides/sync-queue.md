@@ -1,5 +1,10 @@
 # Using Sheppy without asyncio
 
+!!! danger "Experimental feature"
+
+    This feature is experimental and should be considered unstable and unsupported.
+    API may change at any time and without backwards compatibility.
+
 `SyncQueue` wraps `Queue` for codebases that don't use asyncio. It mirrors the queue API with plain blocking calls.
 
 ```python
