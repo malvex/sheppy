@@ -1,6 +1,7 @@
 import asyncio
 
-from sheppy import MemoryBackend, Queue, Worker, task, workflow
+from sheppy import MemoryBackend, Queue, Worker, task
+from sheppy.experimental import workflow
 
 
 @task

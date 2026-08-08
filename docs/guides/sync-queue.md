@@ -3,7 +3,8 @@
 `SyncQueue` wraps `Queue` for codebases that don't use asyncio. It mirrors the queue API with plain blocking calls.
 
 ```python
-from sheppy import SyncQueue, task
+from sheppy import task
+from sheppy.experimental import SyncQueue
 
 
 @task

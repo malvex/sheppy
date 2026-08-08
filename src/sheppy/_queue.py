@@ -6,8 +6,8 @@ from uuid import UUID
 from ._backend.base import Backend
 from ._config import config
 from ._task_factory import TaskFactory
-from ._workflow import Workflow, WorkflowResult, WorkflowRunner
 from .exceptions import TaskCancellationError
+from .experimental._workflow import Workflow, WorkflowResult, WorkflowRunner
 from .models import Task, TaskCron
 
 

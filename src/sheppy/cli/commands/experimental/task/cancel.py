@@ -11,7 +11,7 @@ from sheppy._config import config
 from sheppy._queue import _create_backend_from_url
 from sheppy.exceptions import TaskCancellationError
 
-from ..._utils import OutputFormat, console, print_json, task_status_label
+from ...._utils import OutputFormat, console, print_json, task_status_label
 
 
 def cancel(

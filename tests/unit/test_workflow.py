@@ -4,8 +4,9 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from sheppy import CURRENT_TASK, Depends, Task, task, workflow
-from sheppy._workflow import Workflow, WorkflowRunner
+from sheppy import CURRENT_TASK, Depends, Task, task
+from sheppy.experimental import workflow
+from sheppy.experimental._workflow import Workflow, WorkflowRunner
 from sheppy.models import TaskConfig, TaskException, TaskSpec
 
 

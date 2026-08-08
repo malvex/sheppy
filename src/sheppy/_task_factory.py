@@ -10,7 +10,7 @@ from typing import (
 
 from ._utils.functions import stringify_function
 from ._utils.validation import validate_input
-from ._workflow import get_workflow_context
+from .experimental._workflow import get_workflow_context
 from .models import RateLimit, Task, TaskConfig, TaskCron, TaskSpec, TTLValue
 
 P = ParamSpec('P')

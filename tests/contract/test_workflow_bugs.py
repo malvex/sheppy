@@ -4,7 +4,8 @@ from typing import Any
 
 import pytest
 
-from sheppy import Queue, Task, task, workflow
+from sheppy import Queue, Task, task
+from sheppy.experimental import workflow
 
 
 @task
