@@ -10,7 +10,7 @@ from sheppy import Queue
 from sheppy._config import config
 from sheppy._queue import _create_backend_from_url
 
-from ..._utils import OutputFormat, console, print_json
+from ...._utils import OutputFormat, console, print_json
 
 
 def delete(

@@ -10,14 +10,14 @@ from uuid import UUID, uuid4, uuid5
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from ._utils.functions import (
+from .._utils.functions import (
     reconstruct_workflow_result,
     resolve_function,
     stringify_function,
 )
-from ._utils.validation import _is_depends_parameter, validate_input
-from .exceptions import WorkflowError
-from .models import CURRENT_TASK, Task, TaskException
+from .._utils.validation import _is_depends_parameter, validate_input
+from ..exceptions import WorkflowError
+from ..models import CURRENT_TASK, Task, TaskException
 
 P = ParamSpec('P')
 R = TypeVar('R')
@@ -83,7 +83,8 @@ class Workflow(BaseModel):
 
     Example:
         ```python
-        from sheppy import task, workflow
+        from sheppy import task
+        from sheppy.experimental import workflow
 
         @task
         async def add(x: int, y: int) -> int:

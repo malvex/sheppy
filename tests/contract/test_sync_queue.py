@@ -4,7 +4,7 @@ from collections.abc import Generator
 
 import pytest
 
-from sheppy import SyncQueue
+from sheppy.experimental import SyncQueue
 from tests.dependencies import assert_is_completed, simple_async_task, simple_sync_task
 from tests.utils import WorkerInstanceProcess
 

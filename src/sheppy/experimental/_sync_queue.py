@@ -2,12 +2,14 @@ import asyncio
 import threading
 from collections.abc import Coroutine
 from datetime import datetime, timedelta
-from typing import Any, TypeVar, overload
+from typing import TYPE_CHECKING, Any, TypeVar, overload
 from uuid import UUID
 
-from ._queue import Queue
+from ..models import Task, TaskCron
 from ._workflow import Workflow, WorkflowResult
-from .models import Task, TaskCron
+
+if TYPE_CHECKING:
+    from .._queue import Queue
 
 T = TypeVar("T")
 
@@ -56,7 +58,9 @@ class SyncQueue:
 
         self._queue: Queue = asyncio.run_coroutine_threadsafe(self._create_queue(), self._loop).result()
 
-    async def _create_queue(self) -> Queue:
+    async def _create_queue(self) -> "Queue":
+        # circular import
+        from .._queue import Queue  # noqa: PLC0415
         return Queue(self._backend, self._name)
 
     def _run_loop(self) -> None:

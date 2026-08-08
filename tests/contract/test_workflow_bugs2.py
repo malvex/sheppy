@@ -4,7 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from sheppy import Queue, task, workflow
+from sheppy import Queue, task
+from sheppy.experimental import workflow
 
 
 class MyModel(BaseModel):

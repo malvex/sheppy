@@ -7,7 +7,7 @@ from uuid import UUID
 from ._backend.memory import MemoryBackend
 from ._queue import Queue
 from ._utils.task_execution import TaskProcessor
-from ._workflow import Workflow, WorkflowResult
+from .experimental._workflow import Workflow, WorkflowResult
 from .models import Task, TaskCron
 
 

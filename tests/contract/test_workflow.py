@@ -8,13 +8,12 @@ from sheppy import (
     CURRENT_TASK,
     MemoryBackend,
     Queue,
-    SyncQueue,
     Task,
     TestQueue,
     Worker,
     task,
-    workflow,
 )
+from sheppy.experimental import SyncQueue, workflow
 
 
 @task

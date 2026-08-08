@@ -6,10 +6,10 @@ from rich import print as rprint
 from sheppy import __version__
 
 from .commands.cron.list import list_crons
+from .commands.experimental.task.cancel import cancel
+from .commands.experimental.task.delete import delete
 from .commands.queue.list import list_queues
 from .commands.task.add import add
-from .commands.task.cancel import cancel
-from .commands.task.delete import delete
 from .commands.task.info import info
 from .commands.task.list import list_tasks
 from .commands.task.retry import retry
@@ -43,8 +43,6 @@ task_app.command()(retry)
 task_app.command()(test)
 task_app.command()(add)
 task_app.command()(schedule)
-task_app.command()(cancel)
-task_app.command()(delete)
 
 app.add_typer(task_app, name="task")
 
@@ -59,3 +57,13 @@ cron_app.command(name="list")(list_crons)
 app.add_typer(cron_app, name="cron")
 
 app.command()(work)
+
+experimental_app = typer.Typer(help="Here be dragons!", no_args_is_help=True)
+
+experimental_task_app = typer.Typer(help="EXPERIMENTAL! Task management commands", no_args_is_help=True)
+experimental_task_app.command()(cancel)
+experimental_task_app.command()(delete)
+
+experimental_app.add_typer(experimental_task_app, name="task")
+
+app.add_typer(experimental_app, name="experimental")

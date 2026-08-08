@@ -1,7 +1,8 @@
 import pytest
 
-from sheppy import task, workflow
+from sheppy import task
 from sheppy._utils.functions import resolve_function
+from sheppy.experimental import workflow
 
 
 def sample_middleware(task, queue):  # noqa: ARG001
