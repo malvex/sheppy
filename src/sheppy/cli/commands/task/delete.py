@@ -8,9 +8,9 @@ import typer
 
 from sheppy import Queue
 from sheppy._config import config
-from sheppy.queue import _create_backend_from_url
+from sheppy._queue import _create_backend_from_url
 
-from ...utils import OutputFormat, console, print_json
+from ..._utils import OutputFormat, console, print_json
 
 
 def delete(

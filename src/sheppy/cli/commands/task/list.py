@@ -11,9 +11,9 @@ from rich.table import Table
 
 from sheppy import Queue
 from sheppy._config import config
-from sheppy.queue import _create_backend_from_url
+from sheppy._queue import _create_backend_from_url
 
-from ...utils import OutputFormat, console, humanize_datetime
+from ..._utils import OutputFormat, console, humanize_datetime
 
 
 class StatusFilter(str, Enum):

@@ -9,10 +9,10 @@ from rich.logging import RichHandler
 
 from sheppy import Backend, Worker
 from sheppy._config import LogLevelType, config
+from sheppy._queue import _create_backend_from_url
 from sheppy._utils.functions import _resolve_function
-from sheppy.queue import _create_backend_from_url
 
-from ..utils import LogLevel, console
+from .._utils import LogLevel, console
 
 
 def work(

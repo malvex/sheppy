@@ -3,7 +3,7 @@ from collections.abc import Callable
 import pytest
 
 from sheppy import Queue, Task
-from sheppy.backend import MemoryBackend
+from sheppy._backend.memory import MemoryBackend
 from tests.conftest import async_fail_once, sync_fail_once
 from tests.dependencies import (
     async_failing_task,

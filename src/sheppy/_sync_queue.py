@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 from typing import Any, TypeVar, overload
 from uuid import UUID
 
+from ._queue import Queue
 from ._workflow import Workflow, WorkflowResult
 from .models import Task, TaskCron
-from .queue import Queue
 
 T = TypeVar("T")
 

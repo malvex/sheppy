@@ -4,11 +4,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, overload
 from uuid import UUID
 
+from ._backend.memory import MemoryBackend
+from ._queue import Queue
 from ._utils.task_execution import TaskProcessor
 from ._workflow import Workflow, WorkflowResult
-from .backend.memory import MemoryBackend
 from .models import Task, TaskCron
-from .queue import Queue
 
 
 class TestQueue:

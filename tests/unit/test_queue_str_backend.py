@@ -1,7 +1,8 @@
 import pytest
 
 from sheppy import Queue
-from sheppy.backend import MemoryBackend, RedisBackend
+from sheppy._backend.memory import MemoryBackend
+from sheppy._backend.redis import RedisBackend
 
 
 class TestBackendInference:

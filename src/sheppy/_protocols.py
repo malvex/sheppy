@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Any, Protocol
 from sheppy.models import Task
 
 if TYPE_CHECKING:
+    from sheppy._queue import Queue
     from sheppy.models import TaskStatus
-    from sheppy.queue import Queue
 
 
 class MiddlewareProtocol(Protocol):

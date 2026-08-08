@@ -1,6 +1,7 @@
 """
 This file contains utility functions meant for internal use only. Expect breaking changes if you use them directly.
 """
+
 import asyncio
 import inspect
 import logging
@@ -12,14 +13,14 @@ from uuid import uuid4
 
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
 
-from ..exceptions import MiddlewareError, TaskTimeoutError, WorkerCrashedError
-from ..models import CURRENT_TASK, Task, TaskException, TaskStatus
-from ..protocols import (
+from .._protocols import (
     AsyncMiddlewareProtocol,
     MiddlewareProtocol,
     TaskProcessorProtocol,
 )
-from ..queue import Queue
+from .._queue import Queue
+from ..exceptions import MiddlewareError, TaskTimeoutError, WorkerCrashedError
+from ..models import CURRENT_TASK, Task, TaskException, TaskStatus
 from .fastapi import Depends
 from .functions import reconstruct_result, resolve_function
 

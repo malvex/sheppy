@@ -5,7 +5,9 @@ import pytest
 import pytest_asyncio
 
 from sheppy import CURRENT_TASK, Queue, Task, Worker, task
-from sheppy.backend import Backend, MemoryBackend, RedisBackend
+from sheppy._backend.base import Backend
+from sheppy._backend.memory import MemoryBackend
+from sheppy._backend.redis import RedisBackend
 from tests.utils import WorkerInstanceProcess
 
 TEST_QUEUE_NAME = "pytest"

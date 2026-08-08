@@ -7,7 +7,7 @@ import pytest
 from pydantic.type_adapter import TypeAdapter
 
 from sheppy import Backend, BackendError
-from sheppy.task_factory import Task, TaskFactory
+from sheppy._task_factory import Task, TaskFactory
 from tests.dependencies import add_retriable, simple_async_task
 
 Q = "pytest"

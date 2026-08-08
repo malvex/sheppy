@@ -5,9 +5,9 @@ import typer
 from rich.table import Table
 
 from sheppy._config import config
-from sheppy.queue import _create_backend_from_url
+from sheppy._queue import _create_backend_from_url
 
-from ...utils import console
+from ..._utils import console
 
 
 def list_queues(

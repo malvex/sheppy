@@ -11,7 +11,7 @@ import typer
 from sheppy import MemoryBackend, Queue, Task
 from sheppy._utils.task_execution import TaskProcessor
 
-from ...utils import console
+from ..._utils import console
 
 
 def test(
