@@ -589,4 +589,4 @@ class MemoryBackend(Backend):
 
         # resume the workflow this task belongs to (result must be stored first)
         if processed_task.is_terminal and processed_task.workflow_id:
-            await hacky_queue._resume_workflow(processed_task.workflow_id)
+            await hacky_queue.experimental._resume_workflow(processed_task.workflow_id)

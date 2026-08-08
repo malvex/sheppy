@@ -39,7 +39,7 @@ def cancel(
             raise typer.Exit(1) from None
 
         try:
-            task = await q.cancel(uuid_obj)
+            task = await q.experimental.cancel(uuid_obj)
         except TaskCancellationError as e:
             console.print(f"[red]Error: {e}[/red]")
             raise typer.Exit(1) from None

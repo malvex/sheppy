@@ -198,7 +198,7 @@ class SyncQueue:
                 was already claimed by a worker, it already finished, or it
                 does not exist.
         """
-        return self._run_coro(self._queue.cancel(task))
+        return self._run_coro(self._queue.experimental.cancel(task))
 
     def delete(self, task: Task | UUID | str) -> bool:
         """Hard-delete a finished task's stored metadata.
@@ -214,7 +214,7 @@ class SyncQueue:
         Raises:
             ValueError: If the task has not finished yet.
         """
-        return self._run_coro(self._queue.delete(task))
+        return self._run_coro(self._queue.experimental.delete(task))
 
     def size(self) -> int:
         """Get number of pending tasks in the queue.
@@ -293,7 +293,7 @@ class SyncQueue:
 
     def add_workflow(self, workflow: Workflow) -> WorkflowResult:
         """Add a workflow into the queue."""
-        return self._run_coro(self._queue.add_workflow(workflow))
+        return self._run_coro(self._queue.experimental.add_workflow(workflow))
 
     @overload
     def wait_for_workflow(self, workflow: Workflow | UUID | str, timeout: float = 0) -> Workflow | None: ...
@@ -314,7 +314,7 @@ class SyncQueue:
         Raises:
             TimeoutError: If a positive timeout expires before all given workflows have finished.
         """
-        return self._run_coro(self._queue.wait_for_workflow(workflow, timeout))
+        return self._run_coro(self._queue.experimental.wait_for_workflow(workflow, timeout))
 
     @overload
     def get_workflow(self, workflow: Workflow | UUID | str) -> Workflow | None: ...
@@ -331,7 +331,7 @@ class SyncQueue:
         Returns:
             Instance of a Workflow or None if not found.<br>In *batch mode*, returns Dictionary of Workflow IDs to Workflow instances.
         """
-        return self._run_coro(self._queue.get_workflow(workflow))
+        return self._run_coro(self._queue.experimental.get_workflow(workflow))
 
     def get_all_workflows(self) -> list[Workflow]:
         """Get all stored workflows, including completed/failed ones.
@@ -339,7 +339,7 @@ class SyncQueue:
         Returns:
             List of all Workflow instances
         """
-        return self._run_coro(self._queue.get_all_workflows())
+        return self._run_coro(self._queue.experimental.get_all_workflows())
 
     def get_pending_workflows(self) -> list[Workflow]:
         """Get workflows that are neither completed nor errored.
@@ -347,7 +347,7 @@ class SyncQueue:
         Returns:
             List of pending Workflow instances
         """
-        return self._run_coro(self._queue.get_pending_workflows())
+        return self._run_coro(self._queue.experimental.get_pending_workflows())
 
     def delete_workflow(self, workflow: Workflow | UUID | str) -> bool:
         """Delete a workflow.
@@ -358,4 +358,4 @@ class SyncQueue:
         Returns:
             True if the workflow existed and was deleted.
         """
-        return self._run_coro(self._queue.delete_workflow(workflow))
+        return self._run_coro(self._queue.experimental.delete_workflow(workflow))
