@@ -3,12 +3,12 @@ from typing import overload
 from urllib.parse import urlparse
 from uuid import UUID
 
+from ._backend.base import Backend
 from ._config import config
+from ._task_factory import TaskFactory
 from ._workflow import Workflow, WorkflowResult, WorkflowRunner
-from .backend.base import Backend
 from .exceptions import TaskCancellationError
 from .models import Task, TaskCron
-from .task_factory import TaskFactory
 
 
 def _create_backend_from_url(url: str) -> Backend:
@@ -25,11 +25,11 @@ def _create_backend_from_url(url: str) -> Backend:
 
     if scheme in ("redis", "rediss"):
         # circular import
-        from .backend.redis import RedisBackend  # noqa: PLC0415
+        from ._backend.redis import RedisBackend  # noqa: PLC0415
         return RedisBackend(url=url)
 
     if scheme == "memory":
-        from .backend.memory import MemoryBackend  # noqa: PLC0415
+        from ._backend.memory import MemoryBackend  # noqa: PLC0415
         return MemoryBackend()
 
     raise ValueError(f"Unsupported backend protocol: {scheme}")

@@ -10,6 +10,14 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from ._backend.base import Backend
+from ._protocols import (
+    AsyncMiddlewareProtocol,
+    MiddlewareProtocol,
+    TaskProcessorProtocol,
+)
+from ._queue import Queue
+from ._task_factory import TaskFactory
 from ._utils.cron_config import load_cron_declarations
 from ._utils.functions import resolve_function
 from ._utils.task_execution import (
@@ -18,16 +26,8 @@ from ._utils.task_execution import (
     TaskProcessor,
     generate_unique_worker_id,
 )
-from .backend.base import Backend
 from .exceptions import MiddlewareError
 from .models import Task, TaskCron
-from .protocols import (
-    AsyncMiddlewareProtocol,
-    MiddlewareProtocol,
-    TaskProcessorProtocol,
-)
-from .queue import Queue
-from .task_factory import TaskFactory
 
 logger = logging.getLogger(__name__)
 

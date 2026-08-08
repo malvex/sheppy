@@ -1,4 +1,4 @@
-from sheppy.backend.base import resolve_metadata_ttl
+from sheppy._backend.base import resolve_metadata_ttl
 from sheppy.models import TTLValue
 
 FINISHED = "2026-01-01T00:00:00+00:00"

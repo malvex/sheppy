@@ -11,7 +11,7 @@ def mock_config(monkeypatch):
         cfg = EnvConfig(**kwargs)
         monkeypatch.setattr(sheppy._config, "config", cfg)
         # also patch in modules that already imported it
-        monkeypatch.setattr("sheppy.queue.config", cfg)
+        monkeypatch.setattr("sheppy._queue.config", cfg)
         return cfg
     return _mock_config
 

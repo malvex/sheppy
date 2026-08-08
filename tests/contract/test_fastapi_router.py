@@ -5,7 +5,7 @@ from uuid import UUID
 import pytest
 
 from sheppy import Queue, Task, Worker
-from sheppy.backend import Backend
+from sheppy._backend.base import Backend
 from tests.dependencies import failing_task
 
 try:

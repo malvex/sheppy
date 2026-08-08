@@ -3,7 +3,7 @@ import contextlib
 from pathlib import Path
 
 from sheppy import Queue, Worker
-from sheppy.backend.base import Backend
+from sheppy._backend.base import Backend
 from tests.conftest import TEST_QUEUE_NAME
 from tests.dependencies import simple_sync_task, simple_sync_task_no_param
 

@@ -3,7 +3,7 @@ import multiprocessing
 from contextlib import asynccontextmanager
 
 from sheppy import Worker
-from sheppy.queue import _create_backend_from_url
+from sheppy._queue import _create_backend_from_url
 
 
 def _start_process_worker(queue: str | list[str], backend_string: str, shutdown_timeout: float | None = None):

@@ -8,9 +8,9 @@ from datetime import datetime, timezone
 from time import time
 from typing import Any
 
+from .._queue import Queue
 from .._utils.task_execution import TaskProcessor
 from ..models import Task, TTLValue
-from ..queue import Queue
 from .base import Backend, BackendError, resolve_metadata_ttl
 
 
