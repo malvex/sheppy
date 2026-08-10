@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, TypeVar, overload
 from uuid import UUID
 
-from ..models import Task, TaskCron
+from ..models import R, Task, TaskCron
 from ._workflow import Workflow, WorkflowResult
 
 if TYPE_CHECKING:
@@ -107,12 +107,12 @@ class SyncQueue:
         return self._run_coro(self._queue.add(task))
 
     @overload
-    def get_task(self, task: Task | UUID | str) -> Task | None: ...
+    def get_task(self, task: Task[R] | UUID | str) -> Task[R] | None: ...
 
     @overload
-    def get_task(self, task: list[Task | UUID | str]) -> dict[UUID, Task]: ...
+    def get_task(self, task: list[Task[R] | UUID | str]) -> dict[UUID, Task[R]]: ...
 
-    def get_task(self, task: Task | UUID | str | list[Task | UUID | str]) -> Task | None | dict[UUID, Task]:
+    def get_task(self, task: Task[R] | UUID | str | list[Task[R] | UUID | str]) -> Task[R] | None | dict[UUID, Task[R]]:
         """Get task by id.
 
         Args:
@@ -265,12 +265,12 @@ class SyncQueue:
         return self._run_coro(self._queue.get_crons())
 
     @overload
-    def wait_for(self, task: Task | UUID | str, timeout: float = 0) -> Task | None: ...
+    def wait_for(self, task: Task[R] | UUID | str, timeout: float = 0) -> Task[R] | None: ...
 
     @overload
-    def wait_for(self, task: list[Task | UUID | str], timeout: float = 0) -> dict[UUID, Task]: ...
+    def wait_for(self, task: list[Task[R] | UUID | str], timeout: float = 0) -> dict[UUID, Task[R]]: ...
 
-    def wait_for(self, task: Task | UUID | str | list[Task | UUID | str], timeout: float = 0) -> Task | None | dict[UUID, Task]:
+    def wait_for(self, task: Task[R] | UUID | str | list[Task[R] | UUID | str], timeout: float = 0) -> Task[R] | None | dict[UUID, Task[R]]:
         """Wait for task to complete and return updated task instance.
 
         Blocks the calling thread until the task finishes; use `timeout`

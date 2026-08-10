@@ -159,7 +159,8 @@ class TaskProcessor(TaskProcessorProtocol):
                 if inspect.isasyncgen(gen):
                     task = await cast(AsyncMiddlewareGenerator, gen).__anext__() or task
                 else:
-                    task = next(cast(SyncMiddlewareGenerator, gen)) or task
+                    yielded = next(cast(SyncMiddlewareGenerator, gen))
+                    task = yielded or task
                 _generators.append(gen)
         except Exception as e:
             raise MiddlewareError("Pre-middleware error") from e

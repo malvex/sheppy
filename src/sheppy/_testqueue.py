@@ -8,7 +8,7 @@ from ._backend.memory import MemoryBackend
 from ._queue import Queue
 from ._utils.task_execution import TaskProcessor
 from .experimental._workflow import Workflow, WorkflowResult
-from .models import Task, TaskCron
+from .models import R, Task, TaskCron
 
 
 class ExperimentalTestQueue:
@@ -257,12 +257,12 @@ class TestQueue:
         return asyncio.run(self._queue.add(task))  # type: ignore[return-value]
 
     @overload
-    def get_task(self, task: Task | UUID | str) -> Task | None: ...
+    def get_task(self, task: Task[R] | UUID | str) -> Task[R] | None: ...
 
     @overload
-    def get_task(self, task: list[Task | UUID | str]) -> dict[UUID, Task]: ...
+    def get_task(self, task: list[Task[R] | UUID | str]) -> dict[UUID, Task[R]]: ...
 
-    def get_task(self, task: Task | UUID | str | list[Task | UUID | str]) -> Task | None | dict[UUID, Task]:
+    def get_task(self, task: Task[R] | UUID | str | list[Task[R] | UUID | str]) -> Task[R] | None | dict[UUID, Task[R]]:
         """Get task by id.
 
         Args:
