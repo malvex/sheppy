@@ -82,8 +82,8 @@ def _start_worker(queues: list[str], backend: Backend, max_concurrent: int, max_
                   ) -> None:
 
     loggers = [
-        logging.getLogger("sheppy.worker"),
-        logging.getLogger("sheppy.middleware"),
+        logging.getLogger("sheppy._worker"),
+        logging.getLogger("sheppy._utils.cron_config"),
     ]
 
     for logger in loggers:
