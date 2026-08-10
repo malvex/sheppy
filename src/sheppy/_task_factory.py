@@ -1,10 +1,12 @@
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from functools import wraps
 from typing import (
     Any,
     Literal,
     ParamSpec,
+    Protocol,
     TypeVar,
+    cast,
     overload,
 )
 
@@ -26,7 +28,7 @@ class TaskFactory:
         pass
 
     @staticmethod
-    def create_task(func: Callable[..., Any],
+    def create_task(func: Callable[..., R],
                     args: tuple[Any, ...],
                     kwargs: dict[str, Any],
                     retry: int,
@@ -37,7 +39,7 @@ class TaskFactory:
                     rate_limit: RateLimit | None = None,
                     ttl: TTLValue = "inherit",
                     error_ttl: TTLValue = "inherit",
-                    ) -> Task:
+                    ) -> Task[R]:
 
         task_config: dict[str, Any] = {
             "retry": retry
@@ -93,6 +95,21 @@ class TaskFactory:
         )
 
 
+class TaskDecorator(Protocol):
+    """Applies the `@task` decorator to a function, preserving its signature.
+
+    Returned by `@task(...)`. Async functions are unwrapped: decorating
+    `async def f() -> R` produces a factory that returns `Task[R]`.
+    """
+
+    @overload
+    def __call__(self, func: Callable[P, Coroutine[Any, Any, R]], /) -> Callable[P, Task[R]]: ...
+
+    @overload
+    def __call__(self, func: Callable[P, R], /) -> Callable[P, Task[R]]: ...
+
+
+
 # Overload for @task() or @task(retry=..., retry_delay=...)
 @overload
 def task(
@@ -106,16 +123,21 @@ def task(
     rate_limit: RateLimit | None = None,
     ttl: int | None | Literal["inherit"] = "inherit",
     error_ttl: int | None | Literal["inherit"] = "inherit",
-) -> Callable[[Callable[P, R]], Callable[P, Task]]:
+) -> TaskDecorator:
     ...
 
-# Overload for @task without parentheses
+# Overload for @task without parentheses on an async function
 @overload
-def task(func: Callable[P, R], /) -> Callable[P, Task]:
+def task(func: Callable[P, Coroutine[Any, Any, R]], /) -> Callable[P, Task[R]]:
+    ...
+
+# Overload for @task without parentheses on a sync function
+@overload
+def task(func: Callable[P, R], /) -> Callable[P, Task[R]]:
     ...
 
 def task(
-    func: Callable[P, R] | None = None,
+    func: Callable[P, Any] | None = None,
     *,
     retry: int = 0,
     retry_delay: float | list[float] | None = None,
@@ -126,7 +148,7 @@ def task(
     rate_limit: RateLimit | None = None,
     ttl: int | None | Literal["inherit"] = "inherit",
     error_ttl: int | None | Literal["inherit"] = "inherit",
-) -> Callable[[Callable[P, R]], Callable[P, Task]] | Callable[P, Task]:
+) ->  TaskDecorator | Callable[P, Task[Any]]:
     """Turn a function into a task factory.
 
     Works with and without parentheses (`@task` or `@task(retry=3)`) and with
@@ -192,4 +214,4 @@ def task(
         return decorator(func)
 
     # If called with parentheses (@task() or @task(retry=3)), return the decorator
-    return decorator
+    return cast(TaskDecorator, decorator)

@@ -8,7 +8,7 @@ from ._config import config
 from ._task_factory import TaskFactory
 from .exceptions import TaskCancellationError
 from .experimental._workflow import Workflow, WorkflowResult, WorkflowRunner
-from .models import Task, TaskCron
+from .models import R, Task, TaskCron
 
 
 def _create_backend_from_url(url: str) -> Backend:
@@ -385,12 +385,12 @@ class Queue:
         return success if batch_mode else success[0]
 
     @overload
-    async def get_task(self, task: Task | UUID | str) -> Task | None: ...
+    async def get_task(self, task: Task[R] | UUID | str) -> Task[R] | None: ...
 
     @overload
-    async def get_task(self, task: list[Task | UUID | str]) -> dict[UUID, Task]: ...
+    async def get_task(self, task: list[Task[R] | UUID | str]) -> dict[UUID, Task[R]]: ...
 
-    async def get_task(self, task: Task | UUID | str | list[Task | UUID | str]) -> dict[UUID, Task] | Task | None:
+    async def get_task(self, task: Task[R] | UUID | str | list[Task[R] | UUID | str]) -> dict[UUID, Task[R]] | Task[R] | None:
         """Get task by id.
 
         Args:
@@ -490,12 +490,12 @@ class Queue:
         return [Task.model_validate(t) for t in await self.backend.get_scheduled(self.name)]
 
     @overload
-    async def wait_for(self, task: Task | UUID | str, timeout: float = 0) -> Task | None: ...
+    async def wait_for(self, task: Task[R] | UUID | str, timeout: float = 0) -> Task[R] | None: ...
 
     @overload
-    async def wait_for(self, task: list[Task | UUID | str], timeout: float = 0) -> dict[UUID, Task]: ...
+    async def wait_for(self, task: list[Task[R] | UUID | str], timeout: float = 0) -> dict[UUID, Task[R]]: ...
 
-    async def wait_for(self, task: Task | UUID | str | list[Task | UUID | str], timeout: float = 0) -> dict[UUID, Task] | Task | None:
+    async def wait_for(self, task: Task[R] | UUID | str | list[Task[R] | UUID | str], timeout: float = 0) -> dict[UUID, Task[R]] | Task[R] | None:
         """Wait for task to finish and return the updated task instance.
 
         Args:

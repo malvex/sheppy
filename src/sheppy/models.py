@@ -6,9 +6,9 @@ from traceback import format_exception
 from typing import (
     Annotated,
     Any,
+    Generic,
     Literal,
     ParamSpec,
-    TypeVar,
 )
 from uuid import UUID, uuid4, uuid5
 
@@ -22,13 +22,13 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from typing_extensions import NotRequired, TypedDict
+from typing_extensions import NotRequired, TypedDict, TypeVar
 
 from ._utils.functions import reconstruct_result
 from .exceptions import TaskFailedError
 
 P = ParamSpec('P')
-R = TypeVar('R')
+R = TypeVar('R', default=Any)
 
 
 TASK_CRON_NS = UUID('7005b432-c135-4131-b19e-d3dc89703a9a')
@@ -166,6 +166,7 @@ class TaskSpec(BaseModel):
     Note:
         - You should not create TaskSpec instances directly. Instead, use the `@task` decorator to define a task function, and then call that function to create a Task instance.
         - `args` and `kwargs` must be JSON serializable.
+        - `Task` is generic over the result type: `Task[int]` means `result` is `int | None`.
 
     Example:
         ```python
@@ -258,7 +259,7 @@ class TaskConfig(BaseModel):
         return v
 
 
-class Task(BaseModel):
+class Task(BaseModel, Generic[R]):
     """A task instance created when a task function is called.
 
     Attributes:
@@ -306,8 +307,8 @@ class Task(BaseModel):
     """TaskStatus: Task status."""
     exception: TaskException | None = None
     """TaskException|None: Exception data if the task failed. None if the task succeeded or is not yet executed."""
-    result: Any = None
-    """Any: The result of the task execution. This will be None if the task failed or is not yet executed."""
+    result: R | None = None
+    """R|None: The result of the task execution. This will be None if the task failed or is not yet executed."""
 
     spec: TaskSpec
     """Task specification"""
@@ -369,7 +370,7 @@ class Task(BaseModel):
         return str(self.exception) if self.exception is not None else None
 
     @model_validator(mode='after')
-    def _reconstruct_pydantic_result(self) -> 'Task':
+    def _reconstruct_pydantic_result(self) -> 'Task[R]':
         """Reconstruct result if it's pydantic model."""
 
         if self.result is not None:
@@ -506,7 +507,7 @@ class TaskCron(BaseModel):
             start = datetime.now(timezone.utc)
         return croniter(self.expression, start).get_next(datetime)
 
-    def create_task(self, start: datetime) -> Task:
+    def create_task(self, start: datetime) -> Task[Any]:
         """Create a Task instance for the next scheduled run. Used by workers to create tasks based on the cron schedule.
 
         The task ID is deterministic based on the cron definition and the scheduled time to prevent duplicates.
@@ -517,7 +518,7 @@ class TaskCron(BaseModel):
         Returns:
             Task: A new Task instance scheduled to run at the specified time.
         """
-        return Task(
+        return Task[Any](
             id=uuid5(TASK_CRON_NS, str(self.deterministic_id) + str(start.timestamp())),
             spec=self.spec.model_copy(deep=True),
             config=self.config.model_copy(deep=True),
