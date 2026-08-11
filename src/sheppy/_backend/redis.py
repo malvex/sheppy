@@ -273,6 +273,10 @@ class RedisBackend(Backend):
         if slot_keys:
             await self.client.delete(*slot_keys)
 
+        cron_key = self._cron_tasks_key(queue_name)
+        count += await self.client.hlen(cron_key)
+        await self.client.delete(cron_key)
+
         return count
 
     async def get_tasks(self, queue_name: str, task_ids: list[str]) -> dict[str,dict[str, Any]]:
@@ -388,7 +392,7 @@ class RedisBackend(Backend):
         if task_data.get("finished_at") is not None:
             return None
 
-        if task_data.get("status") == "scheduled":
+        if task_data.get("status") in ("scheduled", "retrying"):
             removed = await self.client.zrem(scheduled_key, task_id)
             if removed > 0:
                 return await self._finalize_cancellation(queue_name, task_data)
@@ -869,7 +873,7 @@ class RedisBackend(Backend):
         if not message_ids:
             return
 
-        try:  # noqa: SIM105 (temporary)
+        try:
             await self.client.xclaim(
                 pending_tasks_key,
                 self.consumer_group,
@@ -878,6 +882,5 @@ class RedisBackend(Backend):
                 message_ids,  # type: ignore[arg-type]
                 justid=True,
             )
-        except Exception:
-            #! FIXME: BackendError?
-            pass
+        except Exception as e:
+            raise BackendError(f"Failed to heartbeat tasks: {e}") from e

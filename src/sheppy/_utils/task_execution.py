@@ -197,6 +197,12 @@ class TaskProcessor(TaskProcessorProtocol):
         return task
 
     async def handle_stale_task(self, task: Task, queue: "Queue") -> Task:
+        fresh = await queue.get_task(task.id)
+        if fresh is not None and fresh.finished_at is not None:
+            # shouldnt happen but if it does, dont override task in terminal state
+            await queue.backend.acknowledge(queue.name, [str(task.id)])
+            return fresh
+
         task = self.mark_crashed(task)
 
         _retry = False
