@@ -519,10 +519,25 @@ class Worker:
                 return fresh if fresh is not None else task
             task = fresh
 
+            exception = None
             try:
-                _, task = await self._task_processor.process_task(task, queue, self.worker_id)
-            except MiddlewareError:
-                logger.exception("Middleare exception!")
+                exception, task = await self._task_processor.process_task(task, queue, self.worker_id)
+            except Exception:
+                # this should never happen as all exceptions should be handled in process_task
+                logger.exception("Unexpected error!")
+
+            if exception and isinstance(exception, MiddlewareError):
+                try:
+                    raise exception
+                except:
+                    # throw loud logger error on any middleware exception
+                    logger.exception("Middleware exception!")
+
+            match task.status:
+                case "completed":
+                    self.stats.processed += 1
+                case "failed":
+                    self.stats.failed += 1
 
             try:
                 await queue._store_result(task)
