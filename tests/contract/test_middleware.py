@@ -1,6 +1,6 @@
 import pytest
 
-from sheppy import Queue, Worker
+from sheppy import Queue, Worker, task
 from tests.dependencies import (
     # middleware_change_arg,
     # middleware_change_return_type,
@@ -21,6 +21,26 @@ from tests.dependencies import (
     task_add_with_middleware_multiple,
     task_add_with_middleware_noop,
 )
+
+
+def mw_preprocess_fail(_task, _queue):
+    1/0  # noqa:B018
+    yield
+
+
+def mw_postprocess_fail(_task, _queue):
+    yield
+    1/0  # noqa:B018
+
+
+@task(middleware=[mw_preprocess_fail])
+def task_fail_preprocess() -> int:
+    return 5
+
+
+@task(middleware=[mw_postprocess_fail])
+def task_fail_postprocess() -> int:
+    return 5
 
 
 class TestMiddleware:
@@ -80,3 +100,23 @@ class TestMiddleware:
 
         with pytest.raises(match="Extra inputs are not permitted"):
             task.model_validate(data)
+
+    async def test_failing_middleware_preprocess(self, queue: Queue, worker: Worker):
+        task = task_fail_preprocess()
+
+        await queue.add(task)
+        await worker.work(max_tasks=1)
+        task = await queue.get_task(task)
+
+        assert task.status == "failed"
+        assert task.result is None
+
+    async def test_failing_middleware_postprocess(self, queue: Queue, worker: Worker):
+        task = task_fail_postprocess()
+
+        await queue.add(task)
+        await worker.work(max_tasks=1)
+        task = await queue.get_task(task)
+
+        assert task.status == "completed"
+        assert task.result == 5

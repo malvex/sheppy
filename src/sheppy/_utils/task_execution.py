@@ -50,8 +50,8 @@ class TaskChainingMiddleware(AsyncMiddlewareProtocol):
             self.logger.info(f"Adding task {task.id} into Queue (Chained Task)")
             await queue.add(task.result)
 
-        elif isinstance(task.result, list) and isinstance(task.result[0], Task):
-            _tasks = [item for item in task.result if isinstance(item, Task)]
+        elif isinstance(task.result, list) and all(isinstance(_task, Task) for _task in task.result):
+            _tasks = task.result
             for _task in _tasks:
                 self.logger.info(f"Adding task {_task.id} into Queue (Chained Task)")
             await queue.add(_tasks)
@@ -93,11 +93,16 @@ class TaskProcessor(TaskProcessorProtocol):
         self.dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] = dependency_overrides or {}
 
     async def process_task(self, task: Task, queue: Queue, worker_id: str) -> tuple[Exception | None, Task]:
-        task, _generators = await self._preprocess(task, queue)
         result = None
         exception = None
+        _generators: list[MiddlewareGenerator] = []
 
         try:
+            # if middleware fails at this point, the task should be set as failed
+            # (but it wasn't even executed). Postprocess is skipped (_generators is None).
+            # retriable tasks are retried, although this might change in the future as it will likely just waste all retry attempts
+            task, _generators = await self._preprocess(task, queue)
+
             result = await self._execute_task_function(task)
             task = self.mark_completed(task, result)
         except Exception as e:
@@ -107,7 +112,11 @@ class TaskProcessor(TaskProcessorProtocol):
             if task.is_retriable:
                 task = TaskProcessor.handle_retry(task, exception)
 
-        task = await self._postprocess(task, exception, _generators)
+        # task was already executed so we let the exception bubble through
+        try:
+            task = await self._postprocess(task, exception, _generators)
+        except MiddlewareError as e:
+            return e, task
 
         return exception, task
 
