@@ -342,7 +342,7 @@ class TestQueue:
             Success boolean
 
         Raises:
-            ValueError: If task has already completed successfully and force is not set to True.
+            ValueError: If task has already completed successfully and force is not set to True or if the task has not finished yet.
             TypeError: If provided datetime is not offset-aware.
 
         Example:
@@ -514,6 +514,9 @@ class TestQueue:
 
         self.processed_tasks.append(task)
 
+        # store result first (queue.retry() reads the latest state from the backend)
+        await self._backend.store_result(self.name, task.model_dump(mode='json'))
+
         if task.exception:
             self.failed_tasks.append(task)
 
@@ -526,8 +529,6 @@ class TestQueue:
             if isinstance(task.result, Task) or \
                isinstance(task.result, list) and all(isinstance(_task, Task) for _task in task.result):
                 await self._queue.add(task.result)
-
-        await self._backend.store_result(self.name, task.model_dump(mode='json'))
 
         data = await self._backend.get_tasks(self.name, [str(task.id)])
         stored_task_data = data.get(str(task.id))

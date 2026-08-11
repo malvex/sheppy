@@ -70,14 +70,18 @@ def reconstruct_result(func_s: str, result: Any) -> Any:
 
     try:
         func = resolve_function(func_s)
+    except ValueError:
+        # resolve_function failed, return raw value without unnecessary crash
+        return result
 
+    try:
         if return_type := get_type_hints(func).get("return"):
             return TypeAdapter(return_type).validate_python(result)
-    except PydanticSchemaGenerationError:
+    except (TypeError, NameError, PydanticSchemaGenerationError):
         # possible exceptions here:
-        # - TypeError: get_type_hints fails
-        # - ValueError: resolve_function fails
+        # - TypeError/NameError: get_type_hints fails (unresolvable annotation or forward reference)
         # - PydanticSchemaGenerationError: TypeAdapter fails
+        # - ValidationError (from validate_python): propagated on purpose
         pass
 
     return result
@@ -89,7 +93,10 @@ def reconstruct_workflow_result(func_s: str, result: Any) -> Any:
 
     try:
         func = resolve_function(func_s)
+    except ValueError:
+        return result
 
+    try:
         if return_type := get_type_hints(func).get("return"):
             if get_origin(return_type) is Generator:
                 args = get_args(return_type)
@@ -97,7 +104,7 @@ def reconstruct_workflow_result(func_s: str, result: Any) -> Any:
                     return_type = args[2]
 
             return TypeAdapter(return_type).validate_python(result)
-    except PydanticSchemaGenerationError:
+    except (TypeError, NameError, PydanticSchemaGenerationError):
         pass
 
     return result

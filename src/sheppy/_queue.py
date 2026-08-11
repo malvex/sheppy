@@ -562,7 +562,7 @@ class Queue:
             True if the task was re-queued, False if no task with the given ID exists.
 
         Raises:
-            ValueError: If task has already completed successfully and force is not set to True.
+            ValueError: If task has already completed successfully and force is not set to True or if the task has not finished yet.
             TypeError: If provided datetime is not offset-aware.
 
         Example:
@@ -589,6 +589,9 @@ class Queue:
 
         if not force and _task.status == 'completed':
             raise ValueError("Task has already completed successfully, use force to retry anyways")
+
+        if _task.status in ('new', 'pending', 'scheduled', 'processing'):
+            raise ValueError(f"Cannot retry task with status {_task.status!r}")
 
         needs_update = False  # temp hack
         if _task.finished_at:

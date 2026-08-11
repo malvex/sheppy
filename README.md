@@ -66,7 +66,7 @@ Scale out by starting more workers: every `sheppy work` process adds capacity.
 ## Requirements
 
 - Python 3.10+
-- Redis 6.2+
+- Redis 7.4+
 
 ## Links
 
