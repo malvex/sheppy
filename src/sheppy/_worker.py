@@ -135,6 +135,7 @@ class Worker:
         self._blocking_timeout = 5
         self._scheduler_polling_interval = 1.0
         self._cron_polling_interval = 10.0
+        self._error_retry_interval = 5.0
 
         self._active_tasks: dict[str, dict[asyncio.Task[Task], Task]] = {queue.name: {} for queue in self.queues}
 
@@ -272,9 +273,10 @@ class Worker:
                 break
 
             except Exception as e:
-                logger.exception(SCHEDULER_PREFIX + f"Scheduling failed with error: {e}")
-                self._shutdown_event.set()
-                break
+                logger.exception(SCHEDULER_PREFIX + f"Scheduling failed with error: {e}, retrying in {self._error_retry_interval}s")
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self._shutdown_event.wait(), timeout=self._error_retry_interval)
+                continue
 
             # TODO: replace polling with notifications when worker notifications are implemented
             with contextlib.suppress(asyncio.TimeoutError):
@@ -359,9 +361,10 @@ class Worker:
                 break
 
             except Exception as e:
-                logger.exception(CRON_MANAGER_PREFIX + f"failed with error: {e}")
-                self._shutdown_event.set()
-                break
+                logger.exception(CRON_MANAGER_PREFIX + f"failed with error: {e}, retrying in {self._error_retry_interval}s")
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self._shutdown_event.wait(), timeout=self._error_retry_interval)
+                continue
 
             # TODO: replace polling with notifications when worker notifications are implemented
             with contextlib.suppress(asyncio.TimeoutError):
@@ -507,9 +510,9 @@ class Worker:
                 break
 
             except Exception as e:
-                logger.exception(WORKER_PREFIX + f"failed with error: {e}")
-                self._shutdown_event.set()
-                break
+                logger.exception(WORKER_PREFIX + f"failed with error: {e}, retrying in {self._error_retry_interval}s")
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self._shutdown_event.wait(), timeout=self._error_retry_interval)
 
     async def process_task(self, task: Task, queue: Queue) -> Task:
         async with self._task_semaphore:
@@ -529,7 +532,7 @@ class Worker:
             if exception and isinstance(exception, MiddlewareError):
                 try:
                     raise exception
-                except:
+                except MiddlewareError:
                     # throw loud logger error on any middleware exception
                     logger.exception("Middleware exception!")
 
