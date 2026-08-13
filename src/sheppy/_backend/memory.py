@@ -567,7 +567,7 @@ class MemoryBackend(Backend):
         _, processed_task = await self._task_processor.process_task(task, hacky_queue, self._worker_id)
 
         # handle retry
-        if processed_task.exception and processed_task.should_retry and processed_task.next_retry_at is not None:
+        if processed_task.status == 'retrying' and processed_task.next_retry_at is not None:
             async with self._locks[queue_name]:
                 processed_data = processed_task.model_dump(mode="json")
                 self._task_metadata[queue_name][task_id] = processed_data

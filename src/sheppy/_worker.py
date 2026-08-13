@@ -547,7 +547,7 @@ class Worker:
             except Exception:
                 logger.exception(f"Failed to store result for task {task.id}")
 
-            if task.exception and task.should_retry and task.next_retry_at is not None:
+            if task.status == 'retrying' and task.next_retry_at is not None:
                 await queue.retry(task, task.next_retry_at)
 
             if task.is_terminal and task.workflow_id:
