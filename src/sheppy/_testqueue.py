@@ -520,7 +520,7 @@ class TestQueue:
         if task.exception:
             self.failed_tasks.append(task)
 
-            if task.should_retry and task.next_retry_at is not None:
+            if task.status == 'retrying' and task.next_retry_at is not None:
                 # retry immediately
                 await self._queue.retry(task)
 
