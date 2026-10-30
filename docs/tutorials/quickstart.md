@@ -106,12 +106,10 @@ Starting worker for queue 'default'
   Job processing: True  Scheduler: True  Cron Manager: True
   Max concurrent tasks: 10
 
-[15:01:45]  INFO     <Scheduler> started
-            INFO     <CronManager> started
-[15:01:48]  INFO     <Worker> Processing task 074396c1-e11f-40a3-b22b-094dc89573ea
-                     (quickstart:calculate)
-            INFO     <Worker> Task 074396c1-e11f-40a3-b22b-094dc89573ea completed
-                     successfully
+2026-01-01T15:01:45Z INFO     scheduler Started
+2026-01-01T15:01:45Z INFO     cron      Started
+2026-01-01T15:01:48Z INFO     worker    Task started function=quickstart:calculate queue=default task_id=074396c1-e11f-40a3-b22b-094dc89573ea
+2026-01-01T15:01:48Z INFO     worker    Task completed function=quickstart:calculate queue=default task_id=074396c1-e11f-40a3-b22b-094dc89573ea
 ```
 
 Back in the first terminal, you see the result:

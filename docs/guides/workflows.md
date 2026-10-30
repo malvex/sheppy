@@ -69,8 +69,8 @@ Running it makes `cleanup_old_data` raise; the workflow rolls back, fans out thr
 
 ```bash
 $ python examples/workflows/fan_in_fan_out.py
-<Worker> Task 0adf46fa-... failed: some random failure happened
-<Worker> Workflow b1e4879b-... failed: Exception: Cleanup failed, notifications were sent
+Task failed function=examples.workflows.fan_in_fan_out:cleanup_old_data queue=default task_id=0adf46fa-... error=Exception: some random failure happened
+Workflow failed queue=default workflow_id=b1e4879b-... error=Exception: Cleanup failed, notifications were sent
 Sending email to admin1@example.com, subject Oh no, daily cleanup failed!
 Sending email to admin2@example.com, subject Oh no, daily cleanup failed!
 Sending email to admin3@example.com, subject Oh no, daily cleanup failed!
