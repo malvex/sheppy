@@ -506,7 +506,7 @@ class RedisBackend(Backend):
 
             messages = cast(_XReadResult, await self.client.xread(
                 {finished_tasks_key: last_id},
-                block=int(remaining * 1000),
+                block=0 if deadline is None else max(1, int(remaining * 1000)),
                 count=1000
             ))
 
@@ -773,7 +773,7 @@ class RedisBackend(Backend):
 
             messages = cast(_XReadResult, await self.client.xread(
                 {finished_workflows_key: last_id},
-                block=int(remaining * 1000),
+                block=0 if deadline is None else max(1, int(remaining * 1000)),
                 count=1000)
             )
 
