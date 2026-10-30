@@ -164,8 +164,9 @@ def test_workflow_coerces_args_like_tasks():
     ("failed", "Exception: x", 0, 0, True),      # permanent failure
     ("failed", "Exception: x", 2, 2, True),      # retries exhausted
     ("crashed", "Exception: x", 0, 0, True),
+    ("cancelled", None, 0, 0, True),
     ("retrying", "Exception: x", 2, 1, False),   # retry still scheduled
-    ("failed", "Exception: x", 2, 0, False),     # retry still possible
+    ("retrying", "Exception: x", 2, 2, False),   # final retry still scheduled
     ("pending", None, 0, 0, False),
     ("processing", None, 0, 0, False),
     ("new", None, 0, 0, False),

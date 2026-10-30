@@ -260,11 +260,43 @@ async def test_failing_task_recovers_via_retry(queue: Queue, worker: Worker):
     assert wf.final_result == "ok:recovered"
 
 
+@task(retry=1, retry_delay=0.01)
+async def fail_once_with_one_retry(current: Task = CURRENT_TASK) -> str:
+    if current.retry_count == 0:
+        raise Exception("transient error")
+    return "recovered"
+
+
+@workflow
+def single_retry_workflow():
+    t = yield fail_once_with_one_retry()
+    return f"ok:{t.result}"
+
+
+async def test_last_scheduled_retry_does_not_complete_workflow(queue: Queue, worker: Worker):
+    worker.enable_cron_manager = False
+    result = await queue.experimental.add_workflow(single_retry_workflow())
+
+    await worker.work(2)
+
+    wf = await queue.experimental.get_workflow(result.workflow.id)
+    assert wf is not None
+    assert wf.completed
+    assert wf.exception is None
+    assert wf.final_result == "ok:recovered"
+
+    finished_task = await queue.get_task(wf.task_order[0])
+    assert finished_task is not None
+    assert finished_task.status == "completed"
+    assert finished_task.retry_count == 1
+    assert finished_task.result == "recovered"
+
+
 async def test_terminal_failure_takes_error_branch(queue: Queue, worker: Worker):
     worker.enable_cron_manager = False
     await queue.experimental.add_workflow(error_branch_workflow())
 
-    await worker.work(3)  # two failed attempts + rollback task
+    await worker.work(4)  # initial attempt + two retries + rollback task
 
     wf = (await queue.experimental.get_all_workflows())[0]
     assert wf.completed
