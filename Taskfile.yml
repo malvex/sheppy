@@ -58,6 +58,10 @@ tasks:
     desc: Switch Python to version 3.14
     cmd: uv venv --python 3.14 --clear && uv sync --dev
 
+  py315:
+    desc: Switch Python to version 3.15
+    cmd: uv venv --python 3.15 --clear && uv sync --dev
+
   docs-build:
     desc: Build docs
     cmd: uv run mkdocs build

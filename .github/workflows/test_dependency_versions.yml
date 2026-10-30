@@ -1,4 +1,4 @@
-name: Test
+name: Test Dependency Versions
 
 on:
   # pull_request:
@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 5
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
         resolution: ["lowest-direct", "highest"]
       fail-fast: false
 
