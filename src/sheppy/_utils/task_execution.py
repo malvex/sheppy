@@ -3,11 +3,13 @@ This file contains utility functions meant for internal use only. Expect breakin
 """
 
 import asyncio
+import importlib
 import inspect
 import logging
 import socket
 from collections.abc import AsyncGenerator, Callable, Generator
 from datetime import datetime, timedelta, timezone
+from types import ModuleType
 from typing import Annotated, Any, cast, get_args, get_origin
 from uuid import uuid4
 
@@ -23,6 +25,12 @@ from ..exceptions import MiddlewareError, TaskTimeoutError, WorkerCrashedError
 from ..models import CURRENT_TASK, Task, TaskException, TaskStatus
 from .fastapi import Depends
 from .functions import reconstruct_result, resolve_function
+
+anyio: ModuleType | None
+try:
+    anyio = importlib.import_module("anyio")
+except ImportError:
+    anyio = None
 
 SyncMiddlewareGenerator = Generator[Task | None, tuple[Task, Exception | None], Task | None]
 AsyncMiddlewareGenerator = AsyncGenerator[Task | None, tuple[Task, Exception | None]]
@@ -134,7 +142,7 @@ class TaskProcessor(TaskProcessorProtocol):
             coro = func(*final_args, **final_kwargs)
         else:
             # sync task
-            coro = asyncio.to_thread(lambda: func(*final_args, **final_kwargs))
+            coro = _run_in_worker_thread(lambda: func(*final_args, **final_kwargs))
 
         if task.config.timeout is not None:
             execution = asyncio.create_task(coro)
@@ -369,9 +377,9 @@ class TaskProcessor(TaskProcessorProtocol):
             return await func(**kwargs).__anext__()
 
         if inspect.isgeneratorfunction(func):
-            return await asyncio.to_thread(next, func(**kwargs))
+            return await _run_in_worker_thread(lambda: next(func(**kwargs)))
 
-        return await asyncio.to_thread(lambda: func(**kwargs))
+        return await _run_in_worker_thread(lambda: func(**kwargs))
 
     @staticmethod
     def get_depends_from_param(param: inspect.Parameter) -> Any | None:
@@ -387,3 +395,10 @@ class TaskProcessor(TaskProcessorProtocol):
                     return arg
 
         return None
+
+
+def _run_in_worker_thread(fn: Callable[[], Any]) -> Any:
+    # use anyio when available (asyncer compatibility)
+    if anyio is not None:
+        return anyio.to_thread.run_sync(fn)
+    return asyncio.to_thread(fn)
