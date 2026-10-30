@@ -4,6 +4,8 @@
 
 See the [Testing tasks](../guides/testing.md) guide for examples.
 
+Workflow operations live under `TestQueue.experimental`; see the [Workflows guide](../guides/workflows.md).
+
 ::: sheppy.TestQueue
     options:
         members:
@@ -22,9 +24,3 @@ See the [Testing tasks](../guides/testing.md) guide for examples.
             - process_next
             - process_all
             - process_scheduled
-            - add_workflow
-            - get_workflow
-            - get_all_workflows
-            - get_pending_workflows
-            - delete_workflow
-            - process_workflow

@@ -6,6 +6,8 @@ Construct it with a `Backend` instance or a URL string: `"redis://localhost:6379
 
 See the [Quickstart](../tutorials/quickstart.md) and the [how-to guides](../guides/task-scheduling.md) for examples.
 
+Workflow operations live under `queue.experimental`; see the [Workflows guide](../guides/workflows.md).
+
 ::: sheppy.Queue
     options:
         members:
@@ -22,9 +24,3 @@ See the [Quickstart](../tutorials/quickstart.md) and the [how-to guides](../guid
             - add_cron
             - delete_cron
             - get_crons
-            - add_workflow
-            - wait_for_workflow
-            - get_workflow
-            - get_all_workflows
-            - get_pending_workflows
-            - delete_workflow
