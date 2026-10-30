@@ -5,7 +5,6 @@ This file contains utility functions meant for internal use only. Expect breakin
 import asyncio
 import importlib
 import inspect
-import logging
 import socket
 from collections.abc import AsyncGenerator, Callable, Generator
 from datetime import datetime, timedelta, timezone
@@ -15,6 +14,7 @@ from uuid import uuid4
 
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
 
+from .._logging import LoggerLike
 from .._protocols import (
     AsyncMiddlewareProtocol,
     MiddlewareProtocol,
@@ -44,7 +44,7 @@ def generate_unique_worker_id(prefix: str) -> str:
 
 
 class TaskChainingMiddleware(AsyncMiddlewareProtocol):
-    def __init__(self, logger: logging.Logger):
+    def __init__(self, logger: LoggerLike):
         self.logger = logger
 
     async def __call__(self, task: Task, queue: "Queue") -> AsyncGenerator[None, tuple[Task, Exception | None]]:
@@ -55,39 +55,38 @@ class TaskChainingMiddleware(AsyncMiddlewareProtocol):
             return
 
         if isinstance(task.result, Task):
-            self.logger.info(f"Adding task {task.id} into Queue (Chained Task)")
+            self.logger.info("Enqueued chained task", extra={"log_context": {"queue": queue.name, "task_id": task.result.id, "parent_task_id": task.id}})
             await queue.add(task.result)
 
         elif isinstance(task.result, list) and all(isinstance(_task, Task) for _task in task.result):
             _tasks = task.result
             for _task in _tasks:
-                self.logger.info(f"Adding task {_task.id} into Queue (Chained Task)")
+                self.logger.info("Enqueued chained task", extra={"log_context": {"queue": queue.name, "task_id": _task.id, "parent_task_id": task.id}})
             await queue.add(_tasks)
 
 
 class LoggingMiddleware(MiddlewareProtocol):
-    def __init__(self, logger: logging.Logger):
+    def __init__(self, logger: LoggerLike):
         self.logger = logger
-        self.prefix = "<Worker> "
 
     def __call__(self, task: Task, queue: "Queue") -> Generator[None, tuple[Task, Exception | None], None]:
-        self.logger.info(self.prefix + f"Processing task {task.id} ({task.spec.func})")
-        task, exception = yield
+        self.logger.info("Task started", extra={"log_context": {"function": task.spec.func, "queue": queue.name, "task_id": task.id}})
+        task, _exception = yield
 
         match task.status:
             case 'completed':
-                self.logger.info(self.prefix + f"Task {task.id} completed successfully")
+                self.logger.info("Task completed", extra={"log_context": {"function": task.spec.func, "queue": queue.name, "task_id": task.id}})
 
             case 'retrying':
                 # retriable task - reschedule
-                self.logger.warning(self.prefix + f"Task {task.id} failed (attempt {task.retry_count}/{task.config.retry}), scheduling retry at {task.next_retry_at}")
+                self.logger.warning("Task failed", extra={"log_context": {"function": task.spec.func, "queue": queue.name, "task_id": task.id, "attempt": f"{task.retry_count}/{task.config.retry}", "retry_at": task.next_retry_at, "error": task.exception}})
             case 'failed':
                 if task.is_retriable and not task.should_retry:
                     # retriable task - final failure
-                    self.logger.error(self.prefix + f"Task {task.id} failed after {task.retry_count} retries: {exception}")
+                    self.logger.error("Task failed", extra={"log_context": {"function": task.spec.func, "queue": queue.name, "task_id": task.id, "retries": f"{task.retry_count}/{task.config.retry}", "error": task.exception}})
                 else:
                     # non retriable task
-                    self.logger.error(self.prefix + f"Task {task.id} failed: {exception}")
+                    self.logger.error("Task failed", extra={"log_context": {"function": task.spec.func, "queue": queue.name, "task_id": task.id, "error": task.exception}})
 
 
 class TaskProcessor(TaskProcessorProtocol):

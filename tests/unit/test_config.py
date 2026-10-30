@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from sheppy._config import (
+    DEFAULT_LOG_FORMAT,
     DEFAULT_LOG_LEVEL,
     DEFAULT_MAX_CONCURRENT_TASKS,
     DEFAULT_QUEUE,
@@ -19,12 +20,14 @@ class TestEnvConfig:
             max_concurrent_tasks=20,
             shutdown_timeout=60.0,
             log_level="debug",
+            log_format="json",
         )
         assert cfg.backend_url == "redis://localhost:6379"
         assert cfg.queue == "myqueue"
         assert cfg.max_concurrent_tasks == 20
         assert cfg.shutdown_timeout == 60.0
         assert cfg.log_level == "debug"
+        assert cfg.log_format == "json"
 
     def test_queue_list_single(self):
         cfg = EnvConfig(queue="myqueue")
@@ -41,6 +44,10 @@ class TestEnvConfig:
     def test_log_level_case_insensitive(self):
         cfg = EnvConfig(log_level="DEBUG")
         assert cfg.log_level == "debug"
+
+    def test_log_format_case_insensitive(self):
+        cfg = EnvConfig(log_format="JSON")
+        assert cfg.log_format == "json"
 
     def test_validation_max_concurrent_tasks_zero(self):
         with pytest.raises(ValidationError):
@@ -62,6 +69,10 @@ class TestEnvConfig:
         with pytest.raises(ValidationError):
             EnvConfig(log_level="invalid")
 
+    def test_validation_log_format_invalid(self):
+        with pytest.raises(ValidationError):
+            EnvConfig(log_format="invalid")
+
     def test_validation_max_concurrent_tasks_invalid_string(self):
         with pytest.raises(ValidationError):
             EnvConfig(max_concurrent_tasks="invalid")  # type: ignore[arg-type]
@@ -75,6 +86,7 @@ class TestLoadConfig:
             "SHEPPY_MAX_CONCURRENT_TASKS": "5",
             "SHEPPY_SHUTDOWN_TIMEOUT": "15.5",
             "SHEPPY_LOG_LEVEL": "warning",
+            "SHEPPY_LOG_FORMAT": "json",
         }
 
         cfg = load_config(environ)
@@ -83,6 +95,7 @@ class TestLoadConfig:
         assert cfg.max_concurrent_tasks == 5
         assert cfg.shutdown_timeout == 15.5
         assert cfg.log_level == "warning"
+        assert cfg.log_format == "json"
 
     def test_uses_defaults_when_not_set(self):
         cfg = load_config({})
@@ -91,6 +104,7 @@ class TestLoadConfig:
         assert cfg.max_concurrent_tasks == DEFAULT_MAX_CONCURRENT_TASKS
         assert cfg.shutdown_timeout == DEFAULT_SHUTDOWN_TIMEOUT
         assert cfg.log_level == DEFAULT_LOG_LEVEL
+        assert cfg.log_format == DEFAULT_LOG_FORMAT
 
     def test_raises_on_invalid_max_concurrent(self):
         with pytest.raises(ValidationError):
@@ -99,3 +113,7 @@ class TestLoadConfig:
     def test_raises_on_invalid_log_level(self):
         with pytest.raises(ValidationError):
             load_config({"SHEPPY_LOG_LEVEL": "invalid"})
+
+    def test_raises_on_invalid_log_format(self):
+        with pytest.raises(ValidationError):
+            load_config({"SHEPPY_LOG_FORMAT": "invalid"})

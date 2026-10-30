@@ -11,6 +11,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from ._backend.base import Backend
+from ._logging import ContextLoggerAdapter
 from ._protocols import (
     AsyncMiddlewareProtocol,
     MiddlewareProtocol,
@@ -29,19 +30,16 @@ from ._utils.task_execution import (
 from .exceptions import MiddlewareError
 from .models import Task, TaskCron
 
-logger = logging.getLogger(__name__)
+logger = ContextLoggerAdapter(logging.getLogger("sheppy.worker"))
+scheduler_logger = logger.getChild("scheduler")
+cron_logger = logger.getChild("cron")
+reclaim_logger = logger.getChild("reclaim")
+heartbeat_logger = logger.getChild("heartbeat")
 
 
 class WorkerStats(BaseModel):
     processed: int = 0
     failed: int = 0
-
-
-WORKER_PREFIX = "<Worker> "
-SCHEDULER_PREFIX = "<Scheduler> "
-CRON_MANAGER_PREFIX = "<CronManager> "
-RECLAIM_PREFIX = "<Reclaim> "
-HEARTBEAT_PREFIX = "<Heartbeat> "
 
 
 class Worker:
@@ -228,14 +226,14 @@ class Worker:
 
         # attempt to exit cleanly
         if remaining_tasks:
-            logger.info(WORKER_PREFIX + f"Waiting for {len(remaining_tasks)} active tasks to complete...")
+            logger.info(f"Waiting for {len(remaining_tasks)} active tasks to complete")
             try:
                 await asyncio.wait_for(
                     asyncio.gather(*remaining_tasks.keys(), return_exceptions=True),
                     timeout=self.shutdown_timeout
                 )
             except asyncio.TimeoutError:
-                logger.warning("Some tasks did not complete within shutdown timeout")
+                logger.warning(f"Shutdown timeout expired after {self.shutdown_timeout}s, cancelling unfinished tasks")
 
                 for task_future in remaining_tasks:
                     if not task_future.done():
@@ -253,10 +251,10 @@ class Worker:
             for sig in (signal.SIGTERM, signal.SIGINT):
                 loop.remove_signal_handler(sig)
 
-        logger.info(f"Worker stopped. Processed: {self.stats.processed}, Failed: {self.stats.failed}")
+        logger.info("Stopped", extra={"log_context": {"processed": self.stats.processed, "failed": self.stats.failed}})
 
     async def _run_scheduler(self, poll_interval: float) -> None:
-        logger.info(SCHEDULER_PREFIX + "started")
+        scheduler_logger.info("Started")
 
         while not self._shutdown_event.is_set():
             try:
@@ -266,14 +264,14 @@ class Worker:
                     if tasks:
                         _l = len(tasks)
                         _task_s = ", ".join([str(task.id) for task in tasks])
-                        logger.info(SCHEDULER_PREFIX + f"Enqueued {_l} scheduled task{'s' if _l > 1 else ''} for processing: {_task_s}")
+                        scheduler_logger.info(f"Enqueued {_l} scheduled task{'s' if _l != 1 else ''}", extra={"log_context": {"queue": queue.name, "task_ids": _task_s}})
 
             except asyncio.CancelledError:
-                logger.info(SCHEDULER_PREFIX + "cancelled")
+                scheduler_logger.debug("Cancelled")
                 break
 
-            except Exception as e:
-                logger.exception(SCHEDULER_PREFIX + f"Scheduling failed with error: {e}, retrying in {self._error_retry_interval}s")
+            except Exception:
+                scheduler_logger.exception(f"Scheduling failed, retrying in {self._error_retry_interval}s")
                 with contextlib.suppress(asyncio.TimeoutError):
                     await asyncio.wait_for(self._shutdown_event.wait(), timeout=self._error_retry_interval)
                 continue
@@ -282,7 +280,7 @@ class Worker:
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(self._shutdown_event.wait(), timeout=poll_interval)
 
-        logger.info(SCHEDULER_PREFIX + "stopped")
+        scheduler_logger.info("Stopped")
 
     async def _reconcile_declared_crons(self) -> None:
         if self._cron_config_file is None:
@@ -297,7 +295,7 @@ class Worker:
         for decl in declarations:
             queue_name = decl.queue or self.queues[0].name
             if queue_name not in declared_by_queue:
-                logger.warning(CRON_MANAGER_PREFIX + f"Cron declaration for {decl.task!r} targets queue {queue_name!r} which this worker does not serve, skipping")
+                cron_logger.warning("Ignoring cron declaration for unserved queue", extra={"log_context": {"function": decl.task, "queue": queue_name}})
                 continue
 
             try:
@@ -305,7 +303,7 @@ class Worker:
                 task = task_factory(*decl.args, **decl.kwargs)
                 cron = TaskFactory.create_cron_from_task(task, decl.expression, managed_by="pyproject")
             except Exception as e:
-                logger.error(CRON_MANAGER_PREFIX + f"Invalid cron declaration for {decl.task!r}: {e}")
+                cron_logger.error("Invalid cron declaration", extra={"log_context": {"function": decl.task, "error": f"{type(e).__name__}: {e}"}})
                 continue
 
             declared_by_queue[queue_name][cron.deterministic_id] = cron
@@ -321,7 +319,7 @@ class Worker:
                     continue  # already registered (either declared or programmatic)
 
                 if existing.managed_by == "pyproject":
-                    logger.info(CRON_MANAGER_PREFIX + f"Removing undeclared cron {existing.id} ({existing.spec.func})")
+                    cron_logger.info("Removing undeclared cron", extra={"log_context": {"function": existing.spec.func, "queue": queue.name, "cron_id": existing.id}})
                     await queue._delete_task_cron(existing)
 
                     cron_id = existing.deterministic_id
@@ -329,7 +327,7 @@ class Worker:
                     for t in scheduled:
                         if t.cron_id == cron_id:
                             # todo: do for loop and batch cancel?
-                            logger.info(CRON_MANAGER_PREFIX + f"Cancelling residual task {t.id}")
+                            cron_logger.info("Cancelling residual task", extra={"log_context": {"queue": queue.name, "task_id": t.id}})
                             await queue.experimental.cancel(t)
 
 
@@ -337,7 +335,7 @@ class Worker:
                 await queue._store_cron(cron)
 
     async def _run_cron_manager(self, poll_interval: float) -> None:
-        logger.info(CRON_MANAGER_PREFIX + "started")
+        cron_logger.info("Started")
 
         await self._reconcile_declared_crons()
 
@@ -353,14 +351,14 @@ class Worker:
                             task = cron.create_task(_next_run)
                             success = await queue.schedule(task, at=_next_run)
                             if success:
-                                logger.info(CRON_MANAGER_PREFIX + f"Cron {cron.id} ({cron.spec.func}) scheduled at {_next_run}")
+                                cron_logger.info("Cron scheduled", extra={"log_context": {"function": cron.spec.func, "queue": queue.name, "cron_id": cron.id, "task_id": task.id, "next_run": _next_run}})
 
             except asyncio.CancelledError:
-                logger.info(CRON_MANAGER_PREFIX + "cancelled")
+                cron_logger.debug("Cancelled")
                 break
 
-            except Exception as e:
-                logger.exception(CRON_MANAGER_PREFIX + f"failed with error: {e}, retrying in {self._error_retry_interval}s")
+            except Exception:
+                cron_logger.exception(f"Cron manager failed, retrying in {self._error_retry_interval}s")
                 with contextlib.suppress(asyncio.TimeoutError):
                     await asyncio.wait_for(self._shutdown_event.wait(), timeout=self._error_retry_interval)
                 continue
@@ -369,36 +367,36 @@ class Worker:
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(self._shutdown_event.wait(), timeout=poll_interval)
 
-        logger.info(CRON_MANAGER_PREFIX + "stopped")
+        cron_logger.info("Stopped")
 
     async def _run_heartbeat(self, interval: float) -> None:
-        logger.debug(HEARTBEAT_PREFIX + "started")
+        heartbeat_logger.debug("Started")
 
         while not self._worker_stopped_event.is_set():
             try:
                 for queue_name, tasks_dict in self._active_tasks.items():
                     task_ids = [str(task.id) for t, task in tasks_dict.items() if not t.done()]
                     if task_ids:
-                        logger.debug(HEARTBEAT_PREFIX + f"Sending heartbeat for queue {queue_name}, task_ids: {str(task_ids)}")
+                        heartbeat_logger.debug("Sending heartbeat", extra={"log_context": {"queue": queue_name, "task_ids": task_ids}})
                         try:
                             await self._backend.heartbeat(queue_name, task_ids)
                         except Exception:
-                            logger.exception(HEARTBEAT_PREFIX + f"Heartbeat failed for queue {queue_name}")
+                            heartbeat_logger.exception("Heartbeat failed", extra={"log_context": {"queue": queue_name}})
 
             except asyncio.CancelledError:
-                logger.debug(HEARTBEAT_PREFIX + "cancelled")
+                heartbeat_logger.debug("Cancelled")
                 break
 
-            except Exception as e:
-                logger.exception(HEARTBEAT_PREFIX + f"failed with error: {e}")
+            except Exception:
+                heartbeat_logger.exception("Heartbeat loop failed")
 
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(self._worker_stopped_event.wait(), timeout=interval)
 
-        logger.debug(HEARTBEAT_PREFIX + "stopped")
+        heartbeat_logger.debug("Stopped")
 
     async def _run_reclaim(self, interval: float) -> None:
-        logger.debug(RECLAIM_PREFIX + "started")
+        reclaim_logger.debug("Started")
 
         min_idle_ms = int(self.heartbeat_timeout * 1000)
 
@@ -414,16 +412,15 @@ class Worker:
                         try:
                             task = await self._task_processor.handle_stale_task(Task.model_validate(task_data), queue)
                         except Exception:
-                            logger.exception("Failed to handle stale task")
+                            reclaim_logger.exception("Failed to handle stale task", extra={"log_context": {"queue": queue.name}})
                             continue
 
-                        if task.config.retry_on_crash:
-                            if task.retry_count < task.config.retry:
-                                logger.warning(RECLAIM_PREFIX + f"Found stale task {task.id}, (attempt {task.retry_count}/{task.config.retry}), scheduling retry at {task.next_retry_at}")
-                            else:
-                                logger.warning(RECLAIM_PREFIX + f"Found stale task {task.id}, marking as crashed (exceeded {task.config.retry} retries)")
+                        if task.status == "retrying":
+                            reclaim_logger.warning("Stale task will be retried", extra={"log_context": {"function": task.spec.func, "queue": queue.name, "task_id": task.id, "attempt": f"{task.retry_count}/{task.config.retry}", "retry_at": task.next_retry_at}})
+                        elif task.config.retry_on_crash:
+                            reclaim_logger.warning("Stale task marked as crashed", extra={"log_context": {"function": task.spec.func, "queue": queue.name, "task_id": task.id, "retries": f"{task.retry_count}/{task.config.retry}"}})
                         else:
-                            logger.warning(RECLAIM_PREFIX + f"Found stale task {task.id}, marking as crashed")
+                            reclaim_logger.warning("Stale task marked as crashed", extra={"log_context": {"function": task.spec.func, "queue": queue.name, "task_id": task.id}})
 
                         # resume the workflow of a terminally crashed task
                         # (e.g. its worker died mid-execution). #TODO add worker recovery test for this
@@ -431,16 +428,16 @@ class Worker:
                             await self._resume_workflow_for_task(queue, task)
 
             except asyncio.CancelledError:
-                logger.debug(RECLAIM_PREFIX + "cancelled")
+                reclaim_logger.debug("Cancelled")
                 break
 
-            except Exception as e:
-                logger.exception(RECLAIM_PREFIX + f"failed with error: {e}")
+            except Exception:
+                reclaim_logger.exception("Task reclamation failed")
 
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(self._shutdown_event.wait(), timeout=interval)
 
-        logger.debug(RECLAIM_PREFIX + "stopped")
+        reclaim_logger.debug("Stopped")
 
     async def _run_worker_loop(self, queue: Queue, oneshot: bool = False) -> None:
         while not self._shutdown_event.is_set():
@@ -491,7 +488,7 @@ class Worker:
                 available_tasks = pop_task.result()
 
                 if oneshot and not available_tasks:
-                    logger.info(WORKER_PREFIX + f"Queue '{queue.name}' emptied")
+                    logger.info("Queue drained", extra={"log_context": {"queue": queue.name}})
                     self._empty_queues.append(queue.name)
                     if len(self._empty_queues) == len(self.queues):
                         self._shutdown_event.set()
@@ -505,11 +502,11 @@ class Worker:
                         self._tasks_to_process -= 1
 
             except asyncio.CancelledError:
-                logger.info(WORKER_PREFIX + "cancelled")
+                logger.debug("Cancelled")
                 break
 
-            except Exception as e:
-                logger.exception(WORKER_PREFIX + f"failed with error: {e}, retrying in {self._error_retry_interval}s")
+            except Exception:
+                logger.exception(f"Task processing loop failed, retrying in {self._error_retry_interval}s", extra={"log_context": {"queue": queue.name}})
                 with contextlib.suppress(asyncio.TimeoutError):
                     await asyncio.wait_for(self._shutdown_event.wait(), timeout=self._error_retry_interval)
 
@@ -526,14 +523,14 @@ class Worker:
                 exception, task = await self._task_processor.process_task(task, queue, self.worker_id)
             except Exception:
                 # this should never happen as all exceptions should be handled in process_task
-                logger.exception("Unexpected error!")
+                logger.exception("Unexpected task processing error", extra={"log_context": {"queue": queue.name, "task_id": task.id}})
 
             if exception and isinstance(exception, MiddlewareError):
                 try:
                     raise exception
                 except MiddlewareError:
                     # throw loud logger error on any middleware exception
-                    logger.exception("Middleware exception!")
+                    logger.exception("Middleware failed", extra={"log_context": {"queue": queue.name, "task_id": task.id}})
 
             match task.status:
                 case "completed":
@@ -544,7 +541,7 @@ class Worker:
             try:
                 await queue._store_result(task)
             except Exception:
-                logger.exception(f"Failed to store result for task {task.id}")
+                logger.exception("Failed to store task result", extra={"log_context": {"queue": queue.name, "task_id": task.id}})
 
             if task.status == 'retrying' and task.next_retry_at is not None:
                 await queue.retry(task, task.next_retry_at)
@@ -564,23 +561,23 @@ class Worker:
             result = await queue.experimental._resume_workflow(task.workflow_id)
 
             if result.workflow.completed:
-                logger.info(WORKER_PREFIX + f"Workflow {task.workflow_id} completed with result: {result.workflow.final_result}")
+                logger.info("Workflow completed", extra={"log_context": {"queue": queue.name, "workflow_id": task.workflow_id}})
 
             elif result.workflow.exception:
-                logger.error(WORKER_PREFIX + f"Workflow {task.workflow_id} failed: {result.workflow.exception}")
+                logger.error("Workflow failed", extra={"log_context": {"queue": queue.name, "workflow_id": task.workflow_id, "error": result.workflow.exception}})
 
             elif result.pending_tasks:
-                logger.debug(WORKER_PREFIX + f"Workflow {task.workflow_id} waiting for {len(result.pending_tasks)} more tasks")
+                logger.debug("Workflow waiting", extra={"log_context": {"queue": queue.name, "workflow_id": task.workflow_id, "pending_tasks": len(result.pending_tasks)}})
 
-        except Exception as e:
-            logger.exception(WORKER_PREFIX + f"Failed to resume workflow for task {task.id}: {e}")
+        except Exception:
+            logger.exception("Failed to resume workflow", extra={"log_context": {"queue": queue.name, "workflow_id": task.workflow_id, "task_id": task.id}})
 
     def __register_signal_handlers(self, loop: asyncio.AbstractEventLoop) -> None:
         CTRL_C_THRESHOLD = 3
         def signal_handler(sig: signal.Signals) -> None:
             if self._shutdown_event.is_set():
                 if self._ctrl_c_counter == CTRL_C_THRESHOLD:
-                    logger.warning("Forcing shutdown...")
+                    logger.warning("Forcing shutdown")
                     # cancel all tasks on shutdown
                     _futures = self._work_queue_tasks
                     _futures += [
@@ -597,11 +594,12 @@ class Worker:
                         d.clear()
                     return
 
-                logger.info(f"Press CTRL+C {CTRL_C_THRESHOLD - self._ctrl_c_counter} more times to force shutdown...")
+                remaining = CTRL_C_THRESHOLD - self._ctrl_c_counter
+                logger.info(f"Press Ctrl+C {remaining} more time{'s' if remaining != 1 else ''} to force shutdown")
                 self._ctrl_c_counter += 1
 
             else:
-                logger.info(f"Received signal {sig.name}, initiating graceful shutdown...")
+                logger.info(f"Received signal {sig.name}, shutting down gracefully")
                 self._shutdown_event.set()
 
         for sig in (signal.SIGTERM, signal.SIGINT):

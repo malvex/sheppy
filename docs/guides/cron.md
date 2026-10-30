@@ -29,7 +29,7 @@ $ python cron_demo.py
 registered: */1 * * * * | next run: 2026-07-19T13:39:00+00:00
 ```
 
-(The next run depends on when you run it.) Start a worker with `sheppy work` and the task fires within a minute. The worker log shows `Processing task ... (cron_demo:ping)` once per minute.
+(The next run depends on when you run it.) Start a worker with `sheppy work` and the task fires within a minute. The worker log shows `Task started function=cron_demo:ping ...` once per minute.
 
 Expressions use standard five-field cron syntax (`minute hour day-of-month month day-of-week`). An invalid expression raises a `ValidationError` at registration.
 

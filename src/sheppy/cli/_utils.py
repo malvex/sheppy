@@ -28,6 +28,12 @@ class LogLevel(str, Enum):
         return getattr(logging, self.value.upper())  # type: ignore[no-any-return]
 
 
+class LogFormat(str, Enum):
+    """Log output format enum for CLI arguments."""
+    console = "console"
+    json = "json"
+
+
 def humanize_datetime(dt: datetime | None, now: datetime | None = None) -> str:
     if not dt:
         return "N/A"

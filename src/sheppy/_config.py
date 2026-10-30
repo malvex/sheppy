@@ -5,11 +5,13 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 LogLevelType = Literal["debug", "info", "warning", "error"]
+LogFormatType = Literal["console", "json"]
 
 DEFAULT_QUEUE = "default"
 DEFAULT_MAX_CONCURRENT_TASKS = 10
 DEFAULT_SHUTDOWN_TIMEOUT = 30.0
 DEFAULT_LOG_LEVEL: LogLevelType = "info"
+DEFAULT_LOG_FORMAT: LogFormatType = "console"
 
 
 class EnvConfig(BaseModel):
@@ -18,11 +20,12 @@ class EnvConfig(BaseModel):
     max_concurrent_tasks: int = Field(default=DEFAULT_MAX_CONCURRENT_TASKS, ge=1)
     shutdown_timeout: float = Field(default=DEFAULT_SHUTDOWN_TIMEOUT, ge=0)
     log_level: LogLevelType = DEFAULT_LOG_LEVEL
+    log_format: LogFormatType = DEFAULT_LOG_FORMAT
     prestart: str | None = None
 
-    @field_validator("log_level", mode="before")
+    @field_validator("log_level", "log_format", mode="before")
     @classmethod
-    def normalize_log_level(cls, v: str) -> str:
+    def normalize_logging_options(cls, v: str) -> str:
         return v.lower() if isinstance(v, str) else v
 
     @property
@@ -37,6 +40,7 @@ def load_config(environ: MutableMapping[str, str]) -> EnvConfig:
         max_concurrent_tasks=environ.get("SHEPPY_MAX_CONCURRENT_TASKS", DEFAULT_MAX_CONCURRENT_TASKS),
         shutdown_timeout=environ.get("SHEPPY_SHUTDOWN_TIMEOUT", DEFAULT_SHUTDOWN_TIMEOUT),
         log_level=environ.get("SHEPPY_LOG_LEVEL", DEFAULT_LOG_LEVEL),
+        log_format=environ.get("SHEPPY_LOG_FORMAT", DEFAULT_LOG_FORMAT),
         prestart=environ.get("SHEPPY_PRESTART"),
     )
 
