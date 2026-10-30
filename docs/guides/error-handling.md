@@ -64,7 +64,7 @@ async def import_data(file_path: str) -> str:
 
 ## How long failures are kept
 
-Finished tasks, including failed ones, keep their metadata in the backend until it expires. Failed and crashed tasks use `error_ttl` if set, otherwise the normal `ttl`; both exist per task (`@task(error_ttl=300)`) and per backend. Set either to `None` to keep records forever. See the [`RedisBackend` reference](../reference/backends/redis-backend.md) for defaults.
+Finished tasks, including failed ones, keep their metadata in the backend until it expires. Failed and crashed tasks use `error_ttl` if set, otherwise the normal `ttl`; both exist per task (`@task(error_ttl=300)`) and per backend. Set either to `None` to keep records forever. See the [`TaskConfig` reference](../reference/task-config.md) for `ttl`/`error_ttl` semantics.
 
 ## Example: a task that fails once
 

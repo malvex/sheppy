@@ -61,7 +61,7 @@ Every worker started with `sheppy work` from that directory reads the file and r
 - remove an entry from the file and the worker deletes that cron within seconds
 - crons added through `queue.add_cron()` are left alone, even when identical to a declaration
 
-Entries take optional `args`, `kwargs`, and `queue` (which defaults to the worker's first queue). Invalid entries are logged and skipped, and if the file is missing or broken the worker keeps the current state instead of deleting anything. Use `Worker(cron_config_file=...)` for the programmatic path.
+Entries take optional `args`, `kwargs`, and `queue` (which defaults to the worker's first queue). Invalid entries are logged and skipped, and if the file is missing or broken the worker keeps the current state instead of deleting anything.
 
 ## When to use cron vs `schedule()`
 

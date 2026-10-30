@@ -8,7 +8,7 @@ Examples that need Redis expect a server at `redis://localhost:6379` (`docker ru
 
 - **quickstart.py**: the task from the [Quickstart](../tutorials/quickstart.md). Needs Redis and a worker. Prints `Task <id> completed with result: 3`.
 - **simple.py**: self-contained: memory backend plus an in-process worker. `python examples/simple.py` prints the "Sent email" line from the task.
-- **simple_scheduled.py**: scheduling with `at=timedelta(...)`; self-contained. See [Task scheduling](../guides/task-scheduling.md).
+- **simple_scheduled.py**: scheduling with `at=timedelta(...)`. Needs Redis and a worker. See [Task scheduling](../guides/task-scheduling.md).
 - **tldr.py**: `add`, `schedule`, and `wait_for` in one script. Needs Redis and a worker. Prints `Task succeed with result: Hello, World!`.
 
 ## Features
@@ -32,7 +32,7 @@ Run these with pytest from the repository root, e.g. `pytest examples/testqueue_
 These need FastAPI installed (`pip install fastapi`).
 
 - **simple_with_fastapi.py**: a single-file app with a SQLModel database (install `sqlmodel` separately). Run with `fastapi run examples/simple_with_fastapi.py`, then open http://localhost:8000/docs.
-- **fastapi-integration/simple/**: the email-service app from the [FastAPI guide](../guides/fastapi-integration.md), with unit and integration tests.
+- **fastapi-integration/simple/**: the email-service example app, with unit and integration tests.
 - **fastapi-integration/example_apirouter.py**: the monitoring router from `sheppy.fastapi.create_router` mounted into an app. Run with `fastapi dev examples/fastapi-integration/example_apirouter.py`.
 
 ## Project scaffold
