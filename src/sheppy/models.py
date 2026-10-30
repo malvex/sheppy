@@ -352,8 +352,8 @@ class Task(BaseModel, Generic[R]):
 
     @property
     def is_terminal(self) -> bool:
-        """Returns True if the task reached a final state (completed or failed with no retries left)."""
-        return self.status == 'completed' or (self.exception is not None and not self.should_retry)
+        """Returns True if the task status is completed, failed, crashed, or cancelled."""
+        return self.status in ('completed', 'failed', 'crashed', 'cancelled')
 
     @property
     def completed(self) -> bool:
