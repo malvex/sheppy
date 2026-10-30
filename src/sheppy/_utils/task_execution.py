@@ -318,6 +318,13 @@ class TaskProcessor(TaskProcessorProtocol):
                     final_kwargs[param_name] = task
                 continue
 
+            # preserve variadic arguments (my_task(*values: int))
+            if param.kind == inspect.Parameter.VAR_POSITIONAL:
+                for value in remaining_args:
+                    final_args.append(TaskProcessor._validate(value, param.annotation))
+                remaining_args.clear()
+                continue
+
             # validate positional args
             if remaining_args:
                 final_args.append(TaskProcessor._validate(remaining_args.pop(0), param.annotation))
