@@ -137,9 +137,13 @@ class TaskProcessor(TaskProcessorProtocol):
             coro = asyncio.to_thread(lambda: func(*final_args, **final_kwargs))
 
         if task.config.timeout is not None:
+            execution = asyncio.create_task(coro)
             try:
-                return await asyncio.wait_for(coro, timeout=task.config.timeout)
+                return await asyncio.wait_for(execution, timeout=task.config.timeout)
             except asyncio.TimeoutError:
+                # preserve exception if asyncio.TimeoutError was raised by the user task
+                if execution.done() and not execution.cancelled():
+                    return execution.result()
                 raise TaskTimeoutError(f"Task exceeded timeout of {task.config.timeout} seconds") from None
 
         return await coro
