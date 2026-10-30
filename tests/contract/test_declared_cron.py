@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 from pathlib import Path
 
-from sheppy import Queue, Worker
+from sheppy import Queue, Worker, task
 from sheppy._backend.base import Backend
 from tests.conftest import TEST_QUEUE_NAME
 from tests.dependencies import simple_sync_task, simple_sync_task_no_param
@@ -23,6 +23,25 @@ DECLARED_TOML_REDUCED = """
 task = "tests.dependencies:simple_sync_task_no_param"
 expression = "*/5 * * * *"
 """
+
+DECLARED_TOML_CONFIGURED = """
+[[tool.sheppy.cron]]
+task = "test_declared_cron:configured_cron_task"
+expression = "0 3 * * *"
+"""
+
+@task(
+    retry=3,
+    retry_delay=[1, 10, 60],
+    timeout=5,
+    retry_on_timeout=True,
+    retry_on_crash=True,
+    rate_limit={"max_rate": 2, "rate_period": 60},
+    ttl=3600,
+    error_ttl=60,
+)
+def configured_cron_task() -> int:
+    return 1
 
 
 def _make_worker(backend: Backend, cron_config_file: str) -> Worker:
@@ -96,6 +115,22 @@ expression = "*/5 * * * *"
     crons = {(cron.spec.func, cron.spec.args): cron for cron in await queue.get_crons()}
     assert ("tests.dependencies:simple_sync_task", (1, 2)) in crons
     assert ("tests.dependencies:simple_sync_task", (5, 5)) in crons
+
+
+async def test_declared_crons_preserve_decorator_config(queue: Queue, worker_backend: Backend, tmp_path: Path) -> None:
+    config_file = tmp_path / "pyproject.toml"
+    config_file.write_text(DECLARED_TOML_CONFIGURED)
+
+    worker = _make_worker(worker_backend, str(config_file))
+    await _run_worker_briefly(worker)
+
+    crons = await queue.get_crons()
+    cron = crons[0]
+    expected = configured_cron_task()
+    assert cron.spec == expected.spec
+    assert cron.config == expected.config
+    assert cron.managed_by == "pyproject"
+    assert await queue.add_cron(expected, cron.expression) is False
 
 
 async def test_missing_config_file_keeps_state(queue: Queue, worker_backend: Backend, tmp_path: Path) -> None:
