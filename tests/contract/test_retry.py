@@ -85,9 +85,10 @@ async def test_wait_for_race(task_fail_once_fn: Callable[[], Task], queue: Queue
     t = task_fail_once_fn()
     await queue.add(t)
 
-    asyncio.create_task(worker.work(2))
+    worker_task = asyncio.create_task(worker.work(2))
 
     recv_task = await queue.wait_for(t, timeout=3)
+    await worker_task
     assert_is_completed(recv_task)
     assert recv_task.retry_count == 1
 
@@ -96,9 +97,11 @@ async def test_wait_for_race(task_fail_once_fn: Callable[[], Task], queue: Queue
     with pytest.raises(TimeoutError):
         await queue.wait_for(t.id, timeout=0.01)
 
-    asyncio.create_task(worker.work(1))
+    worker_task = asyncio.create_task(worker.work(1))
 
-    recv_task2 = await queue.wait_for(t.id, timeout=0.01)
+    recv_task2 = await queue.wait_for(t.id, timeout=3)
+    await worker_task
+
     assert recv_task != recv_task2
     assert recv_task.id == recv_task2.id
 

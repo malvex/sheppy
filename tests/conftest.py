@@ -1,3 +1,4 @@
+import signal
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 
@@ -11,6 +12,26 @@ from sheppy._backend.redis import RedisBackend
 from tests.utils import WorkerInstanceProcess
 
 TEST_QUEUE_NAME = "pytest"
+TEST_TIMEOUT_SECONDS = 30
+
+
+def _fail_on_test_timeout(_signum, _frame):
+    pytest.fail(f"Test timed out after {TEST_TIMEOUT_SECONDS} seconds")
+
+
+@pytest.fixture(autouse=True)
+def enforce_test_timeout():
+    if not all(hasattr(signal, name) for name in ("SIGALRM", "ITIMER_REAL", "setitimer")):
+        yield
+        return
+
+    previous_handler = signal.signal(signal.SIGALRM, _fail_on_test_timeout)
+    try:
+        signal.setitimer(signal.ITIMER_REAL, TEST_TIMEOUT_SECONDS)
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 @pytest.fixture

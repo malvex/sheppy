@@ -935,6 +935,17 @@ async def test_get_results_timeout(backend: Backend):
         await backend.get_results(Q, ["random-id"], timeout=0.1)
 
 
+@pytest.mark.parametrize("method_name", ["get_results", "get_workflow_results"])
+async def test_sub_millisecond_result_timeout(method_name: str, backend: Backend):
+    await backend.connect()
+
+    with pytest.raises(TimeoutError, match="Did not complete within 0.0001 seconds"):
+        await asyncio.wait_for(
+            getattr(backend, method_name)(Q, ["random-id"], timeout=0.0001),
+            timeout=1,
+        )
+
+
 async def test_cron(backend: Backend):
     _task_cron = TaskFactory.create_cron_from_task(simple_async_task(1, 2), "* * * * *")
 
