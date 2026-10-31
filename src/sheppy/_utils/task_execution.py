@@ -3,41 +3,38 @@ This file contains utility functions meant for internal use only. Expect breakin
 """
 
 import asyncio
-import importlib
 import inspect
+import logging
 import socket
 from collections.abc import AsyncGenerator, Callable, Generator
 from datetime import datetime, timedelta, timezone
-from types import ModuleType
-from typing import Annotated, Any, cast, get_args, get_origin
+from typing import Any, cast
 from uuid import uuid4
 
-from pydantic import PydanticSchemaGenerationError, TypeAdapter
-
 from .._backend.utils import apply_task_ttl_defaults
-from .._logging import LoggerLike
+from .._logging import ContextLoggerAdapter, LoggerLike
 from .._protocols import (
     AsyncMiddlewareProtocol,
     MiddlewareProtocol,
     TaskProcessorProtocol,
 )
 from .._queue import Queue
-from ..exceptions import MiddlewareError, TaskTimeoutError, WorkerCrashedError
-from ..models import CURRENT_TASK, Task, TaskException, TaskStatus
-from .fastapi import Depends
+from ..exceptions import (
+    DependencyScopeError,
+    MiddlewareError,
+    TaskTimeoutError,
+    WorkerCrashedError,
+)
+from ..models import Task, TaskException, TaskStatus
+from .dependencies import DependencyContext, DependencyResolver
 from .functions import reconstruct_result, resolve_function
-
-anyio: ModuleType | None
-try:
-    anyio = importlib.import_module("anyio")
-except ImportError:
-    anyio = None
+from .worker_thread import _run_in_worker_thread
 
 SyncMiddlewareGenerator = Generator[Task | None, tuple[Task, Exception | None], Task | None]
 AsyncMiddlewareGenerator = AsyncGenerator[Task | None, tuple[Task, Exception | None]]
 MiddlewareGenerator = SyncMiddlewareGenerator | AsyncMiddlewareGenerator
 
-cache_signature: dict[Callable[..., Any], inspect.Signature] = {}
+logger = ContextLoggerAdapter(logging.getLogger("sheppy.worker"))
 
 
 def generate_unique_worker_id(prefix: str) -> str:
@@ -103,43 +100,79 @@ class TaskProcessor(TaskProcessorProtocol):
     ):
         self.middleware = middleware or []
         self.dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] = dependency_overrides or {}
+        self._dependency_resolver = DependencyResolver(self.dependency_overrides)
 
     async def process_task(self, task: Task, queue: Queue, worker_id: str) -> tuple[Exception | None, Task]:
-        result = None
+        exception = None
+        try:
+            async with self._dependency_resolver.request_scope() as dependency_context:
+                exception, task = await self._process_task(task, queue, dependency_context)
+                if exception is not None:
+                    raise exception
+        except Exception as e:
+            if e is not exception:
+                task = self._handle_task_failure(task, e, preserve_retry=exception is not None)
+            exception = e
+
+        return exception, task
+
+    async def _process_task(
+        self,
+        task: Task,
+        queue: Queue,
+        dependency_context: DependencyContext,
+    ) -> tuple[Exception | None, Task]:
         exception = None
         _generators: list[MiddlewareGenerator] = []
 
         try:
-            # if middleware fails at this point, the task should be set as failed
-            # (but it wasn't even executed). Postprocess is skipped (_generators is None).
-            # retriable tasks are retried, although this might change in the future as it will likely just waste all retry attempts
+            # if preprocessing fails, the task is marked failed without being executed
             task, _generators = await self._preprocess(task, queue)
 
-            result = await self._execute_task_function(task)
-            task = self.mark_completed(task, result)
-        except Exception as e:
-            task = self.mark_failed(task, e)
-            exception = e
+            try:
+                completed = False
+                async with dependency_context.function_scope():
+                    result = await self._execute_task_function(task, dependency_context)
+                    task = self.mark_completed(task, result)
+                    completed = True
 
-            if task.is_retriable:
-                task = TaskProcessor.handle_retry(task, exception)
+                if not completed:
+                    raise RuntimeError("Task execution was suppressed by a dependency")
+            except Exception as e:
+                task = self._handle_task_failure(task, e)
+                exception = e
+        except Exception as e:
+            task = self._handle_task_failure(task, e)
+            exception = e
 
         # task was already executed so we let the exception bubble through
         try:
             task = await self._postprocess(task, exception, _generators)
         except MiddlewareError as e:
-            return e, task
+            exception = e
 
         return exception, task
 
-    async def _execute_task_function(self, task: Task) -> Any:
+    def _handle_task_failure(self, task: Task, exception: Exception, *, preserve_retry: bool = False) -> Task:
+        if preserve_retry and task.status == 'retrying':
+            task.__dict__["exception"] = TaskException.from_exception(exception)
+            return task
+
+        task = self.mark_failed(task, exception)
+        if task.is_retriable:
+            return TaskProcessor.handle_retry(task, exception)
+        return task
+
+    async def _execute_task_function(self, task: Task, dependency_context: DependencyContext) -> Any:
         # resolve the function from its string representation
         func = resolve_function(task.spec.func)
         args = task.spec.args or ()
         kwargs = task.spec.kwargs or {}
 
-        # validate all parameters, inject DI and Task
-        final_args, final_kwargs = await self.process_function_parameters(func, args, kwargs, task)
+        # validate parameters and inject dependencies and Task
+        final_args, final_kwargs = await self._dependency_resolver.process_function_parameters(
+            func, args, kwargs, task, dependency_context
+        )
 
         # async task
         if inspect.iscoroutinefunction(func):
@@ -279,6 +312,9 @@ class TaskProcessor(TaskProcessorProtocol):
         if not task.should_retry:
             return task
 
+        if isinstance(exception, DependencyScopeError):
+            return task
+
         if isinstance(exception, TaskTimeoutError) and not task.config.retry_on_timeout:
             return task
 
@@ -306,103 +342,3 @@ class TaskProcessor(TaskProcessorProtocol):
             return float(task.config.retry_delay)
         # this should never happen if the library is used correctly
         raise ValueError(f"Invalid retry_delay type: {type(task.config.retry_delay).__name__}. Expected float or list[float].")
-
-    async def process_function_parameters(
-        self,
-        func: Callable[..., Any],
-        args: tuple[Any, ...],
-        kwargs: dict[str, Any],
-        task: Task | None = None,
-    ) -> tuple[list[Any], dict[str, Any]]:
-
-        signature = cache_signature.get(func)
-        if not signature:
-            signature = inspect.signature(func)
-            cache_signature[func] = signature
-
-        final_args = []
-        final_kwargs = kwargs.copy()
-        remaining_args = list(args)
-
-        for param_name, param in list(signature.parameters.items()):
-            # current Task injection (current: Task = CURRENT_TASK)
-            if task and param.default is CURRENT_TASK:
-                # inject positionally for positional params to maintain correct order
-                if param.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):
-                    final_args.append(task)
-                else:
-                    final_kwargs[param_name] = task
-                continue
-
-            # preserve variadic arguments (my_task(*values: int))
-            if param.kind == inspect.Parameter.VAR_POSITIONAL:
-                for value in remaining_args:
-                    final_args.append(TaskProcessor._validate(value, param.annotation))
-                remaining_args.clear()
-                continue
-
-            # validate positional args
-            if remaining_args:
-                final_args.append(TaskProcessor._validate(remaining_args.pop(0), param.annotation))
-                continue
-
-            # dependency injection
-            if depends := TaskProcessor.get_depends_from_param(param):
-                final_kwargs[param_name] = await self._resolve_dependency(depends.dependency)
-                continue
-
-            # validate kwargs
-            if param_name in kwargs:
-                final_kwargs[param_name] = TaskProcessor._validate(kwargs[param_name], param.annotation)
-
-        return final_args, final_kwargs
-
-    @staticmethod
-    def _validate(value: Any, annotation: Any) -> Any:
-        if value is not None and annotation != inspect.Parameter.empty:
-            try:
-                return TypeAdapter(annotation).validate_python(value)
-            except PydanticSchemaGenerationError:
-                pass
-
-        return value
-
-    async def _resolve_dependency(self, func: Callable[..., Any]) -> Any:
-        func = self.dependency_overrides.get(func, func)
-
-        # resolve nested dependencies
-        _, kwargs = await self.process_function_parameters(func, (), {}, None)
-
-        # execute dependency
-        if inspect.iscoroutinefunction(func):
-            return await func(**kwargs)
-
-        if inspect.isasyncgenfunction(func):
-            return await func(**kwargs).__anext__()
-
-        if inspect.isgeneratorfunction(func):
-            return await _run_in_worker_thread(lambda: next(func(**kwargs)))
-
-        return await _run_in_worker_thread(lambda: func(**kwargs))
-
-    @staticmethod
-    def get_depends_from_param(param: inspect.Parameter) -> Any | None:
-        if param.default != inspect.Parameter.empty and isinstance(param.default, Depends):
-            return param.default
-
-        # Annotated style
-        if get_origin(param.annotation) is Annotated:
-            args = get_args(param.annotation)
-
-            for arg in args[1:]:
-                if isinstance(arg, Depends):
-                    return arg
-
-        return None
-
-
-def _run_in_worker_thread(fn: Callable[[], Any]) -> Any:
-    # use anyio when available (asyncer compatibility)
-    if anyio is not None:
-        return anyio.to_thread.run_sync(fn)
-    return asyncio.to_thread(fn)

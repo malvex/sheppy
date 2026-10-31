@@ -6,6 +6,10 @@ class MiddlewareError(Exception):
     pass
 
 
+class DependencyScopeError(Exception):
+    pass
+
+
 class WorkflowError(Exception):
     pass
 

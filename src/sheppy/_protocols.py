@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator, Callable, Generator
+from collections.abc import AsyncGenerator, Generator
 from typing import TYPE_CHECKING, Any, Protocol
 
 from sheppy.models import Task
@@ -20,20 +20,8 @@ class AsyncMiddlewareProtocol(Protocol):
 
 class TaskProcessorProtocol(Protocol):
     middleware: list[AsyncMiddlewareProtocol | MiddlewareProtocol] | None
-    dependency_overrides: dict[Callable[..., Any], Callable[..., Any]]
-
-    def __init__(
-            self,
-            /,
-            middleware: list[str] | None = None,
-            dependency_overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None,
-    ): ...
 
     async def process_task(self, task: Task, queue: "Queue", worker_id: str) -> tuple[Exception | None, Task]: ...
-
-    async def _preprocess(self, task: Task, queue: "Queue") -> tuple[Task, list[Any]]: ...
-
-    async def _postprocess(self, task: Task, exception: Exception | None, _generators: list[Any]) -> Task: ...
 
     async def handle_stale_task(self, task: Task, queue: "Queue") -> Task: ...
 
