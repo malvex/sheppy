@@ -11,7 +11,13 @@ from typing import Any
 from .._queue import Queue
 from .._utils.task_execution import TaskProcessor
 from ..models import Task, TTLValue
-from .base import Backend, BackendError, resolve_metadata_ttl
+from .base import Backend, BackendError
+from .utils import (
+    apply_task_ttl_defaults,
+    apply_ttl_defaults_to_data,
+    resolve_metadata_ttl,
+    validate_backend_ttl,
+)
 
 
 @dataclass(order=True)
@@ -29,6 +35,7 @@ class MemoryBackend(Backend):
                  ttl: int | None = None,
                  error_ttl: TTLValue = "inherit",
                  ) -> None:
+        validate_backend_ttl(ttl, error_ttl)
 
         self._task_metadata: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)  # {QUEUE_NAME: {TASK_ID: task_data}}
         self._task_expiry: dict[str, dict[str, float]] = defaultdict(dict)  # {QUEUE_NAME: {TASK_ID: expires_at}}
@@ -94,6 +101,7 @@ class MemoryBackend(Backend):
 
     async def append(self, queue_name: str, tasks: list[dict[str, Any]], unique: bool = True) -> list[bool]:
         self._check_connected()
+        tasks = [apply_ttl_defaults_to_data(task, ttl=self.ttl, error_ttl=self.error_ttl) for task in tasks]
 
         if unique:
             success = await self._create_tasks(queue_name, tasks)
@@ -205,6 +213,7 @@ class MemoryBackend(Backend):
 
     async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime, unique: bool = True) -> bool:
         self._check_connected()
+        task_data = apply_ttl_defaults_to_data(task_data, ttl=self.ttl, error_ttl=self.error_ttl)
 
         if unique:
             success = await self._create_tasks(queue_name, [task_data])
@@ -578,13 +587,26 @@ class MemoryBackend(Backend):
         # handle task chaining
         if processed_task.status == 'completed' and processed_task.result:
             if isinstance(processed_task.result, Task):
-                chained_data = processed_task.result.model_dump(mode="json")
-                await self.append(queue_name, [chained_data])
+                child = apply_task_ttl_defaults(
+                    processed_task.result,
+                    ttl=processed_task.config.ttl,
+                    error_ttl=processed_task.config.error_ttl,
+                )
+                processed_task.__dict__["result"] = child
+                await self.append(queue_name, [child.model_dump(mode="json")])
 
             elif isinstance(processed_task.result, list) and processed_task.result and isinstance(processed_task.result[0], Task):
-                chained_tasks = [t.model_dump(mode="json") for t in processed_task.result if isinstance(t, Task)]
-                if chained_tasks:
-                    await self.append(queue_name, chained_tasks)
+                children = [
+                    apply_task_ttl_defaults(
+                        child,
+                        ttl=processed_task.config.ttl,
+                        error_ttl=processed_task.config.error_ttl,
+                    )
+                    for child in processed_task.result if isinstance(child, Task)
+                ]
+                if children:
+                    processed_task.__dict__["result"] = children
+                    await self.append(queue_name, [child.model_dump(mode="json") for child in children])
         await self.store_result(queue_name, processed_task.model_dump(mode="json"))
 
         # resume the workflow this task belongs to (result must be stored first)

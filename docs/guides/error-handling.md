@@ -64,7 +64,9 @@ async def import_data(file_path: str) -> str:
 
 ## How long failures are kept
 
-Finished tasks, including failed ones, keep their metadata in the backend until it expires. Failed and crashed tasks use `error_ttl` if set, otherwise the normal `ttl`; both exist per task (`@task(error_ttl=300)`) and per backend. Set either to `None` to keep records forever. See the [`TaskConfig` reference](../reference/task-config.md) for `ttl`/`error_ttl` semantics.
+Finished tasks, including failed ones, keep their metadata in the backend until it expires. Failed and crashed tasks use `error_ttl` if set, otherwise the normal `ttl`. Set either to `None` to keep records forever.
+
+Backend defaults are resolved when a task is enqueued and stay in its serialized configuration. Explicit task settings such as `@task(ttl=300)` always take precedence. Workflow steps inherit the workflow's resolved defaults, nested workflows inherit from their parent, and chained tasks inherit from the parent task. Older serialized tasks that still contain `"inherit"` fall back to the storing backend's defaults. See the [`TaskConfig` reference](../reference/task-config.md) for `ttl`/`error_ttl` semantics.
 
 ## Example: a task that fails once
 

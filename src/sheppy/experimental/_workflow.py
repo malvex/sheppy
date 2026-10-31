@@ -10,6 +10,7 @@ from uuid import UUID, uuid4, uuid5
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from .._backend.utils import resolve_ttl_config
 from .._utils.functions import (
     reconstruct_workflow_result,
     resolve_function,
@@ -17,7 +18,7 @@ from .._utils.functions import (
 )
 from .._utils.validation import _is_depends_parameter, validate_input
 from ..exceptions import WorkflowError
-from ..models import CURRENT_TASK, Task, TaskException
+from ..models import CURRENT_TASK, Task, TaskException, TTLValue
 
 P = ParamSpec('P')
 R = TypeVar('R')
@@ -31,6 +32,8 @@ class WorkflowContext:
     step_counter: int = 0
     stored_tasks: dict[int, UUID] = field(default_factory=dict)
     task_order: list[str] = field(default_factory=list)
+    ttl: TTLValue = "inherit"
+    error_ttl: TTLValue = "inherit"
 
     def next_task_id(self) -> UUID:
         step_idx = self.step_counter
@@ -109,6 +112,10 @@ class Workflow(BaseModel):
     """tuple[Any, ...]: Positional arguments passed to the workflow function."""
     kwargs: dict[str, Any] = Field(default_factory=dict)
     """dict[str, Any]: Keyword arguments passed to the workflow function."""
+    ttl: TTLValue = "inherit"
+    """Default metadata TTL applied to workflow tasks that inherit it."""
+    error_ttl: TTLValue = "inherit"
+    """Default metadata error TTL applied to workflow tasks that inherit it."""
     task_order: list[str] = Field(default_factory=list)
     """list[str]: Deterministic task IDs in creation order (one per replay step)."""
     completed: bool = False
@@ -257,6 +264,8 @@ class WorkflowRunner:
             workflow_id=self.workflow.id,
             stored_tasks=self.workflow.get_stored_task_ids(),
             task_order=list(self.workflow.task_order),
+            ttl=self.workflow.ttl,
+            error_ttl=self.workflow.error_ttl,
         )
         token = _workflow_context.set(ctx)
 
@@ -345,6 +354,11 @@ class WorkflowRunner:
         return f"{type(yielded).__name__} ({yielded!r})"
 
     def _run_nested_workflow(self, wf: Workflow) -> tuple[Any, list[Task]]:
+        wf.__dict__ |= resolve_ttl_config(
+            {"ttl": wf.ttl, "error_ttl": wf.error_ttl},
+            ttl=self.workflow.ttl,
+            error_ttl=self.workflow.error_ttl,
+        )
         gen = resolve_function(wf.func)(*wf.args, **wf.kwargs)
         with closing(gen):
             try:

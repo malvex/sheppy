@@ -81,4 +81,5 @@ Workflow failed as expected: Exception: Cleanup failed, notifications were sent
 
 - Workflow state is persisted in the backend, so workflows survive restarts, but the workflow function must stay importable at its original `module:function` path.
 - Nested workflows: yield a `Workflow` from another `@workflow` function and it runs inline within the parent. The yield expression receives the nested generator's return value.
+- Workflow steps inherit the workflow's resolved `ttl` and `error_ttl` defaults. Nested workflows inherit from their parent.
 - In tests, `TestQueue.experimental.process_workflow()` drives a workflow synchronously to completion.

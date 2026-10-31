@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from pydantic import PydanticSchemaGenerationError, TypeAdapter
 
+from .._backend.utils import apply_task_ttl_defaults
 from .._logging import LoggerLike
 from .._protocols import (
     AsyncMiddlewareProtocol,
@@ -56,13 +57,17 @@ class TaskChainingMiddleware(AsyncMiddlewareProtocol):
 
         if isinstance(task.result, Task):
             self.logger.info("Enqueued chained task", extra={"log_context": {"queue": queue.name, "task_id": task.result.id, "parent_task_id": task.id}})
-            await queue.add(task.result)
+            child = apply_task_ttl_defaults(task.result, ttl=task.config.ttl, error_ttl=task.config.error_ttl)
+            task.__dict__["result"] = child
+            await queue.add(child)
 
         elif isinstance(task.result, list) and all(isinstance(_task, Task) for _task in task.result):
             _tasks = task.result
             for _task in _tasks:
                 self.logger.info("Enqueued chained task", extra={"log_context": {"queue": queue.name, "task_id": _task.id, "parent_task_id": task.id}})
-            await queue.add(_tasks)
+            children = [apply_task_ttl_defaults(child, ttl=task.config.ttl, error_ttl=task.config.error_ttl) for child in _tasks]
+            task.__dict__["result"] = children
+            await queue.add(children)
 
 
 class LoggingMiddleware(MiddlewareProtocol):

@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta, timezone
-from typing import overload
+from typing import Any, overload
 from urllib.parse import urlparse
 from uuid import UUID
 
 from ._backend.base import Backend
+from ._backend.utils import apply_task_ttl_defaults, resolve_ttl_config
 from ._config import config
 from ._task_factory import TaskFactory
 from .exceptions import TaskCancellationError
@@ -11,8 +12,12 @@ from .experimental._workflow import Workflow, WorkflowResult, WorkflowRunner
 from .models import R, Task, TaskCron
 
 
-def _create_backend_from_url(url: str) -> Backend:
+def _create_backend_from_url(url: str, backend_kwargs: dict[str, Any] | None = None) -> Backend:
     """Create a backend instance from a URL string."""
+    options = dict(backend_kwargs or {})
+    if "url" in options:
+        raise ValueError("backend_kwargs cannot contain 'url'")
+
     try:
         parsed = urlparse(url)
     except Exception as e:
@@ -26,11 +31,11 @@ def _create_backend_from_url(url: str) -> Backend:
     if scheme in ("redis", "rediss"):
         # circular import
         from ._backend.redis import RedisBackend  # noqa: PLC0415
-        return RedisBackend(url=url)
+        return RedisBackend(url=url, **options)
 
     if scheme == "memory":
         from ._backend.memory import MemoryBackend  # noqa: PLC0415
-        return MemoryBackend()
+        return MemoryBackend(**options)
 
     raise ValueError(f"Unsupported backend protocol: {scheme}")
 
@@ -114,6 +119,11 @@ class ExperimentalQueue:
         """Add a workflow into the queue."""
         await self.__ensure_backend_is_connected()
 
+        workflow.__dict__ |= resolve_ttl_config(
+            {"ttl": workflow.ttl, "error_ttl": workflow.error_ttl},
+            ttl=self._queue.backend.ttl,
+            error_ttl=self._queue.backend.error_ttl,
+        )
         result = WorkflowRunner(workflow).run()
 
         await self._queue.backend.store_workflow(self._queue.name, result.workflow.model_dump(mode='json'))
@@ -322,13 +332,20 @@ class Queue:
                  - `memory://` for MemoryBackend<br>
                  If not provided, uses `SHEPPY_BACKEND_URL` environment variable.
         name: Name of the queue. Defaults to `SHEPPY_QUEUE` env var or "default".
+        backend_kwargs: Options forwarded to the backend constructor when backend is a URL string.
 
     Raises:
         ValueError: If no backend is provided and `SHEPPY_BACKEND_URL` is not set,
             or if the URL scheme is not supported.
     """
 
-    def __init__(self, backend: Backend | str | None = None, name: str | None = None):
+    def __init__(
+        self,
+        backend: Backend | str | None = None,
+        name: str | None = None,
+        *,
+        backend_kwargs: dict[str, Any] | None = None,
+    ):
         self.name = name if name is not None else config.queue
 
         if backend is None:
@@ -338,8 +355,11 @@ class Queue:
                 raise ValueError("No backend provided. Either pass a backend instance/URL or set SHEPPY_BACKEND_URL environment variable.")
 
         if isinstance(backend, str):
-            self.backend = _create_backend_from_url(backend)
+            self.backend = _create_backend_from_url(backend, backend_kwargs)
         else:
+            if backend_kwargs is not None:
+                raise ValueError("backend_kwargs can only be used when backend is a URL string")
+
             self.backend = backend
 
         self.experimental = ExperimentalQueue(self)
@@ -665,6 +685,7 @@ class Queue:
             ```
         """
         await self.__ensure_backend_is_connected()
+        task = apply_task_ttl_defaults(task, ttl=self.backend.ttl, error_ttl=self.backend.error_ttl)
         task_cron = TaskFactory.create_cron_from_task(task, cron)
         return await self.backend.add_cron(self.name, str(task_cron.deterministic_id), task_cron.model_dump(mode="json"))
 

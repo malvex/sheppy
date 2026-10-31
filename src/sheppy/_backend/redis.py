@@ -15,7 +15,12 @@ except ImportError as e:
 
 from .._utils.task_execution import generate_unique_worker_id
 from ..models import TTLValue
-from .base import Backend, BackendError, resolve_metadata_ttl
+from .base import Backend, BackendError
+from .utils import (
+    apply_ttl_defaults_to_data,
+    resolve_metadata_ttl,
+    validate_backend_ttl,
+)
 
 # redis-py >= 8.0 types stream command responses as RESP2/RESP3 unions
 # we only use RESP2 without decode_responses, so responses are always lists of tuples with
@@ -34,6 +39,7 @@ class RedisBackend(Backend):
         error_ttl: TTLValue = "inherit",
         **kwargs: Any
     ):
+        validate_backend_ttl(ttl, error_ttl)
         self.url = url
         self.consumer_group = consumer_group
         self.consumer_name = generate_unique_worker_id("consumer")
@@ -154,6 +160,7 @@ class RedisBackend(Backend):
 
     async def append(self, queue_name: str, tasks: list[dict[str, Any]], unique: bool = True) -> list[bool]:
         """Add new tasks to be processed."""
+        tasks = [apply_ttl_defaults_to_data(task, ttl=self.ttl, error_ttl=self.error_ttl) for task in tasks]
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
         pending_tasks_key = self._pending_tasks_key(queue_name)
 
@@ -291,6 +298,7 @@ class RedisBackend(Backend):
         return {t['id']: t for t in tasks}
 
     async def schedule(self, queue_name: str, task_data: dict[str, Any], at: datetime, unique: bool = True) -> bool:
+        task_data = apply_ttl_defaults_to_data(task_data, ttl=self.ttl, error_ttl=self.error_ttl)
         tasks_metadata_key = self._tasks_metadata_key(queue_name)
         scheduled_key = self._scheduled_tasks_key(queue_name)
 

@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from sheppy import Queue, Worker
+from sheppy import MemoryBackend, Queue, Worker
 from tests.dependencies import simple_async_task, simple_sync_task
 
 
@@ -102,3 +102,24 @@ async def test_cron_generates_different_tasks(datetime_now: datetime, queue: Que
     assert t1.id != t2.id
     assert t1.spec == t2.spec
     assert t1.config == t2.config
+
+
+async def test_cron_ttl_defaults_preserve_identity():
+    backend = MemoryBackend(ttl=5, error_ttl=50)
+    queue = Queue(backend, "cron-ttl")
+    created = simple_sync_task(1, 2)
+    expression = "*/5 * * * *"
+
+    assert await queue.add_cron(created, expression) is True
+    assert await queue.add_cron(created, expression) is False
+
+    cron = (await queue.get_crons())[0]
+    assert cron.config.ttl == 5
+    assert cron.config.error_ttl == 50
+    assert created.config.ttl == "inherit"
+    assert created.config.error_ttl == "inherit"
+
+    scheduled = cron.create_task(cron.next_run())
+    assert scheduled.config.ttl == 5
+    assert scheduled.config.error_ttl == 50
+    assert await queue.delete_cron(created, expression) is True

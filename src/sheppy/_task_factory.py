@@ -10,6 +10,7 @@ from typing import (
     overload,
 )
 
+from ._backend.utils import resolve_ttl_config
 from ._utils.functions import stringify_function
 from ._utils.validation import validate_input
 from .experimental._workflow import get_workflow_context
@@ -72,6 +73,7 @@ class TaskFactory:
         if ctx is not None:
             task_kwargs["id"] = ctx.next_task_id()
             task_kwargs["workflow_id"] = ctx.workflow_id
+            task_config = resolve_ttl_config(task_config, ttl=ctx.ttl, error_ttl=ctx.error_ttl)
 
         _task = Task(
             **task_kwargs,

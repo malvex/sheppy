@@ -463,6 +463,7 @@ class TaskCron(BaseModel):
         """Deterministic UUID to prevent duplicated cron definitions.
 
         This property generates a deterministic UUID for the cron definition based on its spec, config, and expression.
+        TTL fields are normalized to "inherit" so backend defaults do not change cron identity.
         This ensures that identical cron definitions always have the same UUID, preventing duplicates.
 
         Returns:
@@ -491,7 +492,8 @@ class TaskCron(BaseModel):
             assert cron1.id != cron2.id  # different random UUIDs
             ```
         """
-        s = self.spec.model_dump_json() + self.config.model_dump_json() + self.expression
+        config = self.config.model_copy(update={"ttl": "inherit", "error_ttl": "inherit"})
+        s = self.spec.model_dump_json() + config.model_dump_json() + self.expression
         return uuid5(TASK_CRON_NS, s)
 
     def next_run(self, start: datetime | None = None) -> datetime:

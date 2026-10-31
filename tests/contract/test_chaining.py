@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from sheppy import Queue, Task, Worker
+from sheppy import MemoryBackend, Queue, Task, Worker
 from tests.dependencies import assert_is_completed, assert_is_new
 
 
@@ -93,3 +93,20 @@ async def test_task_chaining_bulk(task_chaining_bulk_fn: Callable[[], Task], que
     assert processed[1].result == 8
     assert processed[2].result == 12
     assert processed[3].result == 10
+
+
+async def test_chained_tasks_inherit_parent_ttl(task_chaining_fn: Callable[[], Task]) -> None:
+    backend = MemoryBackend(instant_processing=False, ttl=5, error_ttl=50)
+    queue = Queue(backend, "chaining-ttl")
+    worker = Worker(queue.name, backend, enable_cron_manager=False)
+    worker._blocking_timeout = 0.001
+    worker._scheduler_polling_interval = 0.001
+    created = task_chaining_fn(3, asynchronous=True)
+
+    await queue.add(created)
+    await worker.work(2)
+
+    tasks = await queue.get_all_tasks()
+    assert len(tasks) == 2
+    assert all(t.config.ttl == 5 for t in tasks)
+    assert all(t.config.error_ttl == 50 for t in tasks)
