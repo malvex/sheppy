@@ -36,6 +36,7 @@ class SyncQueue:
         backend: Backend URL string, e.g. "redis://localhost:6379" or
                  "memory://". If None, uses `SHEPPY_BACKEND_URL` env var.
         name: Name of the queue. Defaults to `SHEPPY_QUEUE` env var or "default".
+        backend_kwargs: Options forwarded to the backend constructor.
 
     Example:
         ```python
@@ -47,8 +48,9 @@ class SyncQueue:
         q.close()
         ```
     """
-    def __init__(self, backend: str | None = None, name: str | None = None):
+    def __init__(self, backend: str | None = None, name: str | None = None, *, backend_kwargs: dict[str, Any] | None = None):
         self._backend = backend
+        self._backend_kwargs = backend_kwargs
         self._name = name
 
         self._loop = asyncio.new_event_loop()
@@ -61,7 +63,7 @@ class SyncQueue:
     async def _create_queue(self) -> "Queue":
         # circular import
         from .._queue import Queue  # noqa: PLC0415
-        return Queue(self._backend, self._name)
+        return Queue(self._backend, self._name, backend_kwargs=self._backend_kwargs)
 
     def _run_loop(self) -> None:
         asyncio.set_event_loop(self._loop)

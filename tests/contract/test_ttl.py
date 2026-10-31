@@ -1,4 +1,5 @@
 import asyncio
+from datetime import timedelta
 
 import pytest
 
@@ -72,6 +73,26 @@ async def worker(redis_backend):
 
 
 class TestRedisTTLWellKindaUnitTestRatherThanIntegrationButItConnectsToRealRedisAndItIsQuickTestSoDealWithIt:
+    async def test_backend_defaults_are_applied_at_enqueue(self, queue: Queue):
+        created = ttl_success_task()
+        await queue.add(created)
+
+        stored = await queue.get_task(created)
+        assert created.config.ttl == "inherit"
+        assert created.config.error_ttl == "inherit"
+        assert stored is not None
+        assert stored.config.ttl == 1
+        assert stored.config.error_ttl == 5
+
+    async def test_scheduled_backend_defaults_are_applied_at_enqueue(self, queue: Queue):
+        created = ttl_success_task()
+        await queue.schedule(created, timedelta(hours=1))
+
+        stored = await queue.get_task(created)
+        assert stored is not None
+        assert stored.config.ttl == 1
+        assert stored.config.error_ttl == 5
+
     async def test_completed_task_uses_success_ttl(self, queue: Queue, worker: Worker):
         assert await queue.add(t := ttl_success_task()) is True
         await worker.work(max_tasks=1)
@@ -126,6 +147,42 @@ class TestRedisTTLWellKindaUnitTestRatherThanIntegrationButItConnectsToRealRedis
 
         ttl = await queue.backend._client.ttl(f"sheppy:tasks:{QUEUE_NAME}:{t.id}")
         assert ttl == -1
+
+
+async def test_producer_backend_defaults_win_over_worker():
+    queue = Queue(
+        "redis://localhost:6379/0",
+        name=QUEUE_NAME,
+        backend_kwargs={"ttl": 1, "error_ttl": 5},
+    )
+    worker_backend = RedisBackend(url="redis://localhost:6379/0", ttl=100, error_ttl=100)
+    await queue.backend.connect()
+    await queue.backend._client.flushdb()
+    worker = Worker(QUEUE_NAME, worker_backend)
+    worker._blocking_timeout = 0.001
+    worker._scheduler_polling_interval = 0.001
+    worker._cron_polling_interval = 0.001
+    success = ttl_success_task()
+    failure = ttl_fail_task()
+
+    try:
+        await queue.add([success, failure])
+        await worker.work(2)
+
+        tasks = await queue.get_task([success, failure])
+        assert tasks[success.id].config.ttl == 1
+        assert tasks[success.id].config.error_ttl == 5
+        assert tasks[failure.id].config.ttl == 1
+        assert tasks[failure.id].config.error_ttl == 5
+
+        success_ttl = await queue.backend._client.ttl(f"sheppy:tasks:{QUEUE_NAME}:{success.id}")
+        failure_ttl = await queue.backend._client.ttl(f"sheppy:tasks:{QUEUE_NAME}:{failure.id}")
+        assert 0 < success_ttl <= 1
+        assert 0 < failure_ttl <= 5
+    finally:
+        await queue.backend._client.flushdb()
+        await queue.backend.disconnect()
+        await worker_backend.disconnect()
 
 
 @pytest.mark.slow

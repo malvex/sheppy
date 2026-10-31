@@ -472,6 +472,28 @@ async def test_memory_backend_instant_processing_completes_workflow():
     assert wf.final_result == 13
 
 
+async def test_workflow_and_nested_tasks_inherit_backend_ttl():
+    backend = MemoryBackend(instant_processing=False, ttl=5, error_ttl=50)
+    queue = Queue(backend, "workflow-ttl")
+    worker = Worker(queue.name, backend, enable_cron_manager=False)
+    worker._blocking_timeout = 0.001
+    worker._scheduler_polling_interval = 0.001
+
+    first = await queue.experimental.add_workflow(sequential_workflow(2))
+    second = await queue.experimental.add_workflow(outer_workflow(5))
+    assert first.workflow.ttl == 5
+    assert first.workflow.error_ttl == 50
+    assert second.workflow.ttl == 5
+    assert second.workflow.error_ttl == 50
+
+    await worker.work(4)
+
+    tasks = await queue.get_all_tasks()
+    assert len(tasks) == 4
+    assert all(t.config.ttl == 5 for t in tasks)
+    assert all(t.config.error_ttl == 50 for t in tasks)
+
+
 def test_testqueue_process_workflow():
     q = TestQueue(name="workflow-testqueue")
     result = q.experimental.process_workflow(sequential_workflow(2))

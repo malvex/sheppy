@@ -51,6 +51,14 @@ class TestSyncQueue:
         assert_is_completed(processed)
         assert processed.result == 12
 
+    def test_backend_kwargs(self):
+        queue = SyncQueue("memory://", backend_kwargs={"ttl": 5, "error_ttl": 60})
+        try:
+            assert queue._queue.backend.ttl == 5
+            assert queue._queue.backend.error_ttl == 60
+        finally:
+            queue.close()
+
     def test_performance(self, worker: WorkerInstanceProcess):
         if IS_CI:
             pytest.skip(reason="CI is randomly too slow")

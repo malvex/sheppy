@@ -1,4 +1,4 @@
-from sheppy._backend.base import resolve_metadata_ttl
+from sheppy._backend.utils import resolve_metadata_ttl, resolve_ttl_config
 from sheppy.models import TTLValue
 
 FINISHED = "2026-01-01T00:00:00+00:00"
@@ -78,3 +78,24 @@ class TestResolveMetadataTtl:
         assert resolve_metadata_ttl(task_data("failed", ttl=5), ttl=100, error_ttl=10) == 5
         assert resolve_metadata_ttl(task_data("failed"), ttl=100, error_ttl=10) == 10
         assert resolve_metadata_ttl(task_data("failed"), ttl=100, error_ttl="inherit") == 100
+
+
+def test_resolve_ttl_config_only_replaces_inherit():
+    resolved = resolve_ttl_config(
+        {"ttl": 5, "error_ttl": "inherit"},
+        ttl=100,
+        error_ttl=10,
+    )
+    assert resolved == {"ttl": 5, "error_ttl": 10}
+
+
+def test_resolve_ttl_config_preserves_none_and_inherit():
+    assert resolve_ttl_config({}, ttl=None, error_ttl="inherit") == {
+        "ttl": None,
+        "error_ttl": "inherit",
+    }
+    assert resolve_ttl_config(
+        {"ttl": "inherit", "error_ttl": None},
+        ttl=100,
+        error_ttl=10,
+    ) == {"ttl": 100, "error_ttl": None}

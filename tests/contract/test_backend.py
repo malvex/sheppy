@@ -1,12 +1,14 @@
 import asyncio
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import UUID
 
 import pytest
 from pydantic.type_adapter import TypeAdapter
 
 from sheppy import Backend, BackendError
+from sheppy._backend.utils import apply_ttl_defaults_to_data
 from sheppy._task_factory import Task, TaskFactory
 from tests.dependencies import add_retriable, simple_async_task
 
@@ -17,14 +19,23 @@ TASK_CRON_ID = UUID("2ee47ad3-0de2-4d54-854e-20259c45e7ca")
 # don't even ask... *sigh*
 IS_CI = os.getenv("CI", False) == "true"
 
+DEFAULT_TTL = None
+DEFAULT_ERROR_TTL = "inherit"
+
+
+def _apply_ttl_defaults_to_data(task_data: dict[str, Any]):
+    return apply_ttl_defaults_to_data(task_data, ttl=DEFAULT_TTL, error_ttl=DEFAULT_ERROR_TTL)
+
 
 @pytest.fixture
 def task_dict():
-    return simple_async_task(1, 2).model_dump(mode="json")
+    task_data = simple_async_task(1, 2).model_dump(mode="json")
+    return _apply_ttl_defaults_to_data(task_data)
 
 
 @pytest.fixture
 def tasks(datetime_now: datetime) -> dict[str, dict]:
+
     def _set_completed(task: Task) -> Task:
         return task.model_copy(
             deep=True,
@@ -177,7 +188,7 @@ def tasks(datetime_now: datetime) -> dict[str, dict]:
         "retriable_cron_retried_failed": task_retriable_cron_retried_failed,
     }
 
-    return {k: v.model_dump(mode="json") for k, v in tasks.items()}
+    return {k: _apply_ttl_defaults_to_data(v.model_dump(mode="json")) for k, v in tasks.items()}
 
 
 async def test_require_manual_connect(task_dict: dict, backend: Backend):
@@ -207,8 +218,8 @@ async def test_append(task_dict: dict, backend: Backend):
 
 
 async def test_append_bulk(backend: Backend):
-    t1 = simple_async_task(1, 2).model_dump(mode="json")
-    t2 = simple_async_task(1, 2).model_dump(mode="json")
+    t1 = _apply_ttl_defaults_to_data(simple_async_task(1, 2).model_dump(mode="json"))
+    t2 = _apply_ttl_defaults_to_data(simple_async_task(1, 2).model_dump(mode="json"))
 
     await backend.connect()
     assert await backend.append(Q, [t1, t2]) == [True, True]
@@ -218,10 +229,10 @@ async def test_append_bulk(backend: Backend):
 
 
 async def test_pop(backend: Backend):
-    t1 = simple_async_task(1, 2).model_dump(mode="json")
-    t2 = simple_async_task(3, 4).model_dump(mode="json")
-    t3 = simple_async_task(5, 6).model_dump(mode="json")
-    t4 = simple_async_task(7, 8).model_dump(mode="json")
+    t1 = _apply_ttl_defaults_to_data(simple_async_task(1, 2).model_dump(mode="json"))
+    t2 = _apply_ttl_defaults_to_data(simple_async_task(3, 4).model_dump(mode="json"))
+    t3 = _apply_ttl_defaults_to_data(simple_async_task(5, 6).model_dump(mode="json"))
+    t4 = _apply_ttl_defaults_to_data(simple_async_task(7, 8).model_dump(mode="json"))
 
     await backend.connect()
     assert await backend.append(Q, [t1, t2, t3, t4]) == [True, True, True, True]
@@ -239,10 +250,10 @@ async def test_pop(backend: Backend):
 
 
 async def test_get_pending(backend: Backend):
-    t1 = simple_async_task(1, 2).model_dump(mode="json")
-    t2 = simple_async_task(3, 4).model_dump(mode="json")
-    t3 = simple_async_task(5, 6).model_dump(mode="json")
-    t4 = simple_async_task(7, 8).model_dump(mode="json")
+    t1 = _apply_ttl_defaults_to_data(simple_async_task(1, 2).model_dump(mode="json"))
+    t2 = _apply_ttl_defaults_to_data(simple_async_task(3, 4).model_dump(mode="json"))
+    t3 = _apply_ttl_defaults_to_data(simple_async_task(5, 6).model_dump(mode="json"))
+    t4 = _apply_ttl_defaults_to_data(simple_async_task(7, 8).model_dump(mode="json"))
 
     await backend.connect()
     assert await backend.append(Q, [t1, t2, t3, t4]) == [True, True, True, True]
@@ -257,10 +268,10 @@ async def test_get_pending(backend: Backend):
 
 
 async def test_clear(backend: Backend):
-    t1 = simple_async_task(1, 2).model_dump(mode="json")
-    t2 = simple_async_task(3, 4).model_dump(mode="json")
-    t3 = simple_async_task(5, 6).model_dump(mode="json")
-    t4 = simple_async_task(7, 8).model_dump(mode="json")
+    t1 = _apply_ttl_defaults_to_data(simple_async_task(1, 2).model_dump(mode="json"))
+    t2 = _apply_ttl_defaults_to_data(simple_async_task(3, 4).model_dump(mode="json"))
+    t3 = _apply_ttl_defaults_to_data(simple_async_task(5, 6).model_dump(mode="json"))
+    t4 = _apply_ttl_defaults_to_data(simple_async_task(7, 8).model_dump(mode="json"))
 
     await backend.connect()
     assert await backend.append(Q, [t1, t2, t3, t4]) == [True, True, True, True]
@@ -282,10 +293,10 @@ async def test_clear(backend: Backend):
 
 
 async def test_get_tasks(datetime_now: datetime, tasks: dict[str, dict], backend: Backend):
-    t1 = simple_async_task(1, 2).model_dump(mode="json")
-    t2 = simple_async_task(3, 4).model_dump(mode="json")
-    t3 = simple_async_task(5, 6).model_dump(mode="json")
-    t4 = simple_async_task(7, 8).model_dump(mode="json")
+    t1 = _apply_ttl_defaults_to_data(simple_async_task(1, 2).model_dump(mode="json"))
+    t2 = _apply_ttl_defaults_to_data(simple_async_task(3, 4).model_dump(mode="json"))
+    t3 = _apply_ttl_defaults_to_data(simple_async_task(5, 6).model_dump(mode="json"))
+    t4 = _apply_ttl_defaults_to_data(simple_async_task(7, 8).model_dump(mode="json"))
 
     await backend.connect()
     assert await backend.append(Q, [tasks["new"]]) == [True]
@@ -323,10 +334,10 @@ async def test_get_tasks(datetime_now: datetime, tasks: dict[str, dict], backend
 
 
 async def test_get_all_tasks(datetime_now: datetime, tasks: dict[str, dict], backend: Backend):
-    t1 = simple_async_task(1, 2).model_dump(mode="json")
-    t2 = simple_async_task(3, 4).model_dump(mode="json")
-    t3 = simple_async_task(5, 6).model_dump(mode="json")
-    t4 = simple_async_task(7, 8).model_dump(mode="json")
+    t1 = _apply_ttl_defaults_to_data(simple_async_task(1, 2).model_dump(mode="json"))
+    t2 = _apply_ttl_defaults_to_data(simple_async_task(3, 4).model_dump(mode="json"))
+    t3 = _apply_ttl_defaults_to_data(simple_async_task(5, 6).model_dump(mode="json"))
+    t4 = _apply_ttl_defaults_to_data(simple_async_task(7, 8).model_dump(mode="json"))
 
     await backend.connect()
     assert await backend.append(Q, [tasks["new"]]) == [True]
@@ -353,10 +364,10 @@ async def test_get_all_tasks(datetime_now: datetime, tasks: dict[str, dict], bac
 
 
 async def test_list_queues(datetime_now: datetime, tasks: dict[str, dict], backend: Backend):
-    t1 = simple_async_task(1, 2).model_dump(mode="json")
-    t2 = simple_async_task(3, 4).model_dump(mode="json")
-    t3 = simple_async_task(5, 6).model_dump(mode="json")
-    t4 = simple_async_task(7, 8).model_dump(mode="json")
+    t1 = _apply_ttl_defaults_to_data(simple_async_task(1, 2).model_dump(mode="json"))
+    t2 = _apply_ttl_defaults_to_data(simple_async_task(3, 4).model_dump(mode="json"))
+    t3 = _apply_ttl_defaults_to_data(simple_async_task(5, 6).model_dump(mode="json"))
+    t4 = _apply_ttl_defaults_to_data(simple_async_task(7, 8).model_dump(mode="json"))
 
     await backend.connect()
     assert await backend.append(Q, [tasks["new"]]) == [True]
@@ -375,8 +386,8 @@ async def test_list_queues(datetime_now: datetime, tasks: dict[str, dict], backe
 
 
 async def test_get_scheduled(datetime_now: datetime, backend: Backend):
-    t1 = simple_async_task(1, 2).model_dump(mode="json")
-    t2 = simple_async_task(3, 4).model_dump(mode="json")
+    t1 = _apply_ttl_defaults_to_data(simple_async_task(1, 2).model_dump(mode="json"))
+    t2 = _apply_ttl_defaults_to_data(simple_async_task(3, 4).model_dump(mode="json"))
 
     await backend.connect()
     assert await backend.schedule(Q, t1, at=datetime_now)
@@ -898,8 +909,8 @@ async def test_get_results(task_dict: dict, backend: Backend):
 async def test_get_results_batch(backend: Backend):
     await backend.connect()
 
-    t1 = simple_async_task(1, 2).model_dump(mode="json")
-    t2 = simple_async_task(3, 4).model_dump(mode="json")
+    t1 = _apply_ttl_defaults_to_data(simple_async_task(1, 2).model_dump(mode="json"))
+    t2 = _apply_ttl_defaults_to_data(simple_async_task(3, 4).model_dump(mode="json"))
 
     assert await backend.size(Q) == 0
     assert await backend.append(Q, [t1, t2]) == [True, True]

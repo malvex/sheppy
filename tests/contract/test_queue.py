@@ -5,6 +5,7 @@ from uuid import UUID
 import pytest
 
 from sheppy import Backend, Queue, Worker
+from sheppy._backend.utils import apply_task_ttl_defaults
 from tests.dependencies import (
     assert_is_completed,
     assert_is_failed,
@@ -76,12 +77,14 @@ async def test_get_task(task_fn, queue: Queue, worker: Worker):
     assert await queue.get_task([str(t1.id)]) == {}
 
     await queue.add(t1)
+    t1 = apply_task_ttl_defaults(t1, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
 
     assert await queue.get_task(t1) == t1
     assert await queue.get_task(t1.id) == t1
     assert await queue.get_task(str(t1.id)) == t1
 
     await queue.add(t2)
+    t2 = apply_task_ttl_defaults(t2, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
 
     # test batch op
     assert await queue.get_task([t1, t2]) == {t1.id: t1, t2.id: t2}
@@ -113,6 +116,7 @@ async def test_get_task_duplicate_task_ids(task_fn, queue: Queue, worker: Worker
     assert_is_new(t1)
 
     assert await queue.add([t1, t2]) == [True, True]
+    t1 = apply_task_ttl_defaults(t1, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
 
     assert await queue.get_task([t1, t1]) == {t1.id: t1}
 
@@ -141,6 +145,8 @@ async def test_get_pending(task_fn, queue: Queue, worker: Worker):
 
     await queue.add(t1 := task_fn(1, 2))
     await queue.add(t2 := task_fn(3, 4))
+    t1 = apply_task_ttl_defaults(t1, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
+    t2 = apply_task_ttl_defaults(t2, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
     assert await queue.size() == 2
 
     # count < queue size + implicit
@@ -188,6 +194,7 @@ async def test_get_pending_after_pop(task_fn, queue: Queue, worker: Worker):
     worker.enable_cron_manager = False
 
     await queue.add(t := task_fn(1, 2))
+    t = apply_task_ttl_defaults(t, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
     assert await queue.size() == 1
 
     res = await queue.get_pending()
@@ -229,6 +236,9 @@ async def test_clear(task_fn, queue: Queue, worker: Worker):
     await queue.add(t1)
     await queue.add(t2)
     await queue.add(t3)
+    t1 = apply_task_ttl_defaults(t1, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
+    t2 = apply_task_ttl_defaults(t2, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
+    t3 = apply_task_ttl_defaults(t3, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
     assert await queue.size() == 3
 
     await worker.work(1)
@@ -257,6 +267,14 @@ async def test_pop_pending(task_fn, queue: Queue):
     await queue.add(t6 := task_fn(11, 12))
     await queue.add(t7 := task_fn(13, 14))
     await queue.add(t8 := task_fn(15, 16))
+    t1 = apply_task_ttl_defaults(t1, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
+    t2 = apply_task_ttl_defaults(t2, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
+    t3 = apply_task_ttl_defaults(t3, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
+    t4 = apply_task_ttl_defaults(t4, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
+    t5 = apply_task_ttl_defaults(t5, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
+    t6 = apply_task_ttl_defaults(t6, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
+    t7 = apply_task_ttl_defaults(t7, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
+    t8 = apply_task_ttl_defaults(t8, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
     assert await queue.size() == 8
 
     assert await queue._pop_pending() == [t1]
@@ -300,6 +318,7 @@ async def test_get_all_tasks(task_fn, queue: Queue, worker: Worker):
 
     assert await queue.size() == 0
     await queue.add(tasks)
+    tasks = [apply_task_ttl_defaults(t, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl) for t in tasks]
     assert await queue.size() == 8
 
     all_tasks = await queue.get_all_tasks()

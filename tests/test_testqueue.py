@@ -7,6 +7,7 @@ import pytest
 
 from sheppy import Task, TestQueue
 from sheppy import task as task_decorator
+from sheppy._backend.utils import apply_task_ttl_defaults
 from tests.dependencies import (
     TaskTestCase,
     TaskTestCases,
@@ -54,6 +55,8 @@ class TestSuccessfulTasks:
         t1 = test_case.create_task()
         t2 = test_case.create_task()
         assert queue.add([t1, t2]) == [True, True]
+        t1 = apply_task_ttl_defaults(t1, ttl=queue._backend.ttl, error_ttl=queue._backend.error_ttl)
+        t2 = apply_task_ttl_defaults(t2, ttl=queue._backend.ttl, error_ttl=queue._backend.error_ttl)
 
         assert queue.get_task(t1) == t1
         assert queue.get_task(t1.id) == t1
@@ -86,7 +89,8 @@ class TestSuccessfulTasks:
 
         stored = queue.get_task(t1)
         assert stored is not None
-        assert stored.model_dump(mode="json") == t1.model_dump(mode="json")
+        expected = apply_task_ttl_defaults(t1, ttl=queue._backend.ttl, error_ttl=queue._backend.error_ttl)
+        assert stored.model_dump(mode="json") == expected.model_dump(mode="json")
 
     @pytest.mark.parametrize("test_case", TaskTestCases.subset_successful_tasks(), ids=lambda tc: tc.name)
     def test_process_all(self, test_case: TaskTestCase):

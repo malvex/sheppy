@@ -5,6 +5,7 @@ from typing import Any, overload
 from uuid import UUID
 
 from ._backend.memory import MemoryBackend
+from ._backend.utils import apply_task_ttl_defaults
 from ._queue import Queue
 from ._utils.task_execution import TaskProcessor
 from .experimental._workflow import Workflow, WorkflowResult
@@ -514,21 +515,31 @@ class TestQueue:
 
         self.processed_tasks.append(task)
 
-        # store result first (queue.retry() reads the latest state from the backend)
-        await self._backend.store_result(self.name, task.model_dump(mode='json'))
-
         if task.exception:
             self.failed_tasks.append(task)
 
             if task.status == 'retrying' and task.next_retry_at is not None:
+                # store result first (queue.retry() reads the latest state from the backend)
+                await self._backend.store_result(self.name, task.model_dump(mode='json'))
+
                 # retry immediately
                 await self._queue.retry(task)
 
         # basic task chaining
         if task.status == 'completed' and task.result:  # noqa:SIM102
-            if isinstance(task.result, Task) or \
-               isinstance(task.result, list) and all(isinstance(_task, Task) for _task in task.result):
-                await self._queue.add(task.result)
+            if isinstance(task.result, Task):
+                child = apply_task_ttl_defaults(task.result, ttl=task.config.ttl, error_ttl=task.config.error_ttl)
+                task.__dict__["result"] = child
+                await self._queue.add(child)
+            elif isinstance(task.result, list) and all(isinstance(_task, Task) for _task in task.result):
+                children = [
+                    apply_task_ttl_defaults(child, ttl=task.config.ttl, error_ttl=task.config.error_ttl)
+                    for child in task.result
+                ]
+                task.__dict__["result"] = children
+                await self._queue.add(children)
+
+        await self._backend.store_result(self.name, task.model_dump(mode='json'))
 
         data = await self._backend.get_tasks(self.name, [str(task.id)])
         stored_task_data = data.get(str(task.id))
