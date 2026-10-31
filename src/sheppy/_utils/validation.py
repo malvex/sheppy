@@ -4,16 +4,13 @@ This file contains utility functions meant for internal use only. Expect breakin
 
 import inspect
 from collections.abc import Callable
-from typing import Annotated, Any, get_args, get_origin, get_type_hints
+from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 
 from sheppy.models import CURRENT_TASK
 
-from .fastapi import Depends
-
-cache_signature: dict[Callable[..., Any], inspect.Signature] = {}
-cache_type_hints: dict[Callable[..., Any], dict[str, Any]] = {}
+from .parameters import get_cached_signature, get_depends_from_param
 
 
 def validate_input(
@@ -22,15 +19,7 @@ def validate_input(
     kwargs: dict[str, Any]
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
 
-    signature = cache_signature.get(func)
-    if not signature:
-        signature = inspect.signature(func)
-        cache_signature[func] = signature
-
-    type_hints = cache_type_hints.get(func)
-    if not type_hints:
-        type_hints = get_type_hints(func)
-        cache_type_hints[func] = type_hints
+    signature = get_cached_signature(func)
 
     final_args = []
     final_kwargs = {}
@@ -68,7 +57,7 @@ def validate_input(
 
         # positional args or kwargs
         if remaining_args and param.kind != inspect.Parameter.KEYWORD_ONLY:
-            validated = _validate_value(remaining_args.pop(0), type_hints.get(param_name, param.annotation))
+            validated = _validate_value(remaining_args.pop(0), param.annotation)
             final_args.append(validated)
             continue
 
@@ -78,7 +67,7 @@ def validate_input(
                 raise ValidationError.from_exception_data(
                     f"Cannot pass '{param_name}' as keyword argument (positional-only)", line_errors=[]
                 )
-            validated = _validate_value(remaining_kwargs.pop(param_name), type_hints.get(param_name, param.annotation))
+            validated = _validate_value(remaining_kwargs.pop(param_name), param.annotation)
             final_kwargs[param_name] = validated
             continue
 
@@ -110,14 +99,7 @@ def _is_task_injection(param: inspect.Parameter) -> bool:
 
 
 def _is_depends_parameter(param: inspect.Parameter) -> bool:
-    if param.default != inspect.Parameter.empty and isinstance(param.default, Depends):
-        return True
-
-    if get_origin(param.annotation) is Annotated:
-        args = get_args(param.annotation)
-        return any(isinstance(metadata, Depends) for metadata in args[1:])
-
-    return False
+    return get_depends_from_param(param) is not None
 
 
 def _validate_value(value: Any, annotation: Any) -> Any:

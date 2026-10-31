@@ -177,7 +177,7 @@ class TestScheduledTasks:
 
     async def test_scheduled_task_with_immediate_task(self, queue: Queue, worker: Worker):
         scheduled_task = simple_sync_task(1, 2)
-        assert await queue.schedule(scheduled_task, at=timedelta(seconds=0.02)) is True
+        assert await queue.schedule(scheduled_task, at=timedelta(seconds=0.1)) is True
 
         immediate_task = simple_sync_task(3, 4)
         assert await queue.add(immediate_task) is True
