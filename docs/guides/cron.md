@@ -35,7 +35,7 @@ Expressions use standard five-field cron syntax (`minute hour day-of-month month
 
 ## Behavior worth knowing
 
-- `add_cron()` returns `False` for an exact duplicate. Crons have deterministic ids derived from the function, its arguments, and the expression, so registering the same cron twice is safe.
+- `add_cron()` returns the created `TaskCron`, or `None` for an exact duplicate. Crons have deterministic ids derived from the function, its arguments, and the expression, so registering the same cron twice is safe.
 - The cron manager runs inside every worker (unless started with `--disable-cron-manager`) and stays about three scheduled runs ahead. If no worker is running, no task instances are created. Registration alone does not execute anything.
 - `queue.delete_cron(task, "*/1 * * * *")` removes a cron; pass the same task and expression you registered.
 - `sheppy cron list` shows registered crons from the CLI.

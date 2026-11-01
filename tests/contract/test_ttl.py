@@ -94,42 +94,42 @@ class TestRedisTTLWellKindaUnitTestRatherThanIntegrationButItConnectsToRealRedis
         assert stored.config.error_ttl == 5
 
     async def test_completed_task_uses_success_ttl(self, queue: Queue, worker: Worker):
-        assert await queue.add(t := ttl_success_task()) is True
+        assert await queue.add(t := ttl_success_task()) is t
         await worker.work(max_tasks=1)
 
         ttl = await queue.backend._client.ttl(f"sheppy:tasks:{QUEUE_NAME}:{t.id}")
         assert 0 < ttl <= 1
 
     async def test_failed_task_uses_error_ttl(self, queue: Queue, worker: Worker):
-        assert await queue.add(t := ttl_fail_task()) is True
+        assert await queue.add(t := ttl_fail_task()) is t
         await worker.work(max_tasks=1)
 
         ttl = await queue.backend._client.ttl(f"sheppy:tasks:{QUEUE_NAME}:{t.id}")
         assert 2 < ttl <= 5
 
     async def test_completed_task_uses_success_ttl_override(self, queue: Queue, worker: Worker):
-        assert await queue.add(t := ttl_success_task_override()) is True
+        assert await queue.add(t := ttl_success_task_override()) is t
         await worker.work(max_tasks=1)
 
         ttl = await queue.backend._client.ttl(f"sheppy:tasks:{QUEUE_NAME}:{t.id}")
         assert 1 < ttl <= 5
 
     async def test_failed_task_uses_error_ttl_override(self, queue: Queue, worker: Worker):
-        assert await queue.add(t := ttl_fail_task_override()) is True
+        assert await queue.add(t := ttl_fail_task_override()) is t
         await worker.work(max_tasks=1)
 
         ttl = await queue.backend._client.ttl(f"sheppy:tasks:{QUEUE_NAME}:{t.id}")
         assert 10 < ttl <= 50
 
     async def test_completed_task_uses_success_ttl_override_to_none(self, queue: Queue, worker: Worker):
-        assert await queue.add(t := ttl_success_task_override_to_none()) is True
+        assert await queue.add(t := ttl_success_task_override_to_none()) is t
         await worker.work(max_tasks=1)
 
         ttl = await queue.backend._client.ttl(f"sheppy:tasks:{QUEUE_NAME}:{t.id}")
         assert ttl == -1  # redis returns -1 for keys with no expiration
 
     async def test_failed_task_uses_error_ttl_override_to_none(self, queue: Queue, worker: Worker):
-        assert await queue.add(t := ttl_fail_task_override_to_none()) is True
+        assert await queue.add(t := ttl_fail_task_override_to_none()) is t
         await worker.work(max_tasks=1)
 
         ttl = await queue.backend._client.ttl(f"sheppy:tasks:{QUEUE_NAME}:{t.id}")
@@ -142,7 +142,7 @@ class TestRedisTTLWellKindaUnitTestRatherThanIntegrationButItConnectsToRealRedis
         worker._scheduler_polling_interval = 0.001
         worker._cron_polling_interval = 0.001
 
-        assert await queue.add(t := ttl_fail_task()) is True
+        assert await queue.add(t := ttl_fail_task()) is t
         await worker.work(max_tasks=1)
 
         ttl = await queue.backend._client.ttl(f"sheppy:tasks:{QUEUE_NAME}:{t.id}")

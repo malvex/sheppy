@@ -16,7 +16,7 @@ from tests.dependencies import (
 
 async def test_exception_captured_on_failure(queue: Queue, worker: Worker):
     t = failing_task("boom")
-    assert await queue.add(t) is True
+    assert await queue.add(t) is t
     await worker.work(max_tasks=1)
 
     t = await queue.get_task(t)
@@ -35,7 +35,7 @@ async def test_exception_captured_on_failure(queue: Queue, worker: Worker):
 @pytest.mark.parametrize("failing_fn", [failing_task_custom_error, async_failing_task_custom_error])
 async def test_custom_exception_roundtrip_through_backend(queue: Queue, worker: Worker, failing_fn):
     t = failing_fn(5, detail="bad things")
-    assert await queue.add(t) is True
+    assert await queue.add(t) is t
     await worker.work(max_tasks=1)
 
     t = await queue.get_task(t)
@@ -60,7 +60,7 @@ async def test_custom_exception_roundtrip_through_backend(queue: Queue, worker: 
 
 async def test_successful_task_has_no_exception(queue: Queue, worker: Worker):
     t = simple_sync_task(1, 2)
-    assert await queue.add(t) is True
+    assert await queue.add(t) is t
     await worker.work(max_tasks=1)
 
     t = await queue.get_task(t)

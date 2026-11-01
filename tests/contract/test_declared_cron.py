@@ -130,7 +130,7 @@ async def test_declared_crons_preserve_decorator_config(queue: Queue, worker_bac
     assert cron.spec == expected.spec
     assert cron.config == expected.config
     assert cron.managed_by == "pyproject"
-    assert await queue.add_cron(expected, cron.expression) is False
+    assert await queue.add_cron(expected, cron.expression) is None
 
 
 async def test_missing_config_file_keeps_state(queue: Queue, worker_backend: Backend, tmp_path: Path) -> None:

@@ -92,7 +92,7 @@ async def test_wait_for_race(task_fail_once_fn: Callable[[], Task], queue: Queue
     assert_is_completed(recv_task)
     assert recv_task.retry_count == 1
 
-    assert await queue.retry(t.id, force=True) is True
+    assert await queue.retry(t.id, force=True) is not None
 
     with pytest.raises(TimeoutError):
         await queue.wait_for(t.id, timeout=0.01)
@@ -117,7 +117,7 @@ async def test_wait_for_race_w_at(task_fail_once_fn: Callable[[], Task], queue: 
     assert_is_completed(recv_task)
     assert recv_task.retry_count == 1
 
-    assert await queue.retry(t.id, at=timedelta(seconds=1), force=True) is True
+    assert await queue.retry(t.id, at=timedelta(seconds=1), force=True) is not None
     assert await queue.size() == 0
     assert len(await queue.get_scheduled()) == 1
 
@@ -141,7 +141,7 @@ async def test_wait_for_race_no_retriable(queue: Queue, worker: Worker):
     assert_is_failed(recv_task)
     assert recv_task.retry_count == 0  # non retriable task
 
-    assert await queue.retry(t.id, force=True) is True
+    assert await queue.retry(t.id, force=True) is not None
 
     with pytest.raises(TimeoutError):
         await queue.wait_for(t.id, timeout=0.01)
