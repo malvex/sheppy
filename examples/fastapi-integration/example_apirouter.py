@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sheppy import InMemoryBackend, Queue, task
-from sheppy.fastapi import create_router
+from sheppy.experimental.fastapi import create_router
 
 
 @task

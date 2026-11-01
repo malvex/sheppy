@@ -15,7 +15,7 @@ try:
         AsyncClient,
     )
 
-    from sheppy.fastapi import create_router  # type: ignore[no-redef,unused-ignore]
+    from sheppy.experimental.fastapi import create_router  # type: ignore[no-redef,unused-ignore]
 
     FASTAPI_INSTALLED = True
 except ImportError:
