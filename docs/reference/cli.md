@@ -19,6 +19,7 @@ $ sheppy [OPTIONS] COMMAND [ARGS]...
 * `task`: Task management commands
 * `queue`: Queue management commands
 * `cron`: Cron management commands
+* `experimental`: Here be dragons!
 
 ## `sheppy work`
 
@@ -63,7 +64,7 @@ $ sheppy task [OPTIONS] COMMAND [ARGS]...
 
 **Commands**:
 
-* `list`: List all tasks.
+* `list`: List tasks.
 * `info`: Get detailed information about a specific...
 * `retry`: Retry a failed task by re-queueing it.
 * `test`: Test run a task function without queuing it.
@@ -72,7 +73,7 @@ $ sheppy task [OPTIONS] COMMAND [ARGS]...
 
 ### `sheppy task list`
 
-List all tasks.
+List tasks.
 
 **Usage**:
 
@@ -84,7 +85,11 @@ $ sheppy task list [OPTIONS]
 
 * `-q, --queue <str>`: Queue name. Env: SHEPPY_QUEUE  [default: default]
 * `-u, --backend-url <str>`: Backend URL. Env: SHEPPY_BACKEND_URL
-* `-s, --status <all|pending|scheduled|completed|failed>`: Filter by status  [default: all]
+* `-s, --status <all|new|pending|scheduled|processing|retrying|completed|failed|crashed|cancelled|unknown>`: Filter by status  [default: all]
+* `--function <str>`: Filter by fully qualified or bare function name
+* `-l, --limit <int range>`: Maximum number of tasks to show  [default: 100; x&gt;=1]
+* `--sort-by <created|finished|scheduled|function|status>`: Field to sort tasks by  [default: created]
+* `--order <asc|desc>`: Sort order  [default: desc]
 * `-f, --format <table|json>`: Output format  [default: table]
 * `--help`: Show this message and exit.
 
@@ -263,4 +268,83 @@ $ sheppy cron list [OPTIONS]
 
 * `-q, --queue <str>`: Queue name. Env: SHEPPY_QUEUE  [default: default]
 * `-u, --backend-url <str>`: Backend URL. Env: SHEPPY_BACKEND_URL
+* `--help`: Show this message and exit.
+
+## `sheppy experimental`
+
+Here be dragons!
+
+**Usage**:
+
+```console
+$ sheppy experimental [OPTIONS] COMMAND [ARGS]...
+```
+
+**Options**:
+
+* `--help`: Show this message and exit.
+
+**Commands**:
+
+* `task`: EXPERIMENTAL! Task management commands
+
+### `sheppy experimental task`
+
+EXPERIMENTAL! Task management commands
+
+**Usage**:
+
+```console
+$ sheppy experimental task [OPTIONS] COMMAND [ARGS]...
+```
+
+**Options**:
+
+* `--help`: Show this message and exit.
+
+**Commands**:
+
+* `cancel`: Cancel a pending or scheduled task so it...
+* `delete`: Hard-delete a finished task&#x27;s metadata...
+
+#### `sheppy experimental task cancel`
+
+Cancel a pending or scheduled task so it is never executed.
+
+**Usage**:
+
+```console
+$ sheppy experimental task cancel [OPTIONS] {task_id}
+```
+
+**Arguments**:
+
+* `task_id`: Task ID to cancel  [required]
+
+**Options**:
+
+* `-q, --queue <str>`: Queue name. Env: SHEPPY_QUEUE  [default: default]
+* `-u, --backend-url <str>`: Backend URL. Env: SHEPPY_BACKEND_URL
+* `--format <table|json>`: Output format  [default: table]
+* `--help`: Show this message and exit.
+
+#### `sheppy experimental task delete`
+
+Hard-delete a finished task&#x27;s metadata (cancel pending/scheduled tasks first).
+
+**Usage**:
+
+```console
+$ sheppy experimental task delete [OPTIONS] {task_id}
+```
+
+**Arguments**:
+
+* `task_id`: Task ID to delete  [required]
+
+**Options**:
+
+* `-q, --queue <str>`: Queue name. Env: SHEPPY_QUEUE  [default: default]
+* `-u, --backend-url <str>`: Backend URL. Env: SHEPPY_BACKEND_URL
+* `--format <table|json>`: Output format  [default: table]
 * `--help`: Show this message and exit.
