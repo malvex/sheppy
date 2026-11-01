@@ -33,7 +33,7 @@ These need FastAPI installed (`pip install fastapi`).
 
 - **simple_with_fastapi.py**: a single-file app with a SQLModel database (install `sqlmodel` separately). Run with `fastapi run examples/simple_with_fastapi.py`, then open http://localhost:8000/docs.
 - **fastapi-integration/simple/**: the email-service example app, with unit and integration tests.
-- **fastapi-integration/example_apirouter.py**: the monitoring router from `sheppy.fastapi.create_router` mounted into an app. Run with `fastapi dev examples/fastapi-integration/example_apirouter.py`.
+- **fastapi-integration/example_apirouter.py**: the monitoring router from `sheppy.experimental.fastapi.create_router` mounted into an app. Run with `fastapi dev examples/fastapi-integration/example_apirouter.py`.
 
 ## Project scaffold
 
