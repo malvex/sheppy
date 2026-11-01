@@ -20,8 +20,8 @@ async def test_cron(queue: Queue):
             # should not be added (would be duplicated crons)
             should_succeed = True if i == 0 else False  # noqa: SIM210
 
-            success = await queue.add_cron(task, schedule)
-            assert success is should_succeed
+            created_cron = await queue.add_cron(task, schedule)
+            assert (created_cron is not None) is should_succeed
 
     all_crons = await queue.get_crons()
     assert len(all_crons) == 4
@@ -47,11 +47,11 @@ async def test_process_cron(datetime_now: datetime, queue: Queue, worker: Worker
     t = simple_async_task(1, 2)
     expression = '* * * * *'
 
-    success = await queue.add_cron(t, expression)
-    assert success
+    created_cron = await queue.add_cron(t, expression)
+    assert created_cron is not None
 
-    success = await queue.add_cron(t, expression)
-    assert not success
+    duplicate_cron = await queue.add_cron(t, expression)
+    assert duplicate_cron is None
 
     all_crons = await queue.get_crons()
     assert len(all_crons) == 1
@@ -80,8 +80,8 @@ async def test_cron_generates_different_tasks(datetime_now: datetime, queue: Que
     t = simple_async_task(1, 2)
     expression = '* * * * *'
 
-    success = await queue.add_cron(t, expression)
-    assert success
+    created_cron = await queue.add_cron(t, expression)
+    assert created_cron is not None
 
     all_crons = await queue.get_crons()
     assert len(all_crons) == 1
@@ -110,8 +110,10 @@ async def test_cron_ttl_defaults_preserve_identity():
     created = simple_sync_task(1, 2)
     expression = "*/5 * * * *"
 
-    assert await queue.add_cron(created, expression) is True
-    assert await queue.add_cron(created, expression) is False
+    created_cron = await queue.add_cron(created, expression)
+    assert created_cron is not None
+    assert created_cron.expression == expression
+    assert await queue.add_cron(created, expression) is None
 
     cron = (await queue.get_crons())[0]
     assert cron.config.ttl == 5

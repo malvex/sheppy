@@ -29,7 +29,7 @@ class TestSuccessfulTasks:
     def test_task_execution(self, test_case: TaskTestCase):
         queue = TestQueue()
         task = test_case.create_task()
-        assert queue.add(task) is True
+        assert queue.add(task) is task
 
         # there should be no change on tasks after queueing
         assert_is_new(task)
@@ -54,7 +54,7 @@ class TestSuccessfulTasks:
         queue = TestQueue()
         t1 = test_case.create_task()
         t2 = test_case.create_task()
-        assert queue.add([t1, t2]) == [True, True]
+        assert queue.add([t1, t2]) == [t1, t2]
         t1 = apply_task_ttl_defaults(t1, ttl=queue._backend.ttl, error_ttl=queue._backend.error_ttl)
         t2 = apply_task_ttl_defaults(t2, ttl=queue._backend.ttl, error_ttl=queue._backend.error_ttl)
 
@@ -85,7 +85,7 @@ class TestSuccessfulTasks:
     def test_get_task_pydantic_input(self, test_case: TaskTestCase):
         queue = TestQueue()
         t1 = test_case.create_task()
-        assert queue.add(t1) is True
+        assert queue.add(t1) is t1
 
         stored = queue.get_task(t1)
         assert stored is not None
@@ -123,7 +123,7 @@ class TestFailingTasks:
     def test_task_failure(self, test_case: TaskTestCase):
         queue = TestQueue()
         task = test_case.create_task()
-        assert queue.add(task) is True
+        assert queue.add(task) is task
 
         # process the task
         processed = queue.process_next()
@@ -147,7 +147,7 @@ class TestTaskSelfReference:
     def test_self_reference(self, test_case: TaskTestCase):
         queue = TestQueue()
         task = test_case.create_task()
-        assert queue.add(task) is True
+        assert queue.add(task) is task
 
         task = queue.process_next()
 
@@ -157,6 +157,14 @@ class TestTaskSelfReference:
 
 
 class TestQueueBehavior:
+    def test_add_returns_task_or_none_for_duplicate(self):
+        queue = TestQueue()
+        task = simple_sync_task(1, 2)
+
+        assert queue.add(task) is task
+        assert queue.add(task) is None
+
+
     def test_empty_queue(self):
         queue = TestQueue()
         # should not raise, just return None
@@ -202,8 +210,8 @@ class TestQueueBehavior:
         sync_task = simple_sync_task(1, 2)
         async_task = simple_async_task(3, 4)
 
-        assert queue.add(sync_task) is True
-        assert queue.add(async_task) is True
+        assert queue.add(sync_task) is sync_task
+        assert queue.add(async_task) is async_task
 
         # process both
         processed = queue.process_all()
@@ -227,7 +235,7 @@ class TestQueueBehavior:
     def test_process_next_vs_process_all_with_retry(self, task_fail_once_fn: Callable[[], Task]):
         queue = TestQueue()
 
-        assert queue.add(task_fail_once_fn()) is True
+        assert queue.add(task_fail_once_fn()) is not None
 
         assert queue.size() == 1
         processed = queue.process_next()
@@ -239,7 +247,7 @@ class TestQueueBehavior:
         assert_is_completed(processed)
 
         task = task_fail_once_fn()
-        assert queue.add(task) is True
+        assert queue.add(task) is task
         assert queue.size() == 1
 
         processed = queue.process_all()
@@ -262,7 +270,7 @@ class TestScheduledTasks:
         task = test_case.create_task()
 
         delay = timedelta(hours=1)
-        assert queue.schedule(task, at=delay) is True
+        assert queue.schedule(task, at=delay) is not None
 
         immediate = queue.process_next()
         assert immediate is None
@@ -285,7 +293,7 @@ class TestScheduledTasks:
         task = test_case.create_task()
 
         scheduled_time = datetime.now(timezone.utc) + timedelta(hours=1)
-        assert queue.schedule(task, at=scheduled_time) is True
+        assert queue.schedule(task, at=scheduled_time) is not None
 
         processed = queue.process_scheduled(at=scheduled_time)
 
@@ -302,9 +310,9 @@ class TestScheduledTasks:
 
         now = datetime.now(timezone.utc)
 
-        assert queue.schedule(task1, at=now + timedelta(hours=1)) is True
-        assert queue.schedule(task2, at=now + timedelta(hours=2)) is True
-        assert queue.schedule(task3, at=now + timedelta(hours=3)) is True
+        assert queue.schedule(task1, at=now + timedelta(hours=1)) is not None
+        assert queue.schedule(task2, at=now + timedelta(hours=2)) is not None
+        assert queue.schedule(task3, at=now + timedelta(hours=3)) is not None
 
         processed = queue.process_scheduled(at=now + timedelta(hours=1))
 
@@ -331,10 +339,10 @@ class TestScheduledTasks:
 
         scheduled_task = simple_sync_task(1, 2)
         future_time = datetime.now(timezone.utc) + timedelta(hours=1)
-        assert queue.schedule(scheduled_task, at=future_time) is True
+        assert queue.schedule(scheduled_task, at=future_time) is not None
 
         immediate_task = simple_sync_task(3, 4)
-        assert queue.add(immediate_task) is True
+        assert queue.add(immediate_task) is immediate_task
 
         processed_immediate = queue.process_next()
         assert_is_completed(processed_immediate)
@@ -355,7 +363,7 @@ class TestScheduledTasks:
         task = test_case.create_task()
 
         future_time = datetime.now(timezone.utc) + timedelta(hours=1)
-        assert queue.schedule(task, at=future_time) is True
+        assert queue.schedule(task, at=future_time) is not None
 
         processed = queue.process_scheduled(at=future_time)
 
@@ -370,7 +378,7 @@ class TestScheduledTasks:
 
         past_time = datetime.now(timezone.utc) - timedelta(hours=10)
 
-        assert queue.schedule(task, at=past_time) is True
+        assert queue.schedule(task, at=past_time) is not None
 
         processed = queue.process_scheduled()
 
@@ -394,9 +402,9 @@ class TestScheduledTasks:
         task1 = simple_sync_task(1, 2)
         task2 = simple_sync_task(3, 4)
 
-        assert queue.schedule(task3, at=now + timedelta(hours=3)) is True
-        assert queue.schedule(task1, at=now + timedelta(hours=1)) is True
-        assert queue.schedule(task2, at=now + timedelta(hours=2)) is True
+        assert queue.schedule(task3, at=now + timedelta(hours=3)) is not None
+        assert queue.schedule(task1, at=now + timedelta(hours=1)) is not None
+        assert queue.schedule(task2, at=now + timedelta(hours=2)) is not None
 
         assert queue.process_next() is None
         assert queue.process_all() == []
@@ -436,8 +444,8 @@ class TestCronOperations:
                 # should not be added (would be duplicated crons)
                 should_succeed = True if i == 0 else False  # noqa: SIM210
 
-                success = queue.add_cron(task, schedule)
-                assert success is should_succeed
+                created_cron = queue.add_cron(task, schedule)
+                assert (created_cron is not None) is should_succeed
 
         all_crons = queue.get_crons()
         assert len(all_crons) == 4
@@ -466,7 +474,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_noop(1, 2)
 
-        assert queue.add(task) is True
+        assert queue.add(task) is task
         task = queue.process_next()
 
         assert task.result == 3
@@ -476,7 +484,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_change_arg(1, 2)
 
-        assert queue.add(task) is True
+        assert queue.add(task) is task
         task = queue.process_next()
 
         assert task.result == 7
@@ -486,7 +494,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_change_return_value(1, 2)
 
-        assert queue.add(task) is True
+        assert queue.add(task) is task
         task = queue.process_next()
 
         assert task.result == 105003
@@ -496,7 +504,7 @@ class TestMiddleware:
 
         task = task_add_with_middleware_multiple(1, 2)
 
-        assert queue.add(task) is True
+        assert queue.add(task) is task
         task = queue.process_next()
 
         assert task.result == 105007
@@ -517,7 +525,7 @@ class TestRetry:
         assert len(queue.processed_tasks) == 1
         assert len(queue.failed_tasks) == 1
 
-        assert queue.retry(task) is True
+        assert queue.retry(task) is not None
 
         assert queue.size() == 1
         assert len(queue.processed_tasks) == 1
@@ -553,7 +561,7 @@ class TestRetry:
             queue.retry(task.id, at=timedelta(hours=10))
 
         assert queue.size() == 0
-        assert queue.retry(task.id, force=True) is True
+        assert queue.retry(task.id, force=True) is not None
         assert queue.size() == 1
 
         processed = queue.process_all()
@@ -574,7 +582,7 @@ class TestRetry:
         assert_is_failed(processed[0])
         assert queue.size() == 0
 
-        assert queue.retry(task, at=timedelta(hours=10)) is True
+        assert queue.retry(task, at=timedelta(hours=10)) is not None
         assert queue.size() == 0  # task should be scheduled, so it should not be in pending yet
 
         assert queue.process_next() is None  # nothing to process
@@ -689,7 +697,7 @@ class TestNoDecorator:
         my_task = task_decorator(task_no_decorator_fn)(3, 4)
         assert isinstance(my_task, Task)
 
-        assert queue.add(my_task) is True
+        assert queue.add(my_task) is my_task
 
         assert queue.size() == 1
         processed = queue.process_next()

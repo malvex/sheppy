@@ -365,12 +365,12 @@ class Queue:
         self.experimental = ExperimentalQueue(self)
 
     @overload
-    async def add(self, task: Task) -> bool: ...
+    async def add(self, task: Task[R]) -> Task[R] | None: ...
 
     @overload
-    async def add(self, task: list[Task]) -> list[bool]: ...
+    async def add(self, task: list[Task[R]]) -> list[Task[R] | None]: ...
 
-    async def add(self, task: Task | list[Task]) -> bool | list[bool]:
+    async def add(self, task: Task[R] | list[Task[R]]) -> Task[R] | None | list[Task[R] | None]:
         """
         Add task into the queue. Accept list of tasks for batch add.
 
@@ -378,31 +378,32 @@ class Queue:
             task: Instance of a Task, or list of Task instances for batch mode.
 
         Returns:
-            Success boolean, or list of booleans in batch mode.
+            The added task, or None if its ID already exists. In batch mode,
+            returns a list in input order with None for tasks that already exist.
+
+        Raises:
+            BackendError: If the backend cannot store or enqueue tasks.
 
         Example:
             ```python
             q = Queue(...)
-            success = await q.add(task)
-            assert success is True
+            added = await q.add(task)
+            assert added is task
 
             # batch mode
-            success = await q.add([task1, task2])
-            assert success == [True, True]  # returns list of booleans in batch mode
+            added_tasks = await q.add([task1, task2])
+            assert added_tasks == [task1, task2]
             ```
         """
         await self.__ensure_backend_is_connected()
 
         if isinstance(task, list):
-            batch_mode = True
             tasks = [t.model_dump(mode='json') for t in task]
-        else:
-            batch_mode = False
-            tasks = [task.model_dump(mode='json')]
+            success = await self.backend.append(self.name, tasks)
+            return [t if added else None for t, added in zip(task, success, strict=True)]
 
-        success = await self.backend.append(self.name, tasks)
-
-        return success if batch_mode else success[0]
+        success = await self.backend.append(self.name, [task.model_dump(mode='json')])
+        return task if success[0] else None
 
     @overload
     async def get_task(self, task: Task[R] | UUID | str) -> Task[R] | None: ...
@@ -460,7 +461,7 @@ class Queue:
 
         return [Task.model_validate(t) for t in await self.backend.get_pending(self.name, count)]
 
-    async def schedule(self, task: Task, at: datetime | timedelta) -> bool:
+    async def schedule(self, task: Task[R], at: datetime | timedelta) -> Task[R] | None:
         """Schedule task to be processed after certain time.
 
         Args:
@@ -470,7 +471,7 @@ class Queue:
                 If datetime is provided, it must be offset-aware (i.e. have timezone info).
 
         Returns:
-            Success boolean
+            The scheduled task, or None if its ID already exists.
 
         Raises:
             TypeError: If the provided datetime is naive (has no timezone info).
@@ -481,7 +482,8 @@ class Queue:
 
             q = Queue(...)
             # schedule task to be processed after 10 minutes
-            await q.schedule(task, timedelta(minutes=10))
+            scheduled = await q.schedule(task, timedelta(minutes=10))
+            assert scheduled is task
 
             # ... or at specific time
             await q.schedule(task, datetime(2027, 1, 1, tzinfo=timezone.utc))
@@ -498,7 +500,8 @@ class Queue:
         task.__dict__["scheduled_at"] = at
         task.__dict__["status"] = "scheduled"
 
-        return await self.backend.schedule(self.name, task.model_dump(mode="json"), at)
+        success = await self.backend.schedule(self.name, task.model_dump(mode="json"), at)
+        return task if success else None
 
     async def get_scheduled(self) -> list[Task]:
         """List scheduled tasks.
@@ -567,7 +570,7 @@ class Queue:
 
         return Task.model_validate(td) if td else None
 
-    async def retry(self, task: Task | UUID | str, at: datetime | timedelta | None = None, force: bool = False) -> bool:
+    async def retry(self, task: Task[R] | UUID | str, at: datetime | timedelta | None = None, force: bool = False) -> Task[R] | None:
         """Retry failed task.
 
         Args:
@@ -579,7 +582,7 @@ class Queue:
             force: If True, allows retrying even if task has completed successfully. Defaults to False.
 
         Returns:
-            True if the task was re-queued, False if no task with the given ID exists.
+            The re-queued task, or None if no task with the given ID exists.
 
         Raises:
             ValueError: If task has already completed successfully and force is not set to True or if the task has not finished yet.
@@ -590,8 +593,8 @@ class Queue:
             q = Queue(...)
 
             # retry task immediately
-            success = await q.retry(task)
-            assert success is True
+            retried = await q.retry(task)
+            assert retried is not None
 
             # or retry after 5 minutes
             await q.retry(task, at=timedelta(minutes=5))
@@ -604,8 +607,8 @@ class Queue:
             ```
         """
         _task = await self.get_task(task)  # ensure_backend_is_connected is called in get_task already
-        if not _task:
-            return False
+        if _task is None:
+            return None
 
         if not force and _task.status == 'completed':
             raise ValueError("Task has already completed successfully, use force to retry anyways")
@@ -632,10 +635,11 @@ class Queue:
                 _task.__dict__["scheduled_at"] = at
                 _task.__dict__["status"] = "scheduled"
 
-            return await self.backend.schedule(self.name, _task.model_dump(mode="json"), at, unique=False)
+            schedule_success = await self.backend.schedule(self.name, _task.model_dump(mode="json"), at, unique=False)
+            return _task if schedule_success else None
 
-        success = await self.backend.append(self.name, [_task.model_dump(mode="json")], unique=False)
-        return success[0]
+        append_success = await self.backend.append(self.name, [_task.model_dump(mode="json")], unique=False)
+        return _task if append_success[0] else None
 
     async def size(self) -> int:
         """Get number of pending tasks in the queue.
@@ -661,7 +665,7 @@ class Queue:
         await self.__ensure_backend_is_connected()
         return await self.backend.clear(self.name)
 
-    async def add_cron(self, task: Task, cron: str) -> bool:
+    async def add_cron(self, task: Task, cron: str) -> TaskCron | None:
         """Add a cron job to run a task on a schedule.
 
         Args:
@@ -669,7 +673,7 @@ class Queue:
             cron: Cron expression string (e.g. "*/5 * * * *" to run every 5 minutes)
 
         Returns:
-            True if the cron was added, False if an identical cron
+            The added cron, or None if an identical cron
             (same task and expression) already exists.
 
         Example:
@@ -681,13 +685,15 @@ class Queue:
                 print(f"[{datetime.now()}] Hello, {to}!")
 
             # schedule task to run every minute
-            await q.add_cron(say_hello("World"), "* * * * *")
+            created_cron = await q.add_cron(say_hello("World"), "* * * * *")
+            assert created_cron is not None
             ```
         """
         await self.__ensure_backend_is_connected()
         task = apply_task_ttl_defaults(task, ttl=self.backend.ttl, error_ttl=self.backend.error_ttl)
         task_cron = TaskFactory.create_cron_from_task(task, cron)
-        return await self.backend.add_cron(self.name, str(task_cron.deterministic_id), task_cron.model_dump(mode="json"))
+        success = await self.backend.add_cron(self.name, str(task_cron.deterministic_id), task_cron.model_dump(mode="json"))
+        return task_cron if success else None
 
     async def delete_cron(self, task: Task, cron: str) -> bool:
         """Delete a cron job.

@@ -115,7 +115,7 @@ async def test_get_task_duplicate_task_ids(task_fn, queue: Queue, worker: Worker
     t2 = task_fn(1, 2)
     assert_is_new(t1)
 
-    assert await queue.add([t1, t2]) == [True, True]
+    assert await queue.add([t1, t2]) == [t1, t2]
     t1 = apply_task_ttl_defaults(t1, ttl=queue.backend.ttl, error_ttl=queue.backend.error_ttl)
 
     assert await queue.get_task([t1, t1]) == {t1.id: t1}
@@ -409,7 +409,7 @@ async def test_retry(queue: Queue, worker: Worker):
 
     task = failing_task()
 
-    assert await queue.add(task) is True
+    assert await queue.add(task) is task
 
     await worker.work(oneshot=True)
 
@@ -419,7 +419,9 @@ async def test_retry(queue: Queue, worker: Worker):
     scheduled = await queue.get_scheduled()
     assert len(scheduled) == 0
 
-    assert await queue.retry(task) is True
+    retried_task = await queue.retry(task)
+    assert retried_task is not None
+    assert retried_task.id == task.id
     assert await queue.size() == 1
 
     await worker.work(oneshot=True)
@@ -431,10 +433,14 @@ async def test_retry(queue: Queue, worker: Worker):
     assert recv_task != recv_task2  # differs because finished_at is different
 
 
+async def test_retry_returns_none_for_missing_task(queue: Queue):
+    assert await queue.retry("00000000-0000-0000-0000-000000000000") is None
+
+
 async def test_retry_automatic_by_worker(task_fail_once_fn, queue: Queue, worker: Worker):
     task = task_fail_once_fn()
 
-    assert await queue.add(task) is True
+    assert await queue.add(task) is task
 
     await worker.work(max_tasks=2)
 
@@ -450,7 +456,7 @@ async def test_retry_automatic_by_worker(task_fail_once_fn, queue: Queue, worker
 async def test_retry_force(task_fail_once_fn, queue: Queue, worker: Worker):
     task = task_fail_once_fn()
 
-    assert await queue.add(task) is True
+    assert await queue.add(task) is task
     await worker.work(max_tasks=2)
     processed = await queue.get_task(task)
 
@@ -467,7 +473,7 @@ async def test_retry_force(task_fail_once_fn, queue: Queue, worker: Worker):
         await queue.retry(task.id, at=timedelta(hours=10))
 
     assert await queue.size() == 0
-    assert await queue.retry(task.id, force=True) is True
+    assert await queue.retry(task.id, force=True) is not None
     assert await queue.size() == 1
 
     await worker.work(max_tasks=1)
@@ -480,7 +486,7 @@ async def test_retry_force(task_fail_once_fn, queue: Queue, worker: Worker):
 async def test_retry_at(datetime_now, queue: Queue, worker: Worker):
     task = failing_task()
 
-    assert await queue.add(task) is True
+    assert await queue.add(task) is task
     await worker.work(max_tasks=1)
     processed = await queue.get_task(task)
 
@@ -489,7 +495,7 @@ async def test_retry_at(datetime_now, queue: Queue, worker: Worker):
     assert await queue.size() == 0
     assert await queue.get_scheduled() == []
 
-    assert await queue.retry(task, at=timedelta(hours=10)) is True
+    assert await queue.retry(task, at=timedelta(hours=10)) is not None
     assert await queue.size() == 0  # task should be scheduled, so it should not be in pending yet
 
     scheduled = await queue.get_scheduled()
@@ -537,7 +543,7 @@ class TestBatchOperations:
         assert await queue.add([]) == []
         assert await queue.size() == 0
 
-        assert await queue.add(tasks) == [True]
+        assert await queue.add(tasks) == tasks
 
         assert await queue.size() == 1
 
@@ -619,13 +625,13 @@ class TestEdgeCases:
         t2 = task_fn(3, 4)
         t3 = task_fn(5, 6)
 
-        assert await queue.add(t1) is True, "1"
-        assert await queue.add(t1) is False, "2"
-        assert await queue.add([t1]) == [False], "3"
-        assert await queue.schedule(t1, at=timedelta(seconds=10)) is False, "4"
+        assert await queue.add(t1) is t1, "1"
+        assert await queue.add(t1) is None, "2"
+        assert await queue.add([t1]) == [None], "3"
+        assert await queue.schedule(t1, at=timedelta(seconds=10)) is None, "4"
 
-        assert await queue.add([t2, t2]) == [True, False], "5"
-        assert await queue.add([t3, t1]) == [True, False], "6"
+        assert await queue.add([t2, t2]) == [t2, None], "5"
+        assert await queue.add([t3, t1]) == [t3, None], "6"
 
         assert await queue.size() == 3, "7"
 
@@ -633,10 +639,10 @@ class TestEdgeCases:
 
         t1 = task_fn(1, 2)
 
-        assert await queue.schedule(t1, at=timedelta(seconds=10)) is True, "1"
-        assert await queue.schedule(t1, at=timedelta(seconds=10)) is False, "2"
-        assert await queue.schedule(t1, at=timedelta(hours=2)) is False, "3"
-        assert await queue.add(t1) is False, "4"
+        assert await queue.schedule(t1, at=timedelta(seconds=10)) is t1, "1"
+        assert await queue.schedule(t1, at=timedelta(seconds=10)) is None, "2"
+        assert await queue.schedule(t1, at=timedelta(hours=2)) is None, "3"
+        assert await queue.add(t1) is None, "4"
 
         assert len(await queue.get_scheduled()) == 1, "5"
         assert await queue.size() == 0, "6"

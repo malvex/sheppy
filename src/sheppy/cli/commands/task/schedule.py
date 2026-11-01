@@ -108,9 +108,9 @@ def schedule(
         if parsed_kwargs:
             console.print(f"  Keyword arguments: {json.dumps(parsed_kwargs, indent=2)}")
 
-        success = await q.schedule(task, schedule_time)
+        scheduled_task = await q.schedule(task, schedule_time)
 
-        if success:
+        if scheduled_task is not None:
             console.print("[green]✓[/green] Task scheduled successfully")
             if isinstance(schedule_time, timedelta):
                 run_at = datetime.now(timezone.utc) + schedule_time

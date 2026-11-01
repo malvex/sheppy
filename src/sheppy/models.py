@@ -89,6 +89,7 @@ class TaskException(BaseModel):
 
         q = Queue(...)
         t = await q.add(failing_task())
+        assert t is not None
         t = await q.wait_for(t)
 
         assert t.exception is not None
@@ -426,9 +427,9 @@ class TaskCron(BaseModel):
             print(s)
             return s
 
-        # add_cron returns bool indicating success
-        success = await q.add_cron(say_hello("World"), "*/5 * * * *")
-        assert success is True
+        # add_cron returns the created TaskCron
+        created_cron = await q.add_cron(say_hello("World"), "*/5 * * * *")
+        assert created_cron is not None
 
         # retrieve all cron jobs
         crons = await q.get_crons()
@@ -479,11 +480,11 @@ class TaskCron(BaseModel):
                 print(f"Hello, {to}!")
 
             q = Queue(...)
-            success = await q.add_cron(say_hello("World"), "*/5 * * * *")
-            assert success is True
+            created_cron = await q.add_cron(say_hello("World"), "*/5 * * * *")
+            assert created_cron is not None
 
-            success = await q.add_cron(say_hello("World"), "*/5 * * * *")
-            assert success is False  # duplicate cron definition prevented
+            duplicate_cron = await q.add_cron(say_hello("World"), "*/5 * * * *")
+            assert duplicate_cron is None  # duplicate cron definition prevented
 
             # second example
             cron1 = TaskFactory.create_cron_from_task(say_hello("World"), "*/5 * * * *")

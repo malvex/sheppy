@@ -161,8 +161,8 @@ class TestQueue:
             assert t.status == 'new'
 
             # add task to the queue
-            success = q.add(t)
-            assert success is True
+            added = q.add(t)
+            assert added is t
 
             # check queue size
             assert q.size() == 1
@@ -187,8 +187,8 @@ class TestQueue:
             assert t.status == 'new'
 
             # add task to the queue
-            success = q.add(t)
-            assert success is True
+            added = q.add(t)
+            assert added is t
 
             # check queue size
             assert q.size() == 1
@@ -227,12 +227,12 @@ class TestQueue:
         self.experimental = ExperimentalTestQueue(self)
 
     @overload
-    def add(self, task: Task) -> bool: ...
+    def add(self, task: Task[R]) -> Task[R] | None: ...
 
     @overload
-    def add(self, task: list[Task]) -> list[bool]: ...
+    def add(self, task: list[Task[R]]) -> list[Task[R] | None]: ...
 
-    def add(self, task: Task | list[Task]) -> bool | list[bool]:
+    def add(self, task: Task[R] | list[Task[R]]) -> Task[R] | None | list[Task[R] | None]:
         """
         Add task into the queue. Accept list of tasks for batch add.
 
@@ -240,22 +240,25 @@ class TestQueue:
             task: Instance of a Task, or list of Task instances for batch mode.
 
         Returns:
-            Success boolean, or list of booleans in batch mode.
+            The added task, or None if its ID already exists. In batch mode,
+            returns a list in input order with None for tasks that already exist.
 
         Example:
             ```python
             q = TestQueue()
 
             # add single task
-            success = q.add(task)
-            assert success is True
+            added = q.add(task)
+            assert added is task
 
             # add multiple tasks
-            results = q.add([task1, task2, task3])
-            assert results == [True, True, True]
+            added_tasks = q.add([task1, task2, task3])
+            assert added_tasks == [task1, task2, task3]
             ```
         """
-        return asyncio.run(self._queue.add(task))  # type: ignore[return-value]
+        if isinstance(task, list):
+            return asyncio.run(self._queue.add(task))
+        return asyncio.run(self._queue.add(task))
 
     @overload
     def get_task(self, task: Task[R] | UUID | str) -> Task[R] | None: ...
@@ -294,7 +297,7 @@ class TestQueue:
         """
         return asyncio.run(self._queue.get_pending(count))
 
-    def schedule(self, task: Task, at: datetime | timedelta) -> bool:
+    def schedule(self, task: Task[R], at: datetime | timedelta) -> Task[R] | None:
         """Schedule task to be processed after certain time.
 
         Args:
@@ -304,15 +307,15 @@ class TestQueue:
                 *Note: datetime must be offset-aware (i.e. have timezone info).*
 
         Returns:
-            Success boolean
+            The scheduled task, or None if its ID already exists.
 
         Example:
             ```python
             q = TestQueue()
 
             # schedule task to be processed after 10 minutes
-            success = q.schedule(task, timedelta(minutes=10))
-            assert success is True
+            scheduled = q.schedule(task, timedelta(minutes=10))
+            assert scheduled is task
 
             # ... or at specific time
             q.schedule(task, datetime.fromisoformat("2026-01-01 00:00:00 +00:00"))
@@ -328,7 +331,7 @@ class TestQueue:
         """
         return asyncio.run(self._queue.get_scheduled())
 
-    def retry(self, task: Task | UUID | str, at: datetime | timedelta | None = None, force: bool = False) -> bool:
+    def retry(self, task: Task[R] | UUID | str, at: datetime | timedelta | None = None, force: bool = False) -> Task[R] | None:
         """Retry failed task.
 
         Args:
@@ -340,7 +343,7 @@ class TestQueue:
             force: If True, allows retrying even if task has completed successfully. Defaults to False.
 
         Returns:
-            Success boolean
+            The re-queued task, or None if no task with the given ID exists.
 
         Raises:
             ValueError: If task has already completed successfully and force is not set to True or if the task has not finished yet.
@@ -351,8 +354,8 @@ class TestQueue:
             q = TestQueue()
 
             # retry immediately
-            success = q.retry(task)
-            assert success is True
+            retried = q.retry(task)
+            assert retried is not None
 
             # or retry after 5 minutes
             q.retry(task, at=timedelta(minutes=5))
@@ -388,7 +391,7 @@ class TestQueue:
         """Clear all tasks, including completed ones."""
         return asyncio.run(self._queue.clear())
 
-    def add_cron(self, task: Task, cron: str) -> bool:
+    def add_cron(self, task: Task, cron: str) -> TaskCron | None:
         """Add a cron job to run a task on a schedule.
 
         Args:
@@ -396,7 +399,7 @@ class TestQueue:
             cron: Cron expression string (e.g. "*/5 * * * *" to run every 5 minutes)
 
         Returns:
-            Success boolean
+            The added cron, or None if an identical cron already exists.
 
         Example:
             ```python
@@ -407,7 +410,8 @@ class TestQueue:
                 print(f"[{datetime.now()}] Hello, {to}!")
 
             # schedule task to run every minute
-            q.add_cron(say_hello("World"), "* * * * *")
+            created_cron = q.add_cron(say_hello("World"), "* * * * *")
+            assert created_cron is not None
             ```
         """
         return asyncio.run(self._queue.add_cron(task, cron))

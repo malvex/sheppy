@@ -82,11 +82,11 @@ def create_router(backend: Backend,
             retry = RetryRequest()
 
         try:
-            success = await q.retry(task_id, at=timedelta(seconds=retry.delay_seconds), force=retry.force)
+            retried_task = await q.retry(task_id, at=timedelta(seconds=retry.delay_seconds), force=retry.force)
         except ValueError as e:
             raise fastapi.HTTPException(400, str(e)) from e
 
-        if success:
+        if retried_task is not None:
             return f"Task {task_id} queued for retry"
 
         raise fastapi.HTTPException(400, f"Failed to retry task {task_id}")
@@ -106,11 +106,11 @@ def create_router(backend: Backend,
         if not isinstance(task_fn, Task):
             raise fastapi.HTTPException(400, f"Function '{task.func}' did not return a Task")
 
-        success = await q.add(task_fn)
-        if not success:
-            raise fastapi.HTTPException(500, "Failed to add task to queue")
+        added_task = await q.add(task_fn)
+        if added_task is None:
+            raise fastapi.HTTPException(409, f"Task {task_fn.id} already exists")
 
-        return task_fn
+        return added_task
 
     @router.post("/{queue}/tasks/schedule")  # type: ignore[untyped-decorator,unused-ignore]
     async def schedule_task(schedule: ScheduleTaskRequest, q: Annotated[Queue, fastapi.Depends(get_queue)]) -> Task:
@@ -137,11 +137,11 @@ def create_router(backend: Backend,
         if not isinstance(task_fn, Task):
             raise fastapi.HTTPException(400, f"Function '{schedule.func}' did not return a Task")
 
-        success = await q.schedule(task_fn, schedule_at)
-        if not success:
-            raise fastapi.HTTPException(500, "Failed to schedule task")
+        scheduled_task = await q.schedule(task_fn, schedule_at)
+        if scheduled_task is None:
+            raise fastapi.HTTPException(409, f"Task {task_fn.id} already exists")
 
-        return task_fn
+        return scheduled_task
 
     @router.post("/{queue}/tasks/clear")  # type: ignore[untyped-decorator,unused-ignore]
     async def clear_tasks(q: Annotated[Queue, fastapi.Depends(get_queue)]) -> int:
@@ -166,9 +166,9 @@ def create_router(backend: Backend,
         if not isinstance(task, Task):
             raise fastapi.HTTPException(400, f"Function '{request.func}' did not return a Task")
 
-        success = await q.add_cron(task, request.expression)
-        if not success:
-            raise fastapi.HTTPException(500, "Failed to add cron job")
+        created_cron = await q.add_cron(task, request.expression)
+        if created_cron is None:
+            raise fastapi.HTTPException(409, "Cron job already exists")
 
         return True
 

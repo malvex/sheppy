@@ -23,6 +23,15 @@ except ImportError:
 
 pytestmark = pytest.mark.skipif(not FASTAPI_INSTALLED, reason="FastAPI is not installed")
 
+FIXED_TASK_ID = UUID("00000000-0000-0000-0000-000000000001")
+
+
+def fixed_id_task() -> Task:
+    return failing_task().model_copy(update={"id": FIXED_TASK_ID})
+
+
+fixed_id_task.__sheppy_task__ = True  # type: ignore[attr-defined]
+
 
 @pytest.fixture
 async def client(backend: Backend):
@@ -198,6 +207,17 @@ class TestAddTask:
         assert await queue.size() == 1
         assert resp.json()["spec"]["kwargs"] == {"x": 10, "y": 20}
 
+    async def test_add_task_duplicate(self, client: "AsyncClient", queue: Queue):
+        payload = {"func": f"{__name__}:fixed_id_task"}
+        first = await client.post("/sheppy/pytest/tasks", json=payload)
+        second = await client.post("/sheppy/pytest/tasks", json=payload)
+
+        assert first.status_code == 200
+        assert first.json()["id"] == str(FIXED_TASK_ID)
+        assert second.status_code == 409
+        assert "already exists" in second.json()["detail"]
+        assert await queue.size() == 1
+
     async def test_add_task_invalid_func(self, client: "AsyncClient"):
         resp = await client.post("/sheppy/pytest/tasks", json={"func": "nonexistent:func"})
         assert resp.status_code == 400
@@ -234,6 +254,17 @@ class TestScheduleTask:
             },
         )
         assert resp.status_code == 200
+        assert len(await queue.get_scheduled()) == 1
+
+    async def test_schedule_duplicate(self, client: "AsyncClient", queue: Queue):
+        payload = {"func": f"{__name__}:fixed_id_task", "delay_seconds": 60}
+        first = await client.post("/sheppy/pytest/tasks/schedule", json=payload)
+        second = await client.post("/sheppy/pytest/tasks/schedule", json=payload)
+
+        assert first.status_code == 200
+        assert first.json()["id"] == str(FIXED_TASK_ID)
+        assert second.status_code == 409
+        assert "already exists" in second.json()["detail"]
         assert len(await queue.get_scheduled()) == 1
 
     async def test_schedule_requires_delay_or_at(self, client: "AsyncClient"):
@@ -277,6 +308,17 @@ class TestCronJobs:
         crons = await queue.get_crons()
         assert len(crons) == 1
         assert crons[0].expression == "*/5 * * * *"
+
+    async def test_add_cron_duplicate(self, client: "AsyncClient", queue: Queue):
+        payload = {"func": "tests.conftest:async_task_add", "args": [1, 2], "expression": "*/5 * * * *"}
+        first = await client.post("/sheppy/pytest/crons", json=payload)
+        second = await client.post("/sheppy/pytest/crons", json=payload)
+
+        assert first.status_code == 200
+        assert first.json() is True
+        assert second.status_code == 409
+        assert "already exists" in second.json()["detail"]
+        assert len(await queue.get_crons()) == 1
 
     async def test_delete_cron(self, client: "AsyncClient", queue: Queue, task_add_fn: Callable[[int, int], Task]):
         t = task_add_fn(1, 2)

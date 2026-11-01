@@ -24,8 +24,8 @@ class TestInMemoryBackend:
     async def test_basic_async_task(self, queue: Queue):
         t = simple_async_task(1, 2)
 
-        success = await queue.add(t)
-        assert success is True
+        added = await queue.add(t)
+        assert added is t
         # task is processed immediately, result available
         result = await queue.get_task(t)
         assert result is not None
@@ -124,8 +124,8 @@ class TestInMemoryBackend:
     async def test_multiple_tasks(self, queue: Queue):
         tasks = [simple_async_task(i, i) for i in range(5)]
 
-        results = await queue.add(tasks)
-        assert results == [True] * 5
+        added_tasks = await queue.add(tasks)
+        assert added_tasks == tasks
 
         # all tasks processed
         all_tasks = await queue.get_all_tasks()

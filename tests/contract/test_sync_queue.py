@@ -1,6 +1,7 @@
 import os
 import time
 from collections.abc import Generator
+from datetime import timedelta
 
 import pytest
 
@@ -41,6 +42,46 @@ class TestSyncQueue:
 
         assert_is_completed(processed)
         assert processed.result == 7
+
+    def test_add_returns_task_or_none_for_duplicate(self):
+        queue = SyncQueue("memory://", "add-return-contract")
+        try:
+            task = simple_sync_task(1, 2)
+            assert queue.add(task) is task
+            assert queue.add(task) is None
+        finally:
+            queue.close()
+
+    def test_schedule_returns_task_or_none_for_duplicate(self):
+        queue = SyncQueue("memory://", "schedule-return-contract")
+        try:
+            task = simple_sync_task(1, 2)
+            assert queue.schedule(task, timedelta(hours=1)) is task
+            assert queue.schedule(task, timedelta(hours=2)) is None
+        finally:
+            queue.close()
+
+    def test_retry_returns_task_or_none_for_missing_task(self):
+        queue = SyncQueue("memory://", "retry-return-contract")
+        try:
+            task = simple_sync_task(1, 2)
+            queue.add(task)
+            retried_task = queue.retry(task, force=True)
+            assert retried_task is not None
+            assert retried_task.id == task.id
+            assert queue.retry("00000000-0000-0000-0000-000000000000") is None
+        finally:
+            queue.close()
+
+    def test_add_cron_returns_cron_or_none_for_duplicate(self):
+        queue = SyncQueue("memory://", "cron-return-contract")
+        try:
+            created_cron = queue.add_cron(simple_sync_task(1, 2), "*/5 * * * *")
+            assert created_cron is not None
+            assert created_cron.expression == "*/5 * * * *"
+            assert queue.add_cron(simple_sync_task(1, 2), "*/5 * * * *") is None
+        finally:
+            queue.close()
 
     def test_memory_backend(self):
         queue = SyncQueue("memory://", "woof")

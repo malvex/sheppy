@@ -349,8 +349,8 @@ class Worker:
                         for _ in range(3):
                             _next_run = cron.next_run(_next_run)
                             task = cron.create_task(_next_run)
-                            success = await queue.schedule(task, at=_next_run)
-                            if success:
+                            scheduled_task = await queue.schedule(task, at=_next_run)
+                            if scheduled_task is not None:
                                 cron_logger.info("Cron scheduled", extra={"log_context": {"function": cron.spec.func, "queue": queue.name, "cron_id": cron.id, "task_id": task.id, "next_run": _next_run}})
 
             except asyncio.CancelledError:

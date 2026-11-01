@@ -42,8 +42,8 @@ class SyncQueue:
         ```python
         q = SyncQueue("redis://localhost:6379")
 
-        success = q.add(task)
-        assert success is True
+        added = q.add(task)
+        assert added is task
 
         q.close()
         ```
@@ -90,19 +90,20 @@ class SyncQueue:
     #     self.close()
 
     @overload
-    def add(self, task: Task) -> bool: ...
+    def add(self, task: Task[R]) -> Task[R] | None: ...
 
     @overload
-    def add(self, task: list[Task]) -> list[bool]: ...
+    def add(self, task: list[Task[R]]) -> list[Task[R] | None]: ...
 
-    def add(self, task: Task | list[Task]) -> bool | list[bool]:
+    def add(self, task: Task[R] | list[Task[R]]) -> Task[R] | None | list[Task[R] | None]:
         """Add task into the queue. Accept list of tasks for batch add.
 
         Args:
             task: Instance of a Task, or list of Task instances for batch mode.
 
         Returns:
-            Success boolean, or list of booleans in batch mode.
+            The added task, or None if its ID already exists. In batch mode,
+            returns a list in input order with None for tasks that already exist.
         """
         if isinstance(task, list):  # mypy needs this
             return self._run_coro(self._queue.add(task))
@@ -144,7 +145,7 @@ class SyncQueue:
         """
         return self._run_coro(self._queue.get_pending(count))
 
-    def schedule(self, task: Task, at: datetime | timedelta) -> bool:
+    def schedule(self, task: Task[R], at: datetime | timedelta) -> Task[R] | None:
         """Schedule task to be processed after certain time.
 
         Args:
@@ -154,7 +155,7 @@ class SyncQueue:
                 *Note: datetime must be offset-aware (i.e. have timezone info).*
 
         Returns:
-            Success boolean
+            The scheduled task, or None if its ID already exists.
         """
         return self._run_coro(self._queue.schedule(task, at))
 
@@ -166,7 +167,7 @@ class SyncQueue:
         """
         return self._run_coro(self._queue.get_scheduled())
 
-    def retry(self, task: Task | UUID | str, at: datetime | timedelta | None = None, force: bool = False) -> bool:
+    def retry(self, task: Task[R] | UUID | str, at: datetime | timedelta | None = None, force: bool = False) -> Task[R] | None:
         """Retry failed task.
 
         Args:
@@ -178,7 +179,7 @@ class SyncQueue:
             force: If True, allows retrying even if task has completed successfully. Defaults to False.
 
         Returns:
-            Success boolean
+            The re-queued task, or None if no task with the given ID exists.
 
         Raises:
             ValueError: If task has already completed successfully and force is not set to True.
@@ -234,7 +235,7 @@ class SyncQueue:
         """
         return self._run_coro(self._queue.clear())
 
-    def add_cron(self, task: Task, cron: str) -> bool:
+    def add_cron(self, task: Task, cron: str) -> TaskCron | None:
         """Add a cron job to run a task on a schedule.
 
         Args:
@@ -242,7 +243,7 @@ class SyncQueue:
             cron: Cron expression string (e.g. "*/5 * * * *" to run every 5 minutes)
 
         Returns:
-            Success boolean
+            The added cron, or None if an identical cron already exists.
         """
         return self._run_coro(self._queue.add_cron(task, cron))
 
