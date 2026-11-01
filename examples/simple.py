@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from sheppy import MemoryBackend, Queue, Worker, task
+from sheppy import InMemoryBackend, Queue, Worker, task
 
 
 class Email(BaseModel):
@@ -18,7 +18,7 @@ async def send_email(email: Email) -> dict[str, str]:
     return {"status": "sent"}
 
 
-queue = Queue(MemoryBackend(instant_processing=False))
+queue = Queue(InMemoryBackend(instant_processing=False))
 
 
 async def run_worker():

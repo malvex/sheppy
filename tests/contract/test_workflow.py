@@ -6,7 +6,7 @@ import pytest
 
 from sheppy import (
     CURRENT_TASK,
-    MemoryBackend,
+    InMemoryBackend,
     Queue,
     Task,
     TestQueue,
@@ -460,8 +460,8 @@ async def test_wait_for_workflow_batch(queue: Queue, worker: Worker):
 
 
 async def test_memory_backend_instant_processing_completes_workflow():
-    """Regression: default MemoryBackend (instant_processing=True) must drive workflows to completion."""
-    queue = Queue(MemoryBackend(), "workflow-instant")
+    """Regression: default InMemoryBackend (instant_processing=True) must drive workflows to completion."""
+    queue = Queue(InMemoryBackend(), "workflow-instant")
     result = await queue.experimental.add_workflow(sequential_workflow(2))
 
     # the workflow is driven to completion inline while adding;
@@ -473,7 +473,7 @@ async def test_memory_backend_instant_processing_completes_workflow():
 
 
 async def test_workflow_and_nested_tasks_inherit_backend_ttl():
-    backend = MemoryBackend(instant_processing=False, ttl=5, error_ttl=50)
+    backend = InMemoryBackend(instant_processing=False, ttl=5, error_ttl=50)
     queue = Queue(backend, "workflow-ttl")
     worker = Worker(queue.name, backend, enable_cron_manager=False)
     worker._blocking_timeout = 0.001

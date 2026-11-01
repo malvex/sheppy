@@ -1,13 +1,13 @@
 import pytest
 
 from sheppy import Queue
-from sheppy._backend.memory import MemoryBackend
+from sheppy._backend.memory import InMemoryBackend
 from sheppy._backend.redis import RedisBackend
 
 
 class TestBackendInference:
     def test_backend_instance_passthrough(self):
-        backend = MemoryBackend()
+        backend = InMemoryBackend()
         queue = Queue(backend)
         assert queue.backend is backend
 
@@ -28,7 +28,7 @@ class TestBackendInference:
 
     def test_memory_url(self):
         queue = Queue("memory://")
-        assert isinstance(queue.backend, MemoryBackend)
+        assert isinstance(queue.backend, InMemoryBackend)
 
     def test_unknown_protocol_raises(self):
         with pytest.raises(ValueError, match="Unsupported backend protocol"):
@@ -41,7 +41,7 @@ class TestBackendInference:
     def test_queue_name_with_string_backend(self):
         queue = Queue("memory://", name="my-queue")
         assert queue.name == "my-queue"
-        assert isinstance(queue.backend, MemoryBackend)
+        assert isinstance(queue.backend, InMemoryBackend)
 
     def test_redis_backend_kwargs(self):
         queue = Queue(
@@ -55,13 +55,13 @@ class TestBackendInference:
 
     def test_memory_backend_kwargs(self):
         queue = Queue("memory://", backend_kwargs={"ttl": 5, "error_ttl": 60})
-        assert isinstance(queue.backend, MemoryBackend)
+        assert isinstance(queue.backend, InMemoryBackend)
         assert queue.backend.ttl == 5
         assert queue.backend.error_ttl == 60
 
     def test_backend_kwargs_reject_backend_instance(self):
         with pytest.raises(ValueError, match="backend_kwargs can only be used"):
-            Queue(MemoryBackend(), backend_kwargs={"ttl": 5})
+            Queue(InMemoryBackend(), backend_kwargs={"ttl": 5})
 
     def test_backend_kwargs_reject_url_option(self):
         with pytest.raises(ValueError, match="cannot contain 'url'"):

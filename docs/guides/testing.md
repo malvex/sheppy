@@ -48,6 +48,6 @@ Tasks that use `Depends` can swap their dependencies in tests with `dependency_o
 --8<-- "examples/example_dependency.py"
 ```
 
-The task resolves `get_db` through the override map and receives `"TESTING DATABASE"`. The same parameter exists on `Worker` and `MemoryBackend` for integration tests.
+The task resolves `get_db` through the override map and receives `"TESTING DATABASE"`. The same parameter exists on `Worker` and `InMemoryBackend` for integration tests.
 
 `examples/example_timeout.py` shows the same style of test for `timeout` and `retry_on_timeout`.
