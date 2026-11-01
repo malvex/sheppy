@@ -9,9 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-# Lock files
-*.lock
-
 .vscode
 .coverage
 .cache/
