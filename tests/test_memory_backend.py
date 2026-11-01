@@ -3,7 +3,7 @@ from collections.abc import Callable
 import pytest
 
 from sheppy import Queue, Task
-from sheppy._backend.memory import MemoryBackend
+from sheppy._backend.memory import InMemoryBackend
 from tests.conftest import async_fail_once, sync_fail_once
 from tests.dependencies import (
     async_failing_task,
@@ -17,10 +17,10 @@ from tests.dependencies import (
 
 @pytest.fixture
 async def queue():
-    return Queue(MemoryBackend(), "pytest")
+    return Queue(InMemoryBackend(), "pytest")
 
 
-class TestMemoryBackend:
+class TestInMemoryBackend:
     async def test_basic_async_task(self, queue: Queue):
         t = simple_async_task(1, 2)
 

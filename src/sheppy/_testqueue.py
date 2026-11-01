@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, overload
 from uuid import UUID
 
-from ._backend.memory import MemoryBackend
+from ._backend.memory import InMemoryBackend
 from ._backend.utils import apply_task_ttl_defaults
 from ._queue import Queue
 from ._utils.task_execution import TaskProcessor
@@ -215,7 +215,7 @@ class TestQueue:
     ):
         self.name = name
 
-        self._backend = MemoryBackend(instant_processing=False)
+        self._backend = InMemoryBackend(instant_processing=False)
         self._backend._connected = True
         self._queue = Queue(self._backend, self.name)
         self._worker_id = "TestQueue"

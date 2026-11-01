@@ -34,8 +34,8 @@ def _create_backend_from_url(url: str, backend_kwargs: dict[str, Any] | None = N
         return RedisBackend(url=url, **options)
 
     if scheme == "memory":
-        from ._backend.memory import MemoryBackend  # noqa: PLC0415
-        return MemoryBackend(**options)
+        from ._backend.memory import InMemoryBackend  # noqa: PLC0415
+        return InMemoryBackend(**options)
 
     raise ValueError(f"Unsupported backend protocol: {scheme}")
 
@@ -329,7 +329,7 @@ class Queue:
         backend: An instance of task backend (e.g. `sheppy.RedisBackend`),<br>
                  or a URL string to automatically infer a backend:<br>
                  - `redis://host:port` or `rediss://host:port` (TLS) for RedisBackend<br>
-                 - `memory://` for MemoryBackend<br>
+                 - `memory://` for InMemoryBackend<br>
                  If not provided, uses `SHEPPY_BACKEND_URL` environment variable.
         name: Name of the queue. Defaults to `SHEPPY_QUEUE` env var or "default".
         backend_kwargs: Options forwarded to the backend constructor when backend is a URL string.

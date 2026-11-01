@@ -1,6 +1,6 @@
 import asyncio
 
-from sheppy import MemoryBackend, Queue, Worker, task
+from sheppy import InMemoryBackend, Queue, Worker, task
 from sheppy.experimental import workflow
 
 ADMIN_EMAILS = [
@@ -49,7 +49,7 @@ def daily_cleanup(days_to_clean: int):
     return "Daily cleanup finished successfully"
 
 
-queue = Queue(MemoryBackend(instant_processing=False))
+queue = Queue(InMemoryBackend(instant_processing=False))
 
 
 async def main():

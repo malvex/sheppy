@@ -1,6 +1,6 @@
 from ._backend.base import Backend as Backend
 from ._backend.base import BackendError as BackendError
-from ._backend.memory import MemoryBackend as MemoryBackend
+from ._backend.memory import InMemoryBackend as InMemoryBackend
 from ._backend.redis import RedisBackend as RedisBackend
 from ._queue import Queue as Queue
 from ._task_factory import task as task

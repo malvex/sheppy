@@ -8,7 +8,7 @@ from typing import Annotated
 
 import typer
 
-from sheppy import MemoryBackend, Queue, Task
+from sheppy import InMemoryBackend, Queue, Task
 from sheppy._utils.task_execution import TaskProcessor
 
 from ..._utils import console
@@ -63,7 +63,7 @@ def test(
                 return
 
             # for the context, this is my brain at this point: https://www.youtube.com/watch?v=sqJDbe9A36c
-            hacky_queue = Queue(MemoryBackend())
+            hacky_queue = Queue(InMemoryBackend())
 
             task_processor = TaskProcessor()
             exception, executed_task = await task_processor.process_task(task, hacky_queue, "cli")

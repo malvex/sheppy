@@ -58,7 +58,7 @@ nav:
     # - Backends:
     #   - Backend class: reference/backends/backend.md
     #   - RedisBackend class: reference/backends/redis-backend.md
-    #   - MemoryBackend class: reference/backends/memory-backend.md
+    #   - InMemoryBackend class: reference/backends/memory-backend.md
   - Code Examples:
     - examples/index.md
   - About:

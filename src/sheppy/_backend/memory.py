@@ -26,7 +26,7 @@ class ScheduledTask:
     task_id: str = field(compare=False)
 
 
-class MemoryBackend(Backend):
+class InMemoryBackend(Backend):
 
     def __init__(self,
                  *,
@@ -51,7 +51,7 @@ class MemoryBackend(Backend):
 
         self._instant_processing = instant_processing
         self._task_processor = TaskProcessor(dependency_overrides=dependency_overrides)
-        self._worker_id = "MemoryBackend"
+        self._worker_id = "InMemoryBackend"
         self.ttl = ttl
         self.error_ttl = error_ttl
 

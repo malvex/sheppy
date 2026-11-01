@@ -7,7 +7,7 @@ from typer.testing import CliRunner
 
 import sheppy.cli.commands.task.list as task_list_command
 from sheppy import Queue, Task
-from sheppy._backend.memory import MemoryBackend
+from sheppy._backend.memory import InMemoryBackend
 from sheppy.cli.cli import app
 from sheppy.models import TaskException, TaskSpec, TaskStatus
 
@@ -35,7 +35,7 @@ def runner():
 
 @pytest.fixture
 def cli_backend(monkeypatch):
-    backend = MemoryBackend(instant_processing=False)
+    backend = InMemoryBackend(instant_processing=False)
     monkeypatch.setattr(task_list_command, "_create_backend_from_url", lambda _url: backend)
     return backend
 
@@ -58,7 +58,7 @@ def make_task(
     )
 
 
-def seed_tasks(backend: MemoryBackend, tasks: list[Task]) -> None:
+def seed_tasks(backend: InMemoryBackend, tasks: list[Task]) -> None:
     results = asyncio.run(Queue(backend, QUEUE_NAME).add(tasks))
     assert all(results)
 

@@ -1,6 +1,6 @@
 import asyncio
 
-from sheppy import MemoryBackend, Queue, Worker, task
+from sheppy import InMemoryBackend, Queue, Worker, task
 from sheppy.experimental import workflow
 
 
@@ -18,7 +18,7 @@ def greetings_workflow(names: list[str]):
     return "\n".join([t1.result, t2.result] + [t.result for t in tx])
 
 
-queue = Queue(MemoryBackend(instant_processing=False))
+queue = Queue(InMemoryBackend(instant_processing=False))
 
 
 async def main():

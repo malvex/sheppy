@@ -6,7 +6,7 @@ if TYPE_CHECKING:
 
 import pytest
 
-from sheppy import CURRENT_TASK, Depends, MemoryBackend, Queue, Task, task
+from sheppy import CURRENT_TASK, Depends, InMemoryBackend, Queue, Task, task
 from sheppy._utils.task_execution import TaskProcessor
 from sheppy.exceptions import DependencyScopeError, TaskTimeoutError
 
@@ -22,7 +22,7 @@ def reset_dependency_state():
 
 
 async def execute(task_obj: Task, processor: TaskProcessor | None = None) -> tuple[Exception | None, Task]:
-    queue = Queue(MemoryBackend(instant_processing=False), "dependency-test")
+    queue = Queue(InMemoryBackend(instant_processing=False), "dependency-test")
     return await (processor or TaskProcessor()).process_task(task_obj, queue, "test-worker")
 
 

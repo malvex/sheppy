@@ -7,7 +7,7 @@ import pytest_asyncio
 
 from sheppy import CURRENT_TASK, Queue, Task, Worker, task
 from sheppy._backend.base import Backend
-from sheppy._backend.memory import MemoryBackend
+from sheppy._backend.memory import InMemoryBackend
 from sheppy._backend.redis import RedisBackend
 from tests.utils import WorkerInstanceProcess
 
@@ -44,7 +44,7 @@ async def backend(request: pytest.FixtureRequest) -> AsyncGenerator[Backend, Non
 
     if request.param == "memory":
 
-        backend = MemoryBackend(instant_processing=False)
+        backend = InMemoryBackend(instant_processing=False)
 
     elif request.param == "redis":
 
@@ -61,7 +61,7 @@ async def backend(request: pytest.FixtureRequest) -> AsyncGenerator[Backend, Non
 
 @pytest_asyncio.fixture
 async def worker_backend(backend: Backend) -> AsyncGenerator[Backend, None]:
-    if isinstance(backend, MemoryBackend):
+    if isinstance(backend, InMemoryBackend):
         # memory backend must be the same instance to access the same task data
         yield backend
 

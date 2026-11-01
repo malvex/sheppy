@@ -1,13 +1,13 @@
 import asyncio
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sheppy import MemoryBackend, Queue, Worker
+from sheppy import InMemoryBackend, Queue, Worker
 from main import app, get_queue
 
 
 @pytest.fixture
 def queue():
-    return Queue(MemoryBackend(), "pytest")
+    return Queue(InMemoryBackend(), "pytest")
 
 
 async def test_fastapi_send_email_route(queue):

@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI
 from pydantic import BaseModel
 from sqlmodel import Field, Session, SQLModel, StaticPool, create_engine
 
-from sheppy import MemoryBackend, Queue, Worker, task
+from sheppy import InMemoryBackend, Queue, Worker, task
 
 ################################################
 # Database                                     #
@@ -61,7 +61,7 @@ async def send_welcome_email(user_id: int,
     return Status(ok=True)  # tasks can return Pydantic models
 
 
-backend = MemoryBackend()
+backend = InMemoryBackend()
 
 # FastAPI dependency injection
 def get_queue():

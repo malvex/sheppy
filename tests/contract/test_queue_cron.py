@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from sheppy import MemoryBackend, Queue, Worker
+from sheppy import InMemoryBackend, Queue, Worker
 from tests.dependencies import simple_async_task, simple_sync_task
 
 
@@ -105,7 +105,7 @@ async def test_cron_generates_different_tasks(datetime_now: datetime, queue: Que
 
 
 async def test_cron_ttl_defaults_preserve_identity():
-    backend = MemoryBackend(ttl=5, error_ttl=50)
+    backend = InMemoryBackend(ttl=5, error_ttl=50)
     queue = Queue(backend, "cron-ttl")
     created = simple_sync_task(1, 2)
     expression = "*/5 * * * *"

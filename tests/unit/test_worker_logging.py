@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from typer.testing import CliRunner
 
-from sheppy import MemoryBackend, Queue, Worker, task
+from sheppy import InMemoryBackend, Queue, Worker, task
 from sheppy._logging import (
     ContextLoggerAdapter,
     _ComponentFormatter,
@@ -51,7 +51,7 @@ def make_processor() -> TaskProcessor:
 
 async def test_successful_task_logs_include_context(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO, logger="sheppy.worker")
-    queue = Queue(MemoryBackend(instant_processing=False), "emails")
+    queue = Queue(InMemoryBackend(instant_processing=False), "emails")
     queued_task = logging_add(1, 2)
 
     exception, processed_task = await make_processor().process_task(queued_task, queue, "worker-id")
@@ -71,7 +71,7 @@ async def test_successful_task_logs_include_context(caplog: pytest.LogCaptureFix
 
 async def test_retry_and_final_failure_logs(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO, logger="sheppy.worker")
-    queue = Queue(MemoryBackend(instant_processing=False), "emails")
+    queue = Queue(InMemoryBackend(instant_processing=False), "emails")
     processor = make_processor()
     queued_task = logging_fail()
 
@@ -101,7 +101,7 @@ async def test_retry_and_final_failure_logs(caplog: pytest.LogCaptureFixture) ->
 
 async def test_worker_lifecycle_loggers_and_levels(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.DEBUG, logger="sheppy.worker")
-    worker = Worker("default", MemoryBackend(instant_processing=False))
+    worker = Worker("default", InMemoryBackend(instant_processing=False))
     worker._blocking_timeout = 0.001
 
     await worker.work(oneshot=True, register_signal_handlers=False)
@@ -121,7 +121,7 @@ async def test_worker_lifecycle_loggers_and_levels(caplog: pytest.LogCaptureFixt
 async def test_public_helper_supports_programmatic_worker(log_format: str, capsys: pytest.CaptureFixture[str]) -> None:
     logging.getLogger("sheppy").handlers.clear()
     configure_worker_logging(log_format=log_format)
-    worker = Worker("default", MemoryBackend(instant_processing=False))
+    worker = Worker("default", InMemoryBackend(instant_processing=False))
     worker._blocking_timeout = 0.001
 
     await worker.work(oneshot=True, register_signal_handlers=False)

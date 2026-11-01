@@ -1,12 +1,12 @@
 import pytest
 from fastapi.testclient import TestClient
-from sheppy import MemoryBackend, Queue, Worker
+from sheppy import InMemoryBackend, Queue, Worker
 from main import app, get_queue
 
 
 @pytest.fixture
 def queue():
-    return Queue(MemoryBackend(), "pytest")
+    return Queue(InMemoryBackend(), "pytest")
 
 
 def test_fastapi_send_email_route(queue):

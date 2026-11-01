@@ -82,7 +82,7 @@ Dependencies can declare `CURRENT_TASK` too. Nested dependencies receive the sam
 
 ## Override dependencies in tests
 
-`dependency_overrides` maps an original dependency to a replacement. It exists on `TestQueue`, `Worker`, and `MemoryBackend`:
+`dependency_overrides` maps an original dependency to a replacement. It exists on `TestQueue`, `Worker`, and `InMemoryBackend`:
 
 ```python title="example_dependency.py"
 --8<-- "examples/example_dependency.py"
