@@ -20,6 +20,26 @@ async def always_fail_retry_one() -> None:
     raise Exception("permanent error")
 
 
+@task(retry=2, retry_delay=[60.0, 300.0])
+async def always_fail_with_retry_delay_list() -> None:
+    raise Exception("permanent error")
+
+
+async def test_retry_delay_list_uses_first_delay_for_first_retry(queue: Queue, worker: Worker) -> None:
+    t = always_fail_with_retry_delay_list()
+    await queue.add(t)
+
+    await worker.work(1)
+
+    t = await queue.get_task(t)
+    assert t.status == 'retrying'
+    assert t.retry_count == 1
+    assert t.last_retry_at is not None
+    assert t.next_retry_at is not None
+    retry_delay = (t.next_retry_at - t.last_retry_at).total_seconds()
+    assert retry_delay == pytest.approx(60.0, abs=0.001)
+
+
 async def test_retry(task_fail_once_fn: Callable[[], Task], queue: Queue, worker: Worker) -> None:
     t = task_fail_once_fn()
     await queue.add(t)
