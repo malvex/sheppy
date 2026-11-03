@@ -318,10 +318,12 @@ class TaskProcessor(TaskProcessorProtocol):
         if isinstance(exception, TaskTimeoutError) and not task.config.retry_on_timeout:
             return task
 
+        retry_delay = TaskProcessor.calculate_retry_delay(task)
+
         task.__dict__["status"] = "retrying"
         task.__dict__["retry_count"] = task.retry_count + 1
         task.__dict__["last_retry_at"] = datetime.now(timezone.utc)
-        task.__dict__["next_retry_at"] = datetime.now(timezone.utc) + timedelta(seconds=TaskProcessor.calculate_retry_delay(task))
+        task.__dict__["next_retry_at"] = datetime.now(timezone.utc) + timedelta(seconds=retry_delay)
         task.__dict__["finished_at"] = None
 
         return task
