@@ -8,6 +8,7 @@ import pytest
 from pydantic.type_adapter import TypeAdapter
 
 from sheppy import Backend, BackendError
+from sheppy._backend.redis import RedisBackend
 from sheppy._backend.utils import apply_ttl_defaults_to_data
 from sheppy._task_factory import Task, TaskFactory
 from tests.dependencies import add_retriable, simple_async_task
@@ -247,6 +248,67 @@ async def test_pop(backend: Backend):
     assert await backend.pop(Q) == [t1]
     assert await backend.pop(Q, limit=2) == [t2, t3]
     assert await backend.pop(Q, limit=3, timeout=0.01) == [t4]
+
+
+async def test_pop_skips_undecodable_entries(backend: Backend):
+    if not isinstance(backend, RedisBackend):
+        pytest.skip(reason="only the redis backend stores raw stream entries")
+
+    t1 = _apply_ttl_defaults_to_data(simple_async_task(1, 2).model_dump(mode="json"))
+    t2 = _apply_ttl_defaults_to_data(simple_async_task(3, 4).model_dump(mode="json"))
+
+    await backend.connect()
+    pending_key = backend._pending_tasks_key(Q)
+
+    assert await backend.append(Q, [t1]) == [True]
+    await backend.client.xadd(pending_key, {"data": "{not json"})
+    await backend.client.xadd(pending_key, {"other": "missing data field"})
+    assert await backend.append(Q, [t2]) == [True]
+    assert await backend.size(Q) == 4
+
+    # both valid tasks come back, the bad entries are acked and deleted
+    assert await backend.pop(Q, limit=10) == [t1, t2]
+    assert await backend.size(Q) == 2
+    pending = await backend.client.xpending(pending_key, backend.consumer_group)
+    assert pending["pending"] == 2
+
+    # the valid tasks are tracked and can be finished as usual
+    await backend.acknowledge(Q, [t1["id"], t2["id"]])
+    assert await backend.size(Q) == 0
+    assert await backend.pop(Q, limit=10) == []
+
+
+async def test_get_stale_messages_skips_undecodable_entries(backend: Backend):
+    if not isinstance(backend, RedisBackend):
+        pytest.skip(reason="only the redis backend stores raw stream entries")
+
+    t1 = _apply_ttl_defaults_to_data(simple_async_task(1, 2).model_dump(mode="json"))
+    t2 = _apply_ttl_defaults_to_data(simple_async_task(3, 4).model_dump(mode="json"))
+
+    await backend.connect()
+    pending_key = backend._pending_tasks_key(Q)
+
+    assert await backend.append(Q, [t1]) == [True]
+    await backend.client.xadd(pending_key, {"data": "{not json"})
+    assert await backend.append(Q, [t2]) == [True]
+
+    # deliver everything to a consumer that then "crashes"
+    await backend.client.xreadgroup(backend.consumer_group, "crashed-consumer", {pending_key: ">"}, count=10)
+    await asyncio.sleep(0.05)
+
+    worker = RedisBackend(url=backend.url, consumer_group=backend.consumer_group)
+    await worker.connect()
+    try:
+        assert await worker.get_stale_messages(Q, min_idle_ms=1) == [t1, t2]
+        assert await worker.size(Q) == 2
+        pending = await worker.client.xpending(pending_key, worker.consumer_group)
+        assert pending["pending"] == 2
+
+        # a second sweep must not trip over anything
+        await asyncio.sleep(0.05)
+        assert await worker.get_stale_messages(Q, min_idle_ms=1) == [t1, t2]
+    finally:
+        await worker.disconnect()
 
 
 async def test_get_pending(backend: Backend):
