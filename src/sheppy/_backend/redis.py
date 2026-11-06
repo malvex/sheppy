@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+import logging
 from datetime import datetime, timezone
 from time import time
 from typing import Any, cast
@@ -13,6 +14,7 @@ except ImportError as e:
         "Install it with: pip install redis"
     ) from e
 
+from .._logging import ContextLoggerAdapter
 from .._utils.task_execution import generate_unique_worker_id
 from ..models import TTLValue
 from .base import Backend, BackendError
@@ -27,6 +29,8 @@ from .utils import (
 # bytes keys, and blocking reads return None on timeout
 _StreamMessages = list[tuple[bytes, dict[bytes, bytes]]]  # [(message_id, fields), ...]
 _XReadResult = list[tuple[bytes, _StreamMessages]] | None  # [(stream_key, messages), ...]
+
+logger = ContextLoggerAdapter(logging.getLogger("sheppy.backend.redis"))
 
 
 class RedisBackend(Backend):
@@ -225,15 +229,10 @@ class RedisBackend(Backend):
             if not messages:
                 return []
 
-            tasks = []
-            for message_id, fields in messages:
-                task_data = json.loads(fields[b"data"])
+            tasks = await self._decode_messages(queue_name, messages)
 
-                # store message_id for acknowledge()
-                self._pending_messages[task_data["id"]] = (queue_name, message_id.decode())
-                tasks.append(task_data)
-
-            await self.client.hdel(self._pending_index_key(queue_name), *[t["id"] for t in tasks])
+            if tasks:
+                await self.client.hdel(self._pending_index_key(queue_name), *[t["id"] for t in tasks])
 
             return tasks
 
@@ -629,6 +628,37 @@ class RedisBackend(Backend):
 
         return await self._assign_rate_limit_slot(queue_name, key, max_rate, rate_period, base_wait)
 
+    async def _decode_messages(self, queue_name: str, messages: _StreamMessages) -> list[dict[str, Any]]:
+        """Decode stream entries into task data and remember their message ids for acknowledge().
+
+        Entries that cannot be decoded are acknowledged and deleted, so one bad entry can not
+        block the rest of its batch or stale task recovery for the whole queue.
+        """
+        tasks: list[dict[str, Any]] = []
+        invalid_ids: list[bytes] = []
+
+        for message_id, fields in messages:
+            try:
+                task_data = json.loads(fields[b"data"])
+                task_id = task_data["id"]
+            except (KeyError, TypeError, ValueError) as e:
+                logger.error("Discarding undecodable stream entry", extra={"log_context": {"queue": queue_name, "message_id": message_id.decode(), "error": f"{type(e).__name__}: {e}"}})
+                invalid_ids.append(message_id)
+                continue
+
+            # store message_id for acknowledge()
+            self._pending_messages[task_id] = (queue_name, message_id.decode())
+            tasks.append(task_data)
+
+        if invalid_ids:
+            pending_tasks_key = self._pending_tasks_key(queue_name)
+            async with self.client.pipeline(transaction=True) as pipe:
+                pipe.xack(pending_tasks_key, self.consumer_group, *invalid_ids)
+                pipe.xdel(pending_tasks_key, *invalid_ids)
+                await pipe.execute()
+
+        return tasks
+
     async def _ensure_consumer_group(self, stream_key: str) -> None:
         if stream_key in self._initialized_groups:
             return
@@ -856,15 +886,7 @@ class RedisBackend(Backend):
             # no stale tasks
             return []
 
-        stale_tasks = []
-
-        for message in stale_messages[1]:
-            message_id, fields = message
-            task_data = json.loads(fields[b"data"])
-            self._pending_messages[task_data["id"]] = (queue_name, message_id.decode())
-            stale_tasks.append(task_data)
-
-        return stale_tasks
+        return await self._decode_messages(queue_name, cast(_StreamMessages, stale_messages[1]))
 
     async def heartbeat(self, queue_name: str, task_ids: list[str]) -> None:
         pending_tasks_key = self._pending_tasks_key(queue_name)
