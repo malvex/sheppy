@@ -30,7 +30,7 @@ The `memory://` backend executes tasks in-process, so this example needs no exte
 
 ## Where to go next
 
-- [Quickstart](tutorials/quickstart.md): install, first task, first worker, in about five minutes.
+- [Quickstart](quickstart.md): install, first task, first worker, in about five minutes.
 - [How-to guides](guides/task-scheduling.md): scheduling, cron, retries, rate limiting, workflows, dependency injection, testing.
 - [API reference](reference/queue.md): exact signatures and behavior of `Queue`, `Worker`, `TestQueue`, and the models.
 - [Code examples](examples/index.md): runnable scripts from the repository, each with the command to run it.

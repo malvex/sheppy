@@ -1,0 +1,125 @@
+[project]
+site_name = "Sheppy"
+site_url = "https://docs.sheppy.org/"
+repo_name = "malvex/sheppy"
+repo_url = "https://github.com/malvex/sheppy"
+watch = ["src", "examples"]
+
+nav = [
+  { "Home" = "index.md" },
+  { "Quickstart" = "quickstart.md" },
+  { "How-to guides" = [
+    { "Schedule tasks" = "guides/task-scheduling.md" },
+    { "Cron jobs" = "guides/cron.md" },
+    { "Handle errors and retries" = "guides/error-handling.md" },
+    { "Validate with Pydantic" = "guides/validation-with-pydantic.md" },
+    { "Rate limiting" = "guides/rate-limiting.md" },
+    { "Dependency injection" = "guides/dependencies.md" },
+    { "Test tasks" = "guides/testing.md" },
+    { "Experimental" = [
+      { "Synchronous Queue without asyncio" = "guides/sync-queue.md" },
+      { "Workflows" = "guides/workflows.md" },
+    ] },
+  ] },
+  { "API Reference" = [
+    { "Queue class" = "reference/queue.md" },
+    { "TestQueue class" = "reference/testqueue.md" },
+    { "Worker class" = "reference/worker.md" },
+    { "Configuration" = "reference/configuration.md" },
+    { "CLI reference" = "reference/cli.md" },
+    { "Models" = [
+      { "Task" = "reference/task.md" },
+      { "TaskException" = "reference/task-exception.md" },
+      { "TaskSpec" = "reference/task-spec.md" },
+      { "TaskConfig" = "reference/task-config.md" },
+      { "TaskCron" = "reference/task-cron.md" },
+    ] },
+    { "Experimental" = [
+      { "SyncQueue" = "reference/sync-queue.md" },
+      { "Workflow" = "reference/workflow.md" },
+    ] },
+  ] },
+  { "Code Examples" = [
+    "examples/index.md",
+  ] },
+  { "About" = [
+    { "About Sheppy" = "about/index.md" },
+    { "Roadmap" = "about/roadmap.md" },
+    { "License" = "about/license.md" },
+  ] },
+  { "Changelog" = "changelog.md" },
+]
+
+[project.theme]
+variant = "modern"
+language = "en"
+features = [
+  "content.code.annotate",
+  "content.code.copy",
+  "navigation.sections",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.tabs",
+  "navigation.tabs.sticky",
+  "navigation.tracking",
+  "search.share",
+  "search.suggest",
+]
+
+[project.theme.palette]
+scheme = "slate"
+primary = "black"
+
+[project.plugins.search]
+
+[project.plugins.privacy]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+filters = ["!^_", "!model_config"]
+show_root_heading = true
+show_if_no_docstring = true
+inherited_members = true
+members_order = "source"
+separate_signature = true
+unwrap_annotated = true
+merge_init_into_class = true
+docstring_section_style = "spacy"
+signature_crossrefs = true
+show_symbol_type_heading = true
+show_symbol_type_toc = true
+show_labels = false
+overloads_only = true
+show_signature_annotations = true
+show_signature_type_parameters = true
+
+[project.markdown_extensions]
+abbr = {}
+admonition = {}
+attr_list = {}
+def_list = {}
+footnotes = {}
+md_in_html = {}
+toc.permalink = true
+pymdownx.arithmatex.generic = true
+pymdownx.betterem.smart_enable = "all"
+pymdownx.caret = {}
+pymdownx.details = {}
+pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
+pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"
+pymdownx.highlight = {}
+pymdownx.inlinehilite = {}
+pymdownx.keys = {}
+pymdownx.mark = {}
+pymdownx.smartsymbols = {}
+pymdownx.superfences = {}
+pymdownx.tabbed.alternate_style = true
+pymdownx.tasklist.custom_checkbox = true
+pymdownx.tilde = {}
+pymdownx.snippets.check_paths = true
+
+[project.extra]
+social = [
+  { icon = "fontawesome/brands/github", link = "https://github.com/malvex" },
+  { icon = "fontawesome/brands/python", link = "https://pypi.org/project/sheppy/" },
+  { icon = "fontawesome/brands/docker", link = "https://hub.docker.com/r/malvex/sheppy" },
+]
