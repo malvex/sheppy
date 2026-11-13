@@ -10,4 +10,4 @@ from ._worker import Worker as Worker
 from .models import CURRENT_TASK as CURRENT_TASK
 from .models import Task as Task
 
-__version__ = "0.0.7"
+__version__ = "0.0.8"
