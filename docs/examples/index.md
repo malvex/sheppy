@@ -6,7 +6,7 @@ Examples that need Redis expect a server at `redis://localhost:6379` (`docker ru
 
 ## Basics
 
-- **quickstart.py**: the task from the [Quickstart](../tutorials/quickstart.md). Needs Redis and a worker. Prints `Task <id> completed with result: 3`.
+- **quickstart.py**: the task from the [Quickstart](../quickstart.md). Needs Redis and a worker. Prints `Task <id> completed with result: 3`.
 - **simple.py**: self-contained: memory backend plus an in-process worker. `python examples/simple.py` prints the "Sent email" line from the task.
 - **simple_scheduled.py**: scheduling with `at=timedelta(...)`. Needs Redis and a worker. See [Task scheduling](../guides/task-scheduling.md).
 - **tldr.py**: `add`, `schedule`, and `wait_for` in one script. Needs Redis and a worker. Prints `Task succeed with result: Hello, World!`.

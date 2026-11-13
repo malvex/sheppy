@@ -7,6 +7,7 @@ Sheppy is under active development. Here is what's planned for future releases.
 - **Observability**: metrics, logs, traces
 - **Task Concurrency**: limit the number of tasks that can run concurrently
 - **Improved CLI**: more available commands, better interface, etc
+- **Redis Cluster support**
 - **PostgreSQL backend**: new Postgres backend for those who prefer relational databases or already run one
 - **Custom backend support**: a stable python interface (protocol) that allows plugging-in custom-made backends
 - ... and more!

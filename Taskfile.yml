@@ -64,11 +64,11 @@ tasks:
 
   docs-build:
     desc: Build docs
-    cmd: uv run mkdocs build
+    cmd: uv run zensical build
 
   docs-dev:
     desc: Run docs locally
-    cmd: uv run mkdocs serve --livereload -w src -w examples # --strict
+    cmd: uv run zensical serve
 
 includes:
   sandbox:
