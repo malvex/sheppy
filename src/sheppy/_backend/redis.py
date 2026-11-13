@@ -641,13 +641,14 @@ class RedisBackend(Backend):
             try:
                 task_data = json.loads(fields[b"data"])
                 task_id = task_data["id"]
+
+                # store message_id for acknowledge()
+                self._pending_messages[task_id] = (queue_name, message_id.decode())
             except (KeyError, TypeError, ValueError) as e:
                 logger.error("Discarding undecodable stream entry", extra={"log_context": {"queue": queue_name, "message_id": message_id.decode(), "error": f"{type(e).__name__}: {e}"}})
                 invalid_ids.append(message_id)
                 continue
 
-            # store message_id for acknowledge()
-            self._pending_messages[task_id] = (queue_name, message_id.decode())
             tasks.append(task_data)
 
         if invalid_ids:

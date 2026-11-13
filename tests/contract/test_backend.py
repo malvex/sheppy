@@ -263,8 +263,9 @@ async def test_pop_skips_undecodable_entries(backend: Backend):
     assert await backend.append(Q, [t1]) == [True]
     await backend.client.xadd(pending_key, {"data": "{not json"})
     await backend.client.xadd(pending_key, {"other": "missing data field"})
+    await backend.client.xadd(pending_key, {"data": '{"id": []}'})
     assert await backend.append(Q, [t2]) == [True]
-    assert await backend.size(Q) == 4
+    assert await backend.size(Q) == 5
 
     # both valid tasks come back, the bad entries are acked and deleted
     assert await backend.pop(Q, limit=10) == [t1, t2]
@@ -290,6 +291,7 @@ async def test_get_stale_messages_skips_undecodable_entries(backend: Backend):
 
     assert await backend.append(Q, [t1]) == [True]
     await backend.client.xadd(pending_key, {"data": "{not json"})
+    await backend.client.xadd(pending_key, {"data": '{"id": []}'})
     assert await backend.append(Q, [t2]) == [True]
 
     # deliver everything to a consumer that then "crashes"
