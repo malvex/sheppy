@@ -5,7 +5,12 @@ from datetime import timedelta
 import pytest
 
 from sheppy import CURRENT_TASK, Queue, Task, Worker, task
-from tests.dependencies import assert_is_completed, assert_is_failed, failing_task
+from tests.dependencies import (
+    assert_is_completed,
+    assert_is_failed,
+    failing_task,
+    simple_async_task,
+)
 
 
 @task(retry=1, retry_delay=0)
@@ -56,6 +61,35 @@ async def test_retry(task_fail_once_fn: Callable[[], Task], queue: Queue, worker
     t = await queue.get_task(t)
     assert_is_completed(t)
     assert t.retry_count == 1
+
+
+async def test_immediate_retry_of_cancelled_task_resets_status(queue: Queue, worker: Worker) -> None:
+    worker.enable_scheduler = False
+    worker.enable_cron_manager = False
+
+    t = simple_async_task(1, 2)
+    await queue.add(t)
+    await queue.experimental.cancel(t)
+
+    retried = await queue.retry(t)
+
+    assert retried is not None
+    assert retried.status in ('new', 'pending')
+    assert retried.finished_at is None
+
+    stored = await queue.get_task(t)
+    assert stored is not None
+    assert stored.status == retried.status
+    assert stored.finished_at is None
+
+    pending = await queue.get_pending()
+    assert len(pending) == 1
+    assert pending[0].status == retried.status
+
+    await worker.work(oneshot=True)
+    processed = await queue.get_task(t)
+    assert_is_completed(processed)
+    assert processed.result == 3
 
 
 # regression test for retry off-by-one bug

@@ -638,6 +638,7 @@ class Queue:
             schedule_success = await self.backend.schedule(self.name, _task.model_dump(mode="json"), at, unique=False)
             return _task if schedule_success else None
 
+        _task.__dict__["status"] = "new"
         append_success = await self.backend.append(self.name, [_task.model_dump(mode="json")], unique=False)
         return _task if append_success[0] else None
 
