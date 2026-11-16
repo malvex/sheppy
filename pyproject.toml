@@ -65,7 +65,7 @@ dev = [
     "types-croniter>=6.0.0.20250809",
     "mkdocstrings[python]==1.0.6",
     "zensical>=0.0.67",
-    "pymdown-extensions>=11,<12",
+    "pymdown-extensions>=11,<13",
 ]
 
 [project.urls]
