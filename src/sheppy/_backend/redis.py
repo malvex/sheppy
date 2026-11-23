@@ -218,7 +218,7 @@ class RedisBackend(Backend):
                 consumername=self.consumer_name,
                 streams={pending_tasks_key: ">"},  # ">" means only new messages (not delivered to other consumers)
                 count=limit,
-                block=None if timeout is None or timeout == 0 else int(timeout * 1000)
+                block=None if timeout is None or timeout == 0 else max(1, int(timeout * 1000))
             ))
 
             if not result:

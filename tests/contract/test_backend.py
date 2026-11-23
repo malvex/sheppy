@@ -250,6 +250,13 @@ async def test_pop(backend: Backend):
     assert await backend.pop(Q, limit=3, timeout=0.01) == [t4]
 
 
+async def test_pop_sub_millisecond_timeout(backend: Backend):
+    await backend.connect()
+
+    # a timeout below 1 ms must not turn into BLOCK 0, which blocks forever
+    assert await asyncio.wait_for(backend.pop(Q, timeout=0.0004), timeout=2) == []
+
+
 async def test_pop_skips_undecodable_entries(backend: Backend):
     if not isinstance(backend, RedisBackend):
         pytest.skip(reason="only the redis backend stores raw stream entries")
